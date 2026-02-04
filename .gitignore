@@ -1,0 +1,12 @@
+# environment and secrets
+.env
+
+# virtual environments
+venv/
+
+# database files
+data/db_postgres/
+data/db_mongo/
+
+# other files
+est.txt

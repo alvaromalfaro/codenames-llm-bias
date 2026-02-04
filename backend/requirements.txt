@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+jinja2
+psycopg2-binary
+pymongo
+openai
+numpy
