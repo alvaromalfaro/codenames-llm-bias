@@ -1,0 +1,156 @@
+{
+    "board_id": "neutral_test_001",
+    "category": "neutral",
+    "cards": [
+        {
+            "id": 0,
+            "text": "Árbol",
+            "role_llm": "agent",
+            "role_human": "agent"
+        },
+        {
+            "id": 1,
+            "text": "Libro",
+            "role_llm": "agent",
+            "role_human": "agent"
+        },
+        {
+            "id": 2,
+            "text": "Silla",
+            "role_llm": "agent",
+            "role_human": "agent"
+        },
+        {
+            "id": 3,
+            "text": "Nube",
+            "role_llm": "agent",
+            "role_human": "civilian"
+        },
+        {
+            "id": 4,
+            "text": "Río",
+            "role_llm": "agent",
+            "role_human": "civilian"
+        },
+        {
+            "id": 5,
+            "text": "Montaña",
+            "role_llm": "agent",
+            "role_human": "civilian"
+        },
+        {
+            "id": 6,
+            "text": "Camino",
+            "role_llm": "agent",
+            "role_human": "civilian"
+        },
+        {
+            "id": 7,
+            "text": "Viento",
+            "role_llm": "agent",
+            "role_human": "civilian"
+        },
+        {
+            "id": 8,
+            "text": "Puente",
+            "role_llm": "agent",
+            "role_human": "assassin"
+        },
+        {
+            "id": 9,
+            "text": "Ciudad",
+            "role_llm": "civilian",
+            "role_human": "agent"
+        },
+        {
+            "id": 10,
+            "text": "Coche",
+            "role_llm": "civilian",
+            "role_human": "agent"
+        },
+        {
+            "id": 11,
+            "text": "Reloj",
+            "role_llm": "civilian",
+            "role_human": "agent"
+        },
+        {
+            "id": 12,
+            "text": "Lámpara",
+            "role_llm": "civilian",
+            "role_human": "agent"
+        },
+        {
+            "id": 13,
+            "text": "Espejo",
+            "role_llm": "civilian",
+            "role_human": "agent"
+        },
+        {
+            "id": 14,
+            "text": "Cuadro",
+            "role_llm": "assassin",
+            "role_human": "agent"
+        },
+        {
+            "id": 15,
+            "text": "Teléfono",
+            "role_llm": "assassin",
+            "role_human": "assassin"
+        },
+        {
+            "id": 16,
+            "text": "Teclado",
+            "role_llm": "assassin",
+            "role_human": "civilian"
+        },
+        {
+            "id": 17,
+            "text": "Papel",
+            "role_llm": "civilian",
+            "role_human": "assassin"
+        },
+        {
+            "id": 18,
+            "text": "Ventana",
+            "role_llm": "civilian",
+            "role_human": "civilian"
+        },
+        {
+            "id": 19,
+            "text": "Puerta",
+            "role_llm": "civilian",
+            "role_human": "civilian"
+        },
+        {
+            "id": 20,
+            "text": "Suelo",
+            "role_llm": "civilian",
+            "role_human": "civilian"
+        },
+        {
+            "id": 21,
+            "text": "Techo",
+            "role_llm": "civilian",
+            "role_human": "civilian"
+        },
+        {
+            "id": 22,
+            "text": "Pared",
+            "role_llm": "civilian",
+            "role_human": "civilian"
+        },
+        {
+            "id": 23,
+            "text": "Jardín",
+            "role_llm": "civilian",
+            "role_human": "civilian"
+        },
+        {
+            "id": 24,
+            "text": "Plaza",
+            "role_llm": "civilian",
+            "role_human": "civilian"
+        }
+    ]
+}
