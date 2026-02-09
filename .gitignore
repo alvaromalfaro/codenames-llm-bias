@@ -1,8 +1,17 @@
 # environment and secrets
 .env
 
+# Python cache and compiled files
+__pycache__/
+__init__.py
+
 # virtual environments
 venv/
+.venv/
+
+# IDE and editor files
+.vscode/
+.coverage
 
 # database files
 data/db_postgres/
@@ -10,3 +19,4 @@ data/db_mongo/
 
 # other files
 est.txt
+duet_info.txt

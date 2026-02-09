@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 from typing import List
-from app.models.game_schemas import Board
+from backend.app.models.game_schemas import Board
 
 
 class BoardLoader:
