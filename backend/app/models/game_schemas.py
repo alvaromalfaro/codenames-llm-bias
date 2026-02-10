@@ -1,3 +1,4 @@
+import random
 from enum import Enum
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
@@ -91,3 +92,36 @@ class Board(BaseModel):
             )
 
         return self
+
+
+class GamePhase(str, Enum):
+    # The phase where the clue-giving player provides a clue and a count to the guessing player.
+    GIVING_CLUE = "giving_clue"
+    # The phase where the guessing player makes guesses based on the clue provided by the clue-giving player.
+    GUESSING = "guessing"
+    # The phase when the game has ended, either by win, loss, or other termination conditions.
+    GAME_OVER = "game_over"
+
+
+class GameState(BaseModel):
+    game_id: str  # Unique identifier for the game
+    board: Board  # The board configuration for the game
+
+    current_phase: GamePhase = GamePhase.GIVING_CLUE
+    clue_giver: int = 1
+    guesser: int = 0
+
+    # Current clue data
+    current_clue: Optional[str] = None
+    current_clue_count: Optional[int] = None
+
+    # Guess tracking
+    guesses_made_this_turn: int = 0
+
+    # Timer tokens for the game
+    timer_tokens: int = 9
+
+    # Finalization state
+    is_game_over: bool = False
+    # None, "victory", "loss_assassin", "loss_time"
+    result: Optional[str] = None
