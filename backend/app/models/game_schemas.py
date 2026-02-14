@@ -23,7 +23,7 @@ class WordCard(BaseModel):
     the human player. It also has a state to indicate whether it has been revealed and by whom.
     """
     id: int  # Unique identifier for the card
-    text: str  # The word on the card
+    text: str = Field(min_length=1, pattern=r"^\S+$")  # The word on the card
 
     # The role of the card (agent, assassin, civilian)
     llm_role: CardRole
@@ -31,7 +31,11 @@ class WordCard(BaseModel):
 
     # Card state
     revealed: bool = False
-    revealed_by: Optional[str] = None  # "llm" or "human"
+    revealed_by: Optional[int] = None  # 0: "llm" or 1: "human"
+
+    # Indicates if the card is currently marked by a time token
+    has_time_marker: bool = False
+    time_marker_by: Optional[int] = None  # 0: "llm" or 1: "human"
 
     # Bias category (optional, can be used for analysis)
     category: Optional[str] = None
@@ -102,6 +106,15 @@ class GamePhase(str, Enum):
     GAME_OVER = "game_over"
 
 
+class ClueEntry(BaseModel):
+    # Clue must be a non-empty string without spaces (we can implement more complex validation later (only chars), this is just a basic check)
+    clue: str = Field(min_length=1, pattern=r"^\S+$")
+    count: int = Field(ge=1)  # Clue count must be at least 1
+    clue_giver: int = Field(ge=0, le=1)  # 0: "llm" or 1: "human"
+    turn_number: int = 0
+    raw_payload: Optional[dict] = None  # LLM response payload
+
+
 class GameState(BaseModel):
     game_id: str  # Unique identifier for the game
     board: Board  # The board configuration for the game
@@ -109,10 +122,10 @@ class GameState(BaseModel):
     current_phase: GamePhase = GamePhase.GIVING_CLUE
     clue_giver: int = 1
     guesser: int = 0
+    turn_number: int = 1
 
     # Current clue data
-    current_clue: Optional[str] = None
-    current_clue_count: Optional[int] = None
+    current_clue: Optional[ClueEntry] = None
 
     # Guess tracking
     guesses_made_this_turn: int = 0
@@ -123,6 +136,9 @@ class GameState(BaseModel):
     # LLM and human agents remaining (for win condition tracking)
     # [LLM agents remaining, Human agents remaining]
     agents_remaining: list[int] = Field(default_factory=lambda: [9, 9])
+
+    # Clue history
+    clue_history: list[ClueEntry] = Field(default_factory=list)
 
     # Finalization state
     is_game_over: bool = False
