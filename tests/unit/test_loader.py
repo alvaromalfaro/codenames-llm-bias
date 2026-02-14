@@ -69,3 +69,16 @@ def test_list_available_boards(tmp_path):
     assert len(available_boards) == 3
     assert set(available_boards) == {f"board_{i}.json" for i in range(3)}
     assert "readme.txt" not in available_boards
+
+
+def test_list_available_boards_directory_not_found(tmp_path):
+    """
+    Validates that the BoardLoader raises a FileNotFoundError when attempting to list available boards from a non-existent data directory.
+    :param tmp_path: A pytest fixture providing a temporary directory for file operations during the test.
+    """
+    # Initialize the BoardLoader with a path to a non-existent data directory and attempt to list available board configuration files
+    loader = BoardLoader(data_path=str(tmp_path / "non_existent_data"))
+
+    # Assert that a FileNotFoundError is raised when trying to list available boards from a data directory that does not exist
+    with pytest.raises(FileNotFoundError):
+        loader.list_available_boards()
