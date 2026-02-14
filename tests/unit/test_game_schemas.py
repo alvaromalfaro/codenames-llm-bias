@@ -19,8 +19,8 @@ def test_valid_board_passes(valid_board_data):
     for i, card in enumerate(board.cards):
         assert card.id == i
         assert card.text == f"Word_{i}"
-        assert card.role_llm == valid_board_data["cards"][i]["role_llm"]
-        assert card.role_human == valid_board_data["cards"][i]["role_human"]
+        assert card.llm_role == valid_board_data["cards"][i]["llm_role"]
+        assert card.human_role == valid_board_data["cards"][i]["human_role"]
 
 
 @pytest.mark.parametrize("modification, expected_error", [
@@ -41,28 +41,28 @@ def test_board_invalid_agent_rules(valid_board_data, modification, expected_erro
     if modification == "less_llm_agents":
         # Modify the valid board data to have fewer LLM agent cards than required
         for card in data["cards"]:
-            if card["role_llm"] == CardRole.AGENT:
-                card["role_llm"] = CardRole.CIVILIAN
+            if card["llm_role"] == CardRole.AGENT:
+                card["llm_role"] = CardRole.CIVILIAN
                 break
     elif modification == "less_human_agents":
         # Modify the valid board data to have fewer human agent cards than required
         for card in data["cards"]:
-            if card["role_human"] == CardRole.AGENT:
-                card["role_human"] = CardRole.CIVILIAN
+            if card["human_role"] == CardRole.AGENT:
+                card["human_role"] = CardRole.CIVILIAN
                 break
     elif modification == "wrong_shared_count":
         # Modify the valid board data to have an incorrect number of shared agent cards
 
         # First, set one of the shared agent cards to be a civilian for the human player
         for card in data["cards"]:
-            if card["role_llm"] == CardRole.AGENT and card["role_human"] == CardRole.AGENT:
-                card["role_human"] = CardRole.CIVILIAN
+            if card["llm_role"] == CardRole.AGENT and card["human_role"] == CardRole.AGENT:
+                card["human_role"] = CardRole.CIVILIAN
                 break
 
         # Then, set one of the civilian cards to be an agent for the human player to maintain the total count of 9 agents for the human player
         for card in data["cards"]:
-            if card["role_llm"] == CardRole.CIVILIAN and card["role_human"] == CardRole.CIVILIAN:
-                card["role_human"] = CardRole.AGENT
+            if card["llm_role"] == CardRole.CIVILIAN and card["human_role"] == CardRole.CIVILIAN:
+                card["human_role"] = CardRole.AGENT
                 break
 
     with pytest.raises(ValidationError, match=re.escape(expected_error)):
@@ -91,54 +91,54 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
     if modification == "less_llm_assassins":
         # Modify the valid board data to have fewer LLM assassin cards than required
         for card in data["cards"]:
-            if card["role_llm"] == CardRole.ASSASSIN:
-                card["role_llm"] = CardRole.CIVILIAN
+            if card["llm_role"] == CardRole.ASSASSIN:
+                card["llm_role"] = CardRole.CIVILIAN
                 break
     elif modification == "less_human_assassins":
         # Modify the valid board data to have fewer human assassin cards than required
         for card in data["cards"]:
-            if card["role_human"] == CardRole.ASSASSIN:
-                card["role_human"] = CardRole.CIVILIAN
+            if card["human_role"] == CardRole.ASSASSIN:
+                card["human_role"] = CardRole.CIVILIAN
                 break
     elif modification == "wrong_shared_count":
         # Modify the valid board data to have an incorrect number of shared assassin cards
 
         # First, set the shared assassin card to be a civilian for the human player
         for card in data["cards"]:
-            if card["role_llm"] == CardRole.ASSASSIN and card["role_human"] == CardRole.ASSASSIN:
-                card["role_human"] = CardRole.CIVILIAN
+            if card["llm_role"] == CardRole.ASSASSIN and card["human_role"] == CardRole.ASSASSIN:
+                card["human_role"] = CardRole.CIVILIAN
                 break
 
         # Then, set one of the civilian cards to be an assassin for the human player to maintain the total count of 3 assassins for the human player
         for card in data["cards"]:
-            if card["role_llm"] == CardRole.CIVILIAN and card["role_human"] == CardRole.CIVILIAN:
-                card["role_human"] = CardRole.ASSASSIN
+            if card["llm_role"] == CardRole.CIVILIAN and card["human_role"] == CardRole.CIVILIAN:
+                card["human_role"] = CardRole.ASSASSIN
                 break
     elif modification == "invalid_human_intersection":
         # Modify the valid board data to have a human assassin card that is not one of the LLM's agent cards
 
         # First, set the human assassin card that intersects with the LLM's agent cards to be a civilian for the human player
         for card in data["cards"]:
-            if card["role_human"] == CardRole.ASSASSIN and card["role_llm"] == CardRole.AGENT:
-                card["role_human"] = CardRole.CIVILIAN
+            if card["human_role"] == CardRole.ASSASSIN and card["llm_role"] == CardRole.AGENT:
+                card["human_role"] = CardRole.CIVILIAN
                 break
 
         # Then, set one of the civilian cards to be an assassin for the human player to maintain the total count of 3 assassins for the human player
         for card in data["cards"]:
-            if card["role_human"] == CardRole.CIVILIAN and card["role_llm"] == CardRole.CIVILIAN:
-                card["role_human"] = CardRole.ASSASSIN
+            if card["human_role"] == CardRole.CIVILIAN and card["llm_role"] == CardRole.CIVILIAN:
+                card["human_role"] = CardRole.ASSASSIN
                 break
     elif modification == "invalid_llm_intersection":
         # Modify the valid board data to have an LLM assassin card that is not one of the human's agent cards
         for card in data["cards"]:
-            if card["role_llm"] == CardRole.ASSASSIN and card["role_human"] == CardRole.AGENT:
-                card["role_llm"] = CardRole.CIVILIAN
+            if card["llm_role"] == CardRole.ASSASSIN and card["human_role"] == CardRole.AGENT:
+                card["llm_role"] = CardRole.CIVILIAN
                 break
 
         # Then, set one of the civilian cards to be an assassin for the LLM player to maintain the total count of 3 assassins for the LLM player
         for card in data["cards"]:
-            if card["role_llm"] == CardRole.CIVILIAN and card["role_human"] == CardRole.CIVILIAN:
-                card["role_llm"] = CardRole.ASSASSIN
+            if card["llm_role"] == CardRole.CIVILIAN and card["human_role"] == CardRole.CIVILIAN:
+                card["llm_role"] = CardRole.ASSASSIN
                 break
 
     with pytest.raises(ValidationError, match=re.escape(expected_error)):

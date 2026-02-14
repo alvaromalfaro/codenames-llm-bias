@@ -1,4 +1,3 @@
-import random
 from enum import Enum
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
@@ -27,8 +26,8 @@ class WordCard(BaseModel):
     text: str  # The word on the card
 
     # The role of the card (agent, assassin, civilian)
-    role_llm: CardRole
-    role_human: CardRole
+    llm_role: CardRole
+    human_role: CardRole
 
     # Card state
     revealed: bool = False
@@ -61,9 +60,9 @@ class Board(BaseModel):
 
         # Agent cards (9 for both LLM and human players, with 3 shared between them)
         agents_llm = set(
-            card.id for card in cards if card.role_llm == CardRole.AGENT)
+            card.id for card in cards if card.llm_role == CardRole.AGENT)
         agents_human = set(
-            card.id for card in cards if card.role_human == CardRole.AGENT)
+            card.id for card in cards if card.human_role == CardRole.AGENT)
 
         if len(agents_llm) != 9 or len(agents_human) != 9 or len(agents_llm.intersection(agents_human)) != 3:
             raise ValueError(
@@ -72,9 +71,9 @@ class Board(BaseModel):
 
         # Assassin cards (3 for both LLM and human players, with 1 shared between them)
         assassins_llm = set(
-            card.id for card in cards if card.role_llm == CardRole.ASSASSIN)
+            card.id for card in cards if card.llm_role == CardRole.ASSASSIN)
         assassins_human = set(
-            card.id for card in cards if card.role_human == CardRole.ASSASSIN)
+            card.id for card in cards if card.human_role == CardRole.ASSASSIN)
 
         if len(assassins_llm) != 3 or len(assassins_human) != 3 or len(assassins_llm.intersection(assassins_human)) != 1:
             raise ValueError(
@@ -120,6 +119,10 @@ class GameState(BaseModel):
 
     # Timer tokens for the game
     timer_tokens: int = 9
+
+    # LLM and human agents remaining (for win condition tracking)
+    # [LLM agents remaining, Human agents remaining]
+    agents_remaining: list[int] = Field(default_factory=lambda: [9, 9])
 
     # Finalization state
     is_game_over: bool = False
