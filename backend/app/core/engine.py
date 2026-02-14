@@ -60,7 +60,21 @@ class CodenamesDuetEngine:
         pass
 
     def pass_turn(self, player_id: str):
-        pass
+        """
+        Allows the guessing player to pass their turn to the clue-giving player.
+
+        :param player_id: The identifier of the player attempting to pass their turn.
+
+        raises PermissionError: If a player other than the guesser attempts to pass their turn.
+        raises ValueError: If the guesser attempts to pass their turn without making at least one guess.
+        """
+        if player_id != self.state.guesser:
+            raise PermissionError("Only the guesser can pass their turn.")
+        if self.state.guesses_made_this_turn < 1:
+            raise ValueError(
+                "The guesser must make at least one guess before passing.")
+
+        self._switch_roles()
 
     def _switch_roles(self):
         """
