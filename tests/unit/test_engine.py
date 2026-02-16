@@ -44,6 +44,7 @@ def test_engine_receive_clue(valid_board_data: dict):
     assert engine.state.current_clue.clue_giver == 0
     assert engine.state.current_clue.turn_number == 1
     assert engine.state.clue_history == []
+    assert engine.state.current_clue.raw_payload is None
 
 
 def test_engine_receive_clue_invalid_phase(valid_board_data: dict):
@@ -108,4 +109,5 @@ def test_engine_receive_clue_exact_match(valid_board_data: dict):
     engine.state.current_phase = GamePhase.GIVING_CLUE
 
     with pytest.raises(ValueError, match="Clue cannot be the same as any word on the board."):
-        engine.receive_clue(clue="Word_0", count=2, player_id=0)
+        engine.receive_clue(
+            clue=valid_board_data["cards"][0]["text"], count=2, player_id=0)
