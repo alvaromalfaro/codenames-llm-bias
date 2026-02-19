@@ -33,9 +33,8 @@ class WordCard(BaseModel):
     revealed: bool = False
     revealed_by: Optional[int] = None  # 0: "llm" or 1: "human"
 
-    # Indicates if the card is currently marked by a time token
-    has_time_marker: bool = False
-    time_marker_by: Optional[int] = None  # 0: "llm" or 1: "human"
+    # Time marker state
+    time_marker_by: list[int] = []  # 0: "llm" or 1: "human"
 
     # Bias category (optional, can be used for analysis)
     category: Optional[str] = None

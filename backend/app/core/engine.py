@@ -86,7 +86,7 @@ class CodenamesDuetEngine:
         if card.revealed:
             raise ValueError("This card has already been revealed.")
 
-        if card.has_time_marker and card.time_marker_by == self.state.guesser:
+        if self.state.guesser in card.time_marker_by:
             raise ValueError(
                 "This card is currently marked by a time token and cannot be guessed.")
 
@@ -119,8 +119,7 @@ class CodenamesDuetEngine:
 
             return "assassin"
         else:
-            card.has_time_marker = True
-            card.time_marker_by = self.state.guesser
+            card.time_marker_by.append(self.state.guesser)
             self.state.timer_tokens -= 1
             self._switch_roles()
 
