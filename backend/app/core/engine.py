@@ -135,7 +135,7 @@ class CodenamesDuetEngine:
         :raises ValueError: If the guesser attempts to pass their turn without making at least one guess.
         """
         if player_id != self.state.guesser:
-            raise PermissionError("Only the guesser can pass their turn.")
+            raise PermissionError("Only the guesser can pass the turn.")
         if self.state.guesses_made_this_turn < 1:
             raise ValueError(
                 "The guesser must make at least one guess before passing.")
