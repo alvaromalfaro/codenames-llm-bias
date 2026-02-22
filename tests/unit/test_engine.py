@@ -219,7 +219,7 @@ def test_engine_resolve_guess_time_marker_from_other_player(valid_board_data: di
 
 
 @pytest.mark.parametrize("modification, expected_error", [
-    ("invalid_phase", "Guesses can only be made during the GUESSING phase."),
+    ("invalid_phase", "Guesses can only be made during the GUESSING or SUDDEN_DEATH phase."),
     ("invalid_player", "Only the guesser can make guesses."),
     ("already_revealed", "This card has already been revealed."),
     ("time_token", "This card is currently marked by a time token and cannot be guessed.")
@@ -235,7 +235,7 @@ def test_engine_resolve_guess_invalid_inputs(valid_board_data: dict, modificatio
 
     if modification == "invalid_phase":
         engine.state.current_phase = GamePhase.GIVING_CLUE
-        with pytest.raises(ValueError, match=expected_error):
+        with pytest.raises(PermissionError, match=expected_error):
             engine.resolve_guess(card_id=0, player_id=1)
     elif modification == "invalid_player":
         with pytest.raises(PermissionError, match=expected_error):
