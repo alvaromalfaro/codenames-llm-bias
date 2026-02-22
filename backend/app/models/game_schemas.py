@@ -103,6 +103,9 @@ class GamePhase(str, Enum):
     GUESSING = "guessing"
     # The phase when the game has ended, either by win, loss, or other termination conditions.
     GAME_OVER = "game_over"
+    # Endgame phase when the timer tokens have run out and the game enters a mode where the guesser can only
+    # make one guess per turn until all agents are revealed (win) or an assassin/civilian is guessed (loss).
+    SUDDEN_DEATH = "sudden_death"
 
 
 class ClueEntry(BaseModel):

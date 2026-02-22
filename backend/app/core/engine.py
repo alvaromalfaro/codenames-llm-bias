@@ -1,7 +1,7 @@
 from typing import Optional
 import uuid
 import random
-from backend.app.models.game_schemas import Board, GamePhase, GameState, CardRole, ClueEntry
+from backend.app.models.game_schemas import Board, GamePhase, GameState, CardRole, ClueEntry, WordCard
 
 
 class CodenamesDuetEngine:
@@ -76,54 +76,34 @@ class CodenamesDuetEngine:
             the guessing player's turn.
         :raises PermissionError: If a player other than the guesser attempts to make a guess.
         """
-        if self.state.current_phase != GamePhase.GUESSING:
-            raise ValueError(
-                "Guesses can only be made during the GUESSING phase.")
-        if player_id != self.state.guesser:
+        if self.state.current_phase not in [GamePhase.GUESSING, GamePhase.SUDDEN_DEATH]:
+            raise PermissionError(
+                "Guesses can only be made during the GUESSING or SUDDEN_DEATH phase.")
+
+        if self.state.current_phase == GamePhase.GUESSING and player_id != self.state.guesser:
             raise PermissionError("Only the guesser can make guesses.")
+
+        if self.state.current_phase == GamePhase.SUDDEN_DEATH and self.state.agents_remaining[player_id] == 0:
+            raise PermissionError(
+                "The guesser has already revealed all of their agents and cannot make more guesses.")
 
         card = self.state.board.cards[card_id]
         if card.revealed:
             raise ValueError("This card has already been revealed.")
 
-        if self.state.guesser in card.time_marker_by:
+        if player_id in card.time_marker_by:
             raise ValueError(
                 "This card is currently marked by a time token and cannot be guessed.")
 
         # Determine the role of the card for the guessing player and update the number of guesses made
-        partner_role = card.llm_role if self.state.clue_giver == 0 else card.human_role
+        partner_role = card.human_role if player_id == 0 else card.llm_role
         self.state.guesses_made_this_turn += 1
 
-        if partner_role == CardRole.AGENT:
-            # Reveal the card
-            card.revealed = True
-            card.revealed_by = self.state.guesser
+        # Resolve the guess based on the current game phase and return result
+        if self.state.current_phase == GamePhase.SUDDEN_DEATH:
+            return self._resolve_guess_sudden_death(card, partner_role, player_id)
 
-            # Update the count of remaining agents for the guessing player (or both if it's a shared agent)
-            self.state.agents_remaining[self.state.guesser] -= 1
-            if card.llm_role == card.human_role == CardRole.AGENT:
-                self.state.agents_remaining[1 - self.state.guesser] -= 1
-
-            # Check for win condition
-            if self.state.agents_remaining[self.state.guesser] == self.state.agents_remaining[1 - self.state.guesser] == 0:
-                self.state.is_game_over = True
-                self.state.current_phase = GamePhase.GAME_OVER
-                self.state.result = "victory"
-                return "victory"
-
-            return "agent"
-        elif partner_role == CardRole.ASSASSIN:
-            self.state.is_game_over = True
-            self.state.current_phase = GamePhase.GAME_OVER
-            self.state.result = "loss_assassin"
-
-            return "assassin"
-        else:
-            card.time_marker_by.append(self.state.guesser)
-            self.state.timer_tokens -= 1
-            self._switch_roles()
-
-            return "civilian"
+        return self._resolve_guess_normal(card, partner_role)
 
     def pass_turn(self, player_id: int):
         """
@@ -131,9 +111,12 @@ class CodenamesDuetEngine:
 
         :param player_id: The identifier of the player attempting to pass their turn.
 
-        :raises PermissionError: If a player other than the guesser attempts to pass their turn.
+        :raises PermissionError: If a player other than the guesser attempts to pass their turn or if the game is not in the GUESSING phase.
         :raises ValueError: If the guesser attempts to pass their turn without making at least one guess.
         """
+        if self.state.current_phase != GamePhase.GUESSING:
+            raise PermissionError(
+                "Turns can only be passed during the GUESSING phase.")
         if player_id != self.state.guesser:
             raise PermissionError("Only the guesser can pass the turn.")
         if self.state.guesses_made_this_turn < 1:
@@ -144,6 +127,49 @@ class CodenamesDuetEngine:
         self.state.timer_tokens -= 1
 
         self._switch_roles()
+
+    def _resolve_guess_normal(self, card: WordCard, partner_role: CardRole) -> str:
+        if partner_role == CardRole.AGENT:
+            return self._reveal_agent(card, guessed_by=self.state.guesser)
+        elif partner_role == CardRole.ASSASSIN:
+            self._finish_game(result="loss_assassin")
+            return "assassin"
+        else:
+            card.time_marker_by.append(self.state.guesser)
+            self.state.timer_tokens -= 1
+            self._switch_roles()
+
+            return "civilian"
+
+    def _resolve_guess_sudden_death(self, card: WordCard, partner_role: CardRole, player_id: int) -> str:
+        if partner_role == CardRole.AGENT:
+            return self._reveal_agent(card, guessed_by=player_id)
+        else:
+            self._finish_game(result=f"loss_{partner_role.value}_sd")
+            return f"loss_{partner_role.value}_sd"
+
+    def _reveal_agent(self, card: WordCard, guessed_by: int):
+        # Reveal the card
+        card.revealed = True
+        card.revealed_by = guessed_by
+
+        # Update the count of remaining agents for the guessing player (or both if it's a shared agent)
+        self.state.agents_remaining[guessed_by] -= 1
+        if card.llm_role == card.human_role == CardRole.AGENT:
+            self.state.agents_remaining[1 - guessed_by] -= 1
+
+        # Check for win condition
+        if self.state.agents_remaining[guessed_by] == self.state.agents_remaining[1 - guessed_by] == 0:
+            self._finish_game(result="victory") if self.state.current_phase != GamePhase.SUDDEN_DEATH else self._finish_game(
+                result="victory_sd")
+            return "victory"
+
+        return "agent"
+
+    def _finish_game(self, result: str):
+        self.state.is_game_over = True
+        self.state.current_phase = GamePhase.GAME_OVER
+        self.state.result = result
 
     def _switch_roles(self):
         """
@@ -159,11 +185,18 @@ class CodenamesDuetEngine:
             self.state.clue_history.append(self.state.current_clue)
         self.state.current_clue = None
 
-        # Check for loss condition due to timer tokens running out
-        if self.state.timer_tokens <= 0:
-            self.state.is_game_over = True
-            self.state.current_phase = GamePhase.GAME_OVER
-            self.state.result = "loss_time"
+        # If the timer tokens have run out and there are still agents remaining, transition to the
+        # sudden death phase
+        if self.state.timer_tokens <= 0 and self._any_agents_remaining():
+            self.state.current_phase = GamePhase.SUDDEN_DEATH
+
+    def _any_agents_remaining(self) -> bool:
+        """
+        Checks if there are any agents remaining for either player.
+
+        :return: True if there are any agents remaining for either player, False otherwise.
+        """
+        return any(agents > 0 for agents in self.state.agents_remaining)
 
     def _validate_clue(self, clue: str, count: int) -> None:
         """
