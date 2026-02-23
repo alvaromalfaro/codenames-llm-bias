@@ -16,7 +16,6 @@ class CodenamesDuetEngine:
         """
         Initializes the CodenamesDuetEngine with a given board configuration and player identifiers.
 
-        :param self: The instance of the CodenamesDuetEngine class.
         :param board: The Board object representing the game board configuration.
         """
         start_player = random.choice([0, 1])
@@ -32,10 +31,10 @@ class CodenamesDuetEngine:
         """
         Processes a clue provided by the clue-giving player.
 
-        :param self: The instance of the CodenamesDuetEngine class.
         :param clue: The clue word provided by the clue-giving player.
         :param count: The number of cards the clue relates to.
         :param player_id: The identifier of the player providing the clue.
+        :param raw_payload: Optional raw payload from the LLM response.
 
         :raises ValueError: If the clue is invalid or if it's not the clue-giving player's turn.
         :raises PermissionError: If a player other than the clue giver attempts to provide a clue.
@@ -65,7 +64,6 @@ class CodenamesDuetEngine:
         """
         Processes a guess made by the guessing player.
 
-        :param self: The instance of the CodenamesDuetEngine class.
         :param card_id: The identifier of the card being guessed.
         :param player_id: The identifier of the player making the guess.
 
@@ -74,7 +72,9 @@ class CodenamesDuetEngine:
 
         :raises ValueError: If the card is already revealed, marked by a time token, or if it's not 
             the guessing player's turn.
-        :raises PermissionError: If a player other than the guesser attempts to make a guess.
+        :raises PermissionError: If a player other than the guesser attempts to make a guess, the 
+            game is not in the GUESSING or SUDDEN_DEATH phase, or if the guesser has already
+            revealed all of their agents in the SUDDEN_DEATH phase.
         """
         if self.state.current_phase not in [GamePhase.GUESSING, GamePhase.SUDDEN_DEATH]:
             raise PermissionError(
@@ -111,8 +111,10 @@ class CodenamesDuetEngine:
 
         :param player_id: The identifier of the player attempting to pass their turn.
 
-        :raises PermissionError: If a player other than the guesser attempts to pass their turn or if the game is not in the GUESSING phase.
-        :raises ValueError: If the guesser attempts to pass their turn without making at least one guess.
+        :raises PermissionError: If a player other than the guesser attempts to pass their turn or 
+            if the game is not in the GUESSING phase.
+        :raises ValueError: If the guesser attempts to pass their turn without making at least one 
+            guess.
         """
         if self.state.current_phase != GamePhase.GUESSING:
             raise PermissionError(
@@ -129,6 +131,17 @@ class CodenamesDuetEngine:
         self._switch_roles()
 
     def _resolve_guess_normal(self, card: WordCard, partner_role: CardRole) -> str:
+        """
+        Resolves a guess during the normal guessing phase. If the guessed card is an agent, it is
+        revealed. If it's a civilian, the time token is placed and the turn ends. If it's an
+        assassin, the game ends immediately with a loss.
+
+        :param card: The WordCard object representing the guessed card.
+        :param partner_role: The role of the guessed card for the guessing player.
+
+        :return: A string indicating the result of the guess ("agent", "assassin", "civilian", 
+            "victory").
+        """
         if partner_role == CardRole.AGENT:
             return self._reveal_agent(card, guessed_by=self.state.guesser)
         elif partner_role == CardRole.ASSASSIN:
@@ -142,6 +155,15 @@ class CodenamesDuetEngine:
             return "civilian"
 
     def _resolve_guess_sudden_death(self, card: WordCard, partner_role: CardRole, player_id: int) -> str:
+        """
+        In the sudden death phase, both players are effectively guessers and make guesses on their
+        own cards. If a player guesses an agent, it is revealed as normal. If they guess a civilian
+        or assassin, the game ends immediately with a loss.
+
+        :param card: The WordCard object representing the guessed card.
+        :param partner_role: The role of the guessed card for the guessing player.
+        :param player_id: The identifier of the player making the guess.
+        """
         if partner_role == CardRole.AGENT:
             return self._reveal_agent(card, guessed_by=player_id)
         else:
@@ -149,6 +171,15 @@ class CodenamesDuetEngine:
             return f"loss_{partner_role.value}_sd"
 
     def _reveal_agent(self, card: WordCard, guessed_by: int):
+        """
+        Reveals an agent card and updates the game state accordingly. Checks for win conditions
+        after revealing the card.
+
+        :param card: The WordCard object representing the guessed card.
+        :param guessed_by: The identifier of the player who made the guess that revealed the agent
+
+        :return: A string indicating the result of the guess ("agent" or "victory").
+        """
         # Reveal the card
         card.revealed = True
         card.revealed_by = guessed_by
@@ -167,14 +198,22 @@ class CodenamesDuetEngine:
         return "agent"
 
     def _finish_game(self, result: str):
+        """
+        Finishes the game by setting the game over flag, updating the current phase to GAME_OVER, 
+        and storing the result.
+
+        :param result: A string indicating the result of the game ("victory", "loss_assassin", 
+            "loss_civilian", etc.).
+        """
         self.state.is_game_over = True
         self.state.current_phase = GamePhase.GAME_OVER
         self.state.result = result
 
     def _switch_roles(self):
         """
-        Switches the roles of the clue giver and guesser, resets the current clue and count, and checks
-        for loss conditions related to timer tokens.
+        Switches the roles of the clue giver and guesser, resets the current clue and count, and 
+        updates the turn number. If the timer tokens have run out and there are still agents
+        remaining, transitions to the SUDDEN_DEATH phase.
         """
         self.state.clue_giver, self.state.guesser = self.state.guesser, self.state.clue_giver
         self.state.current_phase = GamePhase.GIVING_CLUE
@@ -204,6 +243,9 @@ class CodenamesDuetEngine:
 
         :param clue: The clue word provided by the clue-giving player.
         :param count: The number of cards the clue relates to.
+
+        :raises ValueError: If the clue is empty, if the count is less than 1, or if the clue is the
+            same as any word on the board.
         """
         normalized_clue = clue.strip().lower()
 
