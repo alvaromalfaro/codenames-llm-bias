@@ -191,9 +191,9 @@ class CodenamesDuetEngine:
 
         # Check for win condition
         if self.state.agents_remaining[guessed_by] == self.state.agents_remaining[1 - guessed_by] == 0:
-            self._finish_game(result="victory") if self.state.current_phase != GamePhase.SUDDEN_DEATH else self._finish_game(
-                result="victory_sd")
-            return "victory"
+            res = "victory" if self.state.current_phase != GamePhase.SUDDEN_DEATH else "victory_sd"
+            self._finish_game(result=res)
+            return res
 
         return "agent"
 

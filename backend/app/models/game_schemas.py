@@ -54,9 +54,7 @@ class Board(BaseModel):
         - There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human).
         - The rest of the cards will be civilian cards.
 
-        :param self: The instance of the Board class to validate.
         :return: The validated Board instance.
-        :rtype: Board
         """
 
         cards = self.cards
@@ -99,31 +97,41 @@ class Board(BaseModel):
 class GamePhase(str, Enum):
     # The phase where the clue-giving player provides a clue and a count to the guessing player.
     GIVING_CLUE = "giving_clue"
-    # The phase where the guessing player makes guesses based on the clue provided by the clue-giving player.
+    # The phase where the guessing player makes guesses based on the clue provided by the
+    # clue-giving player.
     GUESSING = "guessing"
     # The phase when the game has ended, either by win, loss, or other termination conditions.
     GAME_OVER = "game_over"
-    # Endgame phase when the timer tokens have run out and the game enters a mode where the guesser can only
-    # make one guess per turn until all agents are revealed (win) or an assassin/civilian is guessed (loss).
+    # Endgame phase when the timer tokens have run out and the game enters a mode where the players
+    # can only win by guessing their remaining agents without any more clues.
     SUDDEN_DEATH = "sudden_death"
 
 
 class ClueEntry(BaseModel):
-    # Clue must be a non-empty string without spaces (we can implement more complex validation later (only chars), this is just a basic check)
+    # Clue must be a non-empty string without spaces (more complex clue validation will be
+    # implemented in the game engine).
     clue: str = Field(min_length=1, pattern=r"^\S+$")
-    count: int = Field(ge=1)  # Clue count must be at least 1
+    # Clue count must be a positive integer. Codenames Duet allows a clue count of 0, but for
+    # simplicity, we will require at least 1.
+    count: int = Field(ge=1)
+    # The player who gave the clue
     clue_giver: int = Field(ge=0, le=1)  # 0: "llm" or 1: "human"
+    # The turn number when the clue was given (for historical tracking)
     turn_number: int = 0
-    raw_payload: Optional[dict] = None  # LLM response payload
+    # LLM response payload
+    raw_payload: Optional[dict] = None
 
 
 class GameState(BaseModel):
     game_id: str  # Unique identifier for the game
     board: Board  # The board configuration for the game
 
+    # Current game state. Initialized to GIVING_CLUE phase. A default initial value is provided here
+    # for the clue giver and guesser, but these will be set randomly at the start of the game in the
+    # game engine.
     current_phase: GamePhase = GamePhase.GIVING_CLUE
-    clue_giver: int = 1
-    guesser: int = 0
+    clue_giver: int = 1  # 0: "llm" or 1: "human"
+    guesser: int = 0  # 0: "llm" or 1: "human"
     turn_number: int = 1
 
     # Current clue data
