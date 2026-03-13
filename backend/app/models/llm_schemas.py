@@ -146,3 +146,24 @@ class LLMResponse(BaseModel):
             raise ValueError("Model used cannot be empty.")
 
         return self
+
+
+class ClueProposal(BaseModel):
+    """
+    A proposal for a clue in the game, containing the text of the clue, the count of how many words
+    are associated with the clue, and the raw payload returned by the LLM provider for the proposal.
+    """
+    # The text of the clue proposed by the LLM
+    clue: str
+    # The count of how many words are associated with the clue. This must be a positive integer.
+    count: int = Field(ge=1)
+    # The raw payload returned by the LLM provider for the proposal
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_clue_proposal(self) -> "ClueProposal":
+        # Validate that the clue text is not empty or just whitespace
+        if not self.clue.strip():
+            raise ValueError("Clue cannot be empty.")
+
+        return self
