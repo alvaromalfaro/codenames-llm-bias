@@ -12,7 +12,18 @@ class CodenamesLLMService:
         self.max_tokens = max_tokens
         self.timeout_s = timeout_s
 
-    async def propose_clue(self, game_state: GameState, player_id: int) -> ClueProposal:
+    async def propose_clue(self, game_state: GameState, player_id: int = 0) -> ClueProposal:
+        """
+        Proposes a clue for the current game state. This method checks that the game is in the 
+        correct phase and that the LLM is the clue giver before building the request, sending it to
+        the LLM, and processing the response.
+
+        :param game_state: The current state of the game, which includes information about the 
+            board, current phase, clue giver, and other relevant details needed to generate a clue.
+        :param player_id: The ID of the player proposing the clue (0 for LLM).
+
+        :return: An instance of ClueProposal containing the proposed clue and count from the LLM.
+        """
         if game_state.current_phase != GamePhase.GIVING_CLUE:
             raise ValueError(
                 "Cannot propose a clue when the game is not in the GIVING_CLUE phase.")
