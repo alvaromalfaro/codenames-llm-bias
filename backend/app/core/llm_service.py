@@ -4,6 +4,18 @@ from backend.app.models.game_schemas import GameState, GamePhase
 
 
 class CodenamesLLMService:
+    SYSTEM_TEMP_CG = ("You are a strategic master clue giver in a game of Codenames Duet. "
+                      "Your goal is to connect as many agent words as possible with a single "
+                      "clue while maintaining very low similarity to the assassin words and "
+                      "civilian words. You have to propose a clue and a count for the guessing "
+                      "player. The clue must be a single word that is not on the board, "
+                      "a derivative of a word on the board, or be contained in any of the words "
+                      "on the board. The count must be a positive integer indicating how many "
+                      "words on the board are associated with the clue. Provide the clue and count "
+                      "in a JSON format like {\"clue\": \"example_clue\", \"count\": 2, "
+                      "\"reasoning\": \"explanation of your reasoning for the clue and count\"}. "
+                      "Do not include any additional text or explanation in your response.")
+
     def __init__(self, llm_client: LLMClient, default_model: str = "local", temperature: float = 0.7,
                  max_tokens: int = 1000, timeout_s: int = 30):
         self.llm_client = llm_client

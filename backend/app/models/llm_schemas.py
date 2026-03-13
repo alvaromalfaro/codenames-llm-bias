@@ -8,7 +8,7 @@ class LLMMessage(BaseModel):
     or assistant) and content (the text of the message). 
 
     This model is used to structure the messages that are sent to and received from the LLM, 
-    ensuring that they adhere to the expected format and contain valid data.)
+    ensuring that they adhere to the expected format and contain valid data.
     """
     role: Literal["system", "user", "assistant"]
     content: str  # The content of the message
