@@ -14,9 +14,9 @@ class CodenamesLLMService:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_s = timeout_s
-        self._system_prompt = self._load_prompt_template(
+        self._system_prompt_cg = self._load_prompt_template(
             self.SYSTEM_TEMP_CG_PATH, 0)
-        self._user_prompt = self._load_prompt_template(
+        self._user_prompt_cg = self._load_prompt_template(
             self.USER_TEMP_CG_PATH, 1)
 
     async def propose_clue(self, game_state: GameState, player_id: int = 0) -> ClueProposal:
@@ -46,14 +46,14 @@ class CodenamesLLMService:
         response = await self.llm_client.generate(request)
 
         # Process the response and convert it into a ClueProposal
-        clue_proposal = self._build_clue_response(response)
+        clue_proposal = self._build_clue_proposal(response)
 
         return clue_proposal
 
     def _build_clue_request(self, game_state: GameState, player_id: int) -> LLMRequest:
         pass
 
-    def _build_clue_response(self, response) -> ClueProposal:
+    def _build_clue_proposal(self, response) -> ClueProposal:
         pass
 
     def _load_prompt_template(self, template_path: str, prompt_type: int) -> str:
@@ -87,14 +87,35 @@ class CodenamesLLMService:
                 "maintaining very low similarity to the assassin words and civilian words. "
                 "You have to propose a clue and a count for the guessing player.\n\n"
                 "### RULES ###\n"
-                "- The clue must be a single word that is not on the board, a derivative of a "
-                "word on the board, or be contained in any of the words on the board.\n"
-                "- The count must be a positive integer indicating how many words on the board "
-                "are associated with the clue.\n"
-                "- Provide the clue and count in a JSON format like {{\"clue\": \"example_clue\", "
-                "\"count\": 2, \"reasoning\": \"explanation of your reasoning for the clue and "
-                "count\"}}.\n"
-                "- Do not include any additional text or explanation in your response.")
+                "- The clue must be a single word.\n"
+                "- The clue must not be any word on the board.\n"
+                "- The clue must not be a derivative of a word on the board.\n"
+                "- The clue must not be contained in any of the words on the board.\n"
+                "- The count must be a positive integer indicating how many words on the board are "
+                "associated with the clue.\n"
+                "- Try to connect as many agent words as possible.\n"
+                "- Avoid clues strongly associated with dangerous words.\n"
+                "- Do not include any additional text or explanation in your response.\n\n"
+                "### OUTPUT FORMAT ###\n"
+                "Provide the clue and count in a JSON format like {{\"clue\": \"example_clue\", "
+                "\"count\": x, \"reasoning\": \"explanation of your reasoning for the clue and "
+                "count\"}}, where \"example_clue\" is the proposed clue, x is the number of agent "
+                "words you are trying to connect with \"example_clue\", and the reasoning field "
+                "contains your explanation for why you chose that clue and count.")
 
     def _default_user_prompt_cg(self) -> str:
-        pass
+        """
+        Provides a default user prompt for the clue giver role in case the prompt template file is
+        not found.
+
+        :return: A default user prompt for the clue giver role.
+        """
+        return ("You are generating a clue for the current Codenames Duet turn. The game is "
+                "in the turn {turn_number}.\n\n"
+                "### BOARD STATUS ###\n"
+                "The agent words are: {agent_words}\n\n"
+                "The dangerous words to avoid (assassins and civilians) are: {danger_words}\n\n"
+                "Already revealed words: {revealed_words}\n\n"
+                "### YOUR TASK ###\n"
+                "Propose a clue and a count for the guessing player. Remember the rules for valid "
+                "clues and counts.")
