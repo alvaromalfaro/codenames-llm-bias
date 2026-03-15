@@ -174,19 +174,20 @@ class ClueProposal(BaseModel):
 
 class GuessProposal(BaseModel):
     """
-    A proposal for a guess in the game, containing the card word proposed by the LLM and the raw
-    payload returned by the LLM provider for the proposal. The card word must be a non-empty string,
-    and the raw payload is stored as a dictionary.
+    A proposal for a guess in the game, containing the card words proposed by the LLM and the raw
+    payload returned by the LLM provider for the proposal. The card words must be a list of 
+    non-empty strings, and the raw payload is stored as a dictionary.
     """
-    # The card word proposed by the LLM for the guess
-    card_word: str
+    # The card words proposed by the LLM for the guess
+    card_words: list[str] = Field(min_items=1)
     # The raw payload returned by the LLM provider for the proposal
     raw_payload: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_guess_proposal(self) -> "GuessProposal":
-        # Validate that the card word is not empty or just whitespace
-        if not self.card_word.strip():
-            raise ValueError("Card word cannot be empty.")
+        # Validate that the card words are not empty or just whitespace
+        for card_word in self.card_words:
+            if not card_word.strip():
+                raise ValueError("Card words cannot be empty.")
 
         return self
