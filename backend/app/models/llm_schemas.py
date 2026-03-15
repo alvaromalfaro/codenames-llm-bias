@@ -151,7 +151,8 @@ class LLMResponse(BaseModel):
 class ClueProposal(BaseModel):
     """
     A proposal for a clue in the game, containing the text of the clue, the count of how many words
-    are associated with the clue, and the raw payload returned by the LLM provider for the proposal.
+    are associated with the clue, an optional reasoning for the proposal, and the raw payload 
+    returned by the LLM provider for the proposal.
     """
     # The text of the clue proposed by the LLM
     clue: str

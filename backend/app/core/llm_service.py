@@ -1,6 +1,7 @@
+import json
 from llm_client import LLMClient
-from backend.app.models.llm_schemas import ClueProposal, LLMRequest
-from backend.app.models.game_schemas import GameState, GamePhase
+from backend.app.models.llm_schemas import ClueProposal, LLMRequest, LLMResponse, LLMMessage
+from backend.app.models.game_schemas import GameState, GamePhase, CardRole
 
 
 class CodenamesLLMService:
@@ -40,7 +41,7 @@ class CodenamesLLMService:
                 "The player must be the clue giver to propose a clue.")
 
         # Build the LLM request
-        request = self._build_clue_request(game_state, player_id)
+        request = self._build_clue_request(game_state)
 
         # Send the request to the LLM client and get the response
         response = await self.llm_client.generate(request)
@@ -50,11 +51,73 @@ class CodenamesLLMService:
 
         return clue_proposal
 
-    def _build_clue_request(self, game_state: GameState, player_id: int) -> LLMRequest:
-        pass
+    def _build_clue_request(self, game_state: GameState) -> LLMRequest:
+        """
+        Builds an LLMRequest for proposing a clue based on the current game state. This method
+        extracts relevant information from the game state, formats it into a user prompt, and
+        constructs the list of messages for the LLM request.
 
-    def _build_clue_proposal(self, response) -> ClueProposal:
-        pass
+        :param game_state: The current state of the game.
+
+        :return: An instance of LLMRequest containing the messages and parameters for the LLM
+            generation.
+        """
+        # Extract relevant information from the game state
+        turn_number = game_state.turn_number
+        agent_words = [card.text for card in game_state.board.cards if card.human_role ==
+                       CardRole.AGENT and not card.revealed]
+        danger_words = [card.text for card in game_state.board.cards if card.human_role !=
+                        CardRole.AGENT]
+        rev_words = [
+            card.text for card in game_state.board.cards if card.revealed]
+
+        # Format the user prompt with the current game state information
+        user_prompt = self._user_prompt_cg.format(
+            turn_number=turn_number,
+            agent_words=", ".join(agent_words),
+            danger_words=", ".join(danger_words),
+            revealed_words=", ".join(rev_words)
+        )
+
+        # Build the list of messages for the LLM request
+        messages = [
+            LLMMessage(role="system", content=self._system_prompt_cg),
+            LLMMessage(role="user", content=user_prompt)
+        ]
+
+        return LLMRequest(messages=messages, model=self.default_model, temperature=self.temperature,
+                          max_tokens=self.max_tokens, timeout_s=self.timeout_s)
+
+    def _build_clue_proposal(self, response: LLMResponse) -> ClueProposal:
+        """
+        Processes the LLMResponse to extract the proposed clue and count, and constructs a 
+        ClueProposal instance.
+
+        :param response: The response from the LLM containing the generated clue proposal.
+
+        :return: An instance of ClueProposal containing the proposed clue, count, reasoning, and raw
+            payload from the LLM response.
+        """
+        response_content = response.text.strip()
+        try:
+            response_json = json.loads(response_content)
+            clue = response_json.get("clue")
+            count = response_json.get("count")
+            reasoning = response_json.get("reasoning", "")
+        except json.JSONDecodeError:
+            raise ValueError(
+                "LLM response is not valid JSON. Response content: " + response_content)
+
+        # TODO: Implement validation logic for the clue and count based on the game rules.
+        # For now, we will assume the clue and count are valid if they are present and of the
+        # correct types
+        if not isinstance(clue, str) or not clue.strip():
+            raise ValueError("Clue must be a non-empty string.")
+        if not isinstance(count, int) or count <= 0:
+            raise ValueError("Count must be a positive integer.")
+
+        return ClueProposal(clue=clue.strip(), count=count, reasoning=reasoning.strip(),
+                            raw_payload=response.raw_payload)
 
     def _load_prompt_template(self, template_path: str, prompt_type: int) -> str:
         """
