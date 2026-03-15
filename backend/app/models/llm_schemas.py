@@ -157,6 +157,8 @@ class ClueProposal(BaseModel):
     clue: str
     # The count of how many words are associated with the clue. This must be a positive integer.
     count: int = Field(ge=1)
+    # Optional reasoning provided by the LLM for the clue proposal
+    reasoning: Optional[str] = None
     # The raw payload returned by the LLM provider for the proposal
     raw_payload: dict[str, Any] = Field(default_factory=dict)
 
