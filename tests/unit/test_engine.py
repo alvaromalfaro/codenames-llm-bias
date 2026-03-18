@@ -166,7 +166,7 @@ def test_engine_resolve_guess_victory(valid_board_data: dict):
 
     # Manually reveal all agent cards
     for card in board.cards:
-        if CardRole.AGENT in [card.llm_role, card.human_role]:
+        if CardRole.AGENT in [card.llm_perspective_role, card.human_perspective_role]:
             card.revealed = True
             card.revealed_by = 1
 

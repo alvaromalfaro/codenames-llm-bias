@@ -28,8 +28,8 @@ def test_load_board_success(tmp_path, valid_board_data):
     for i, card in enumerate(board.cards):
         assert card.id == i
         assert card.text == f"Word_{i}"
-        assert card.llm_role == valid_board_data["cards"][i]["llm_role"]
-        assert card.human_role == valid_board_data["cards"][i]["human_role"]
+        assert card.llm_perspective_role == valid_board_data["cards"][i]["llm_perspective_role"]
+        assert card.human_perspective_role == valid_board_data["cards"][i]["human_perspective_role"]
 
 
 def test_load_board_file_not_found(tmp_path):
