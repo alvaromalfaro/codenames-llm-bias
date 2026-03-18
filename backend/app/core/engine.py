@@ -96,14 +96,14 @@ class CodenamesDuetEngine:
                 "This card is currently marked by a time token and cannot be guessed.")
 
         # Determine the role of the card for the guessing player and update the number of guesses made
-        partner_role = card.human_role if player_id == 0 else card.llm_role
+        card_role = card.human_perspective_role if player_id == 0 else card.llm_perspective_role
         self.state.guesses_made_this_turn += 1
 
         # Resolve the guess based on the current game phase and return result
         if self.state.current_phase == GamePhase.SUDDEN_DEATH:
-            return self._resolve_guess_sudden_death(card, partner_role, player_id)
+            return self._resolve_guess_sudden_death(card, card_role, player_id)
 
-        return self._resolve_guess_normal(card, partner_role)
+        return self._resolve_guess_normal(card, card_role)
 
     def pass_turn(self, player_id: int):
         """
@@ -130,21 +130,21 @@ class CodenamesDuetEngine:
 
         self._switch_roles()
 
-    def _resolve_guess_normal(self, card: WordCard, partner_role: CardRole) -> str:
+    def _resolve_guess_normal(self, card: WordCard, card_role: CardRole) -> str:
         """
         Resolves a guess during the normal guessing phase. If the guessed card is an agent, it is
         revealed. If it's a civilian, the time token is placed and the turn ends. If it's an
         assassin, the game ends immediately with a loss.
 
         :param card: The WordCard object representing the guessed card.
-        :param partner_role: The role of the guessed card for the guessing player.
+        :param card_role: The role of the guessed card for the guessing player.
 
         :return: A string indicating the result of the guess ("agent", "assassin", "civilian", 
             "victory").
         """
-        if partner_role == CardRole.AGENT:
+        if card_role == CardRole.AGENT:
             return self._reveal_agent(card, guessed_by=self.state.guesser)
-        elif partner_role == CardRole.ASSASSIN:
+        elif card_role == CardRole.ASSASSIN:
             self._finish_game(result="loss_assassin")
             return "assassin"
         else:
@@ -154,21 +154,21 @@ class CodenamesDuetEngine:
 
             return "civilian"
 
-    def _resolve_guess_sudden_death(self, card: WordCard, partner_role: CardRole, player_id: int) -> str:
+    def _resolve_guess_sudden_death(self, card: WordCard, card_role: CardRole, player_id: int) -> str:
         """
         In the sudden death phase, both players are effectively guessers and make guesses on their
         own cards. If a player guesses an agent, it is revealed as normal. If they guess a civilian
         or assassin, the game ends immediately with a loss.
 
         :param card: The WordCard object representing the guessed card.
-        :param partner_role: The role of the guessed card for the guessing player.
+        :param card_role: The role of the guessed card for the guessing player.
         :param player_id: The identifier of the player making the guess.
         """
-        if partner_role == CardRole.AGENT:
+        if card_role == CardRole.AGENT:
             return self._reveal_agent(card, guessed_by=player_id)
         else:
-            self._finish_game(result=f"loss_{partner_role.value}_sd")
-            return f"loss_{partner_role.value}_sd"
+            self._finish_game(result=f"loss_{card_role.value}_sd")
+            return f"loss_{card_role.value}_sd"
 
     def _reveal_agent(self, card: WordCard, guessed_by: int):
         """
@@ -186,7 +186,7 @@ class CodenamesDuetEngine:
 
         # Update the count of remaining agents for the guessing player (or both if it's a shared agent)
         self.state.agents_remaining[guessed_by] -= 1
-        if card.llm_role == card.human_role == CardRole.AGENT:
+        if card.llm_perspective_role == card.human_perspective_role == CardRole.AGENT:
             self.state.agents_remaining[1 - guessed_by] -= 1
 
         # Check for win condition
