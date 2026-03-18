@@ -26,8 +26,8 @@ class WordCard(BaseModel):
     text: str = Field(min_length=1, pattern=r"^\S+$")  # The word on the card
 
     # The role of the card (agent, assassin, civilian)
-    llm_role: CardRole
-    human_role: CardRole
+    llm_perspective_role: CardRole
+    human_perspective_role: CardRole
 
     # Card state
     revealed: bool = False
@@ -61,9 +61,9 @@ class Board(BaseModel):
 
         # Agent cards (9 for both LLM and human players, with 3 shared between them)
         agents_llm = set(
-            card.id for card in cards if card.llm_role == CardRole.AGENT)
+            card.id for card in cards if card.llm_perspective_role == CardRole.AGENT)
         agents_human = set(
-            card.id for card in cards if card.human_role == CardRole.AGENT)
+            card.id for card in cards if card.human_perspective_role == CardRole.AGENT)
 
         if len(agents_llm) != 9 or len(agents_human) != 9 or len(agents_llm.intersection(agents_human)) != 3:
             raise ValueError(
@@ -72,9 +72,9 @@ class Board(BaseModel):
 
         # Assassin cards (3 for both LLM and human players, with 1 shared between them)
         assassins_llm = set(
-            card.id for card in cards if card.llm_role == CardRole.ASSASSIN)
+            card.id for card in cards if card.llm_perspective_role == CardRole.ASSASSIN)
         assassins_human = set(
-            card.id for card in cards if card.human_role == CardRole.ASSASSIN)
+            card.id for card in cards if card.human_perspective_role == CardRole.ASSASSIN)
 
         if len(assassins_llm) != 3 or len(assassins_human) != 3 or len(assassins_llm.intersection(assassins_human)) != 1:
             raise ValueError(
