@@ -40,7 +40,7 @@ class CodenamesLLMService:
             raise ValueError(
                 "The player must be the clue giver to propose a clue.")
 
-        # Build the LLM request
+        # Build the LLM request for proposing a clue
         request = self._build_clue_request(game_state, player_id)
 
         # Send the request to the LLM client and get the response
@@ -52,7 +52,29 @@ class CodenamesLLMService:
         return clue_proposal
 
     async def propose_guess(self, game_state: GameState, player_id: int = 0) -> GuessProposal:
-        pass
+        if game_state.current_phase != GamePhase.GUESSING:
+            raise ValueError(
+                "Cannot propose a guess when the game is not in the GUESSING phase.")
+
+        if game_state.guesser != player_id:
+            raise ValueError(
+                "The player must be the guessing player to propose a guess.")
+
+        if game_state.clue_history[-1].turn_number != game_state.turn_number:
+            raise ValueError(
+                "Cannot propose a guess without an active clue. No clue has been proposed for this turn."
+            )
+
+        # Build the LLM request for proposing a guess
+        request = self._build_guess_request(game_state, player_id)
+
+        # Send the request to the LLM client and get the response.
+        response = await self.llm_client.generate(request)
+
+        # Process the response and convert it into a GuessProposal.
+        guess_proposal = self._build_guess_proposal(response)
+
+        return guess_proposal
 
     def _build_clue_request(self, game_state: GameState, player_id: int) -> LLMRequest:
         """
@@ -133,6 +155,18 @@ class CodenamesLLMService:
 
         return ClueProposal(clue=clue.strip(), count=count, reasoning=reasoning.strip(),
                             raw_payload=response.raw_payload)
+
+    def _build_guess_request(self, game_state: GameState, player_id: int) -> LLMRequest:
+        # Similar to _build_clue_request, but with a different system and user prompt tailored for
+        # proposing guesses. The user prompt should include the clue and count proposed by the clue
+        # giver, as well as the current board state and any relevant information for making a guess.
+        pass
+
+    def _build_guess_proposal(self, response: LLMResponse) -> GuessProposal:
+        # Similar to _build_clue_proposal, but processes the LLMResponse to extract the proposed card
+        # words for the guess and constructs a GuessProposal instance. The expected format of the
+        # LLM response should be defined in the system prompt for proposing guesses.
+        pass
 
     def _load_prompt_template(self, template_path: str, prompt_type: int) -> str:
         """
