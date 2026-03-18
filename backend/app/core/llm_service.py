@@ -1,6 +1,6 @@
 import json
-from llm_client import LLMClient
-from backend.app.models.llm_schemas import ClueProposal, LLMRequest, LLMResponse, LLMMessage
+from backend.app.core.llm_client import LLMClient
+from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage
 from backend.app.models.game_schemas import GameState, GamePhase, CardRole
 
 
@@ -41,7 +41,7 @@ class CodenamesLLMService:
                 "The player must be the clue giver to propose a clue.")
 
         # Build the LLM request
-        request = self._build_clue_request(game_state)
+        request = self._build_clue_request(game_state, player_id)
 
         # Send the request to the LLM client and get the response
         response = await self.llm_client.generate(request)
@@ -51,23 +51,38 @@ class CodenamesLLMService:
 
         return clue_proposal
 
-    def _build_clue_request(self, game_state: GameState) -> LLMRequest:
+    async def propose_guess(self, game_state: GameState, player_id: int = 0) -> GuessProposal:
+        pass
+
+    def _build_clue_request(self, game_state: GameState, player_id: int) -> LLMRequest:
         """
         Builds an LLMRequest for proposing a clue based on the current game state. This method
         extracts relevant information from the game state, formats it into a user prompt, and
         constructs the list of messages for the LLM request.
 
         :param game_state: The current state of the game.
+        :param player_id: The ID of the player proposing the clue (0 for LLM).
 
         :return: An instance of LLMRequest containing the messages and parameters for the LLM
             generation.
         """
         # Extract relevant information from the game state
         turn_number = game_state.turn_number
-        agent_words = [card.text for card in game_state.board.cards if card.human_role ==
-                       CardRole.AGENT and not card.revealed]
-        danger_words = [card.text for card in game_state.board.cards if card.human_role !=
-                        CardRole.AGENT]
+        # As some plays will be automated between two LLM agents, we need to determine which
+        # words are relevant based on the player ID.
+        if player_id == 0:
+            # LLM is the clue giver, so we consider its perspective for the agent and dangerous words
+            agent_words = [card.text for card in game_state.board.cards if card.llm_perspective_role ==
+                           CardRole.AGENT and not card.revealed]
+            danger_words = [card.text for card in game_state.board.cards if card.llm_perspective_role !=
+                            CardRole.AGENT and 1 not in card.time_marker_by]
+        else:
+            # Same as above, but from the human player's perspective
+            agent_words = [card.text for card in game_state.board.cards if card.human_perspective_role ==
+                           CardRole.AGENT and not card.revealed]
+            danger_words = [card.text for card in game_state.board.cards if card.human_perspective_role !=
+                            CardRole.AGENT and 0 not in card.time_marker_by]
+
         rev_words = [
             card.text for card in game_state.board.cards if card.revealed]
 
@@ -136,7 +151,7 @@ class CodenamesLLMService:
             if prompt_type == 0:
                 return self._default_system_prompt_cg()
             else:
-                return self._default_user_prompt_gc()
+                return self._default_user_prompt_cg()
 
     def _default_system_prompt_cg(self) -> str:
         """
@@ -157,8 +172,7 @@ class CodenamesLLMService:
                 "- The count must be a positive integer indicating how many words on the board are "
                 "associated with the clue.\n"
                 "- Try to connect as many agent words as possible.\n"
-                "- Avoid clues strongly associated with dangerous words.\n"
-                "- Do not include any additional text or explanation in your response.\n\n"
+                "- Avoid clues strongly associated with dangerous words.\n\n"
                 "### OUTPUT FORMAT ###\n"
                 "Provide the clue and count in a JSON format like {{\"clue\": \"example_clue\", "
                 "\"count\": x, \"reasoning\": \"explanation of your reasoning for the clue and "

@@ -2,7 +2,7 @@ You are generating a clue for the current Codenames Duet turn. The game is in th
 
 ### BOARD STATUS ###
 The agent words are:
-{target_words}
+{agent_words}
 
 The dangerous words to avoid (assassins and civilians) are:
 {danger_words}
