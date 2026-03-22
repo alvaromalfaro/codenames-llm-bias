@@ -7,6 +7,8 @@ from backend.app.models.game_schemas import GameState, GamePhase, CardRole
 class CodenamesLLMService:
     SYSTEM_TEMP_CG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_CLUE_GIVER.txt"
     USER_TEMP_CG_PATH = "data/prompt_templates/USER_TEMPLATE_CLUE_GIVER.txt"
+    SYSTEM_TEMP_GG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_GUESSER.txt"
+    USER_TEMP_GG_PATH = "data/prompt_templates/USER_TEMPLATE_GUESSER.txt"
 
     def __init__(self, llm_client: LLMClient, default_model: str = "local", temperature: float = 0.7,
                  max_tokens: int = 1000, timeout_s: int = 30):
@@ -15,10 +17,16 @@ class CodenamesLLMService:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_s = timeout_s
+        # Load prompt templates for both clue giver and guesser roles, with fallbacks to default
+        # prompts if the template files are not found.
         self._system_prompt_cg = self._load_prompt_template(
             self.SYSTEM_TEMP_CG_PATH, 0)
         self._user_prompt_cg = self._load_prompt_template(
             self.USER_TEMP_CG_PATH, 1)
+        self._system_prompt_gg = self._load_prompt_template(
+            self.SYSTEM_TEMP_GG_PATH, 2)
+        self._user_prompt_gg = self._load_prompt_template(
+            self.USER_TEMP_GG_PATH, 3)
 
     async def propose_clue(self, game_state: GameState, player_id: int = 0) -> ClueProposal:
         """
@@ -26,8 +34,7 @@ class CodenamesLLMService:
         correct phase and that the LLM is the clue giver before building the request, sending it to
         the LLM, and processing the response.
 
-        :param game_state: The current state of the game, which includes information about the 
-            board, current phase, clue giver, and other relevant details needed to generate a clue.
+        :param game_state: The current state of the game.
         :param player_id: The ID of the player proposing the clue (0 for LLM).
 
         :return: An instance of ClueProposal containing the proposed clue and count from the LLM.
@@ -52,6 +59,16 @@ class CodenamesLLMService:
         return clue_proposal
 
     async def propose_guess(self, game_state: GameState, player_id: int = 0) -> GuessProposal:
+        """
+        Proposes guesses for the current game state. This method checks that the game is in the 
+        correct phase and that the LLM is the guesser before building the request, sending it to
+        the LLM, and processing the response.
+
+        :param game_state: The current state of the game.
+        :param player_id: The ID of the player proposing the guesses (0 for LLM).
+
+        :return: An instance of GuessProposal containing the proposed guesses from the LLM.
+        """
         if game_state.current_phase != GamePhase.GUESSING:
             raise ValueError(
                 "Cannot propose a guess when the game is not in the GUESSING phase.")
@@ -62,7 +79,8 @@ class CodenamesLLMService:
 
         if game_state.clue_history[-1].turn_number != game_state.turn_number:
             raise ValueError(
-                "Cannot propose a guess without an active clue. No clue has been proposed for this turn."
+                "Cannot propose a guess without an active clue. No clue has been proposed for this "
+                "turn."
             )
 
         # Build the LLM request for proposing a guess
@@ -153,10 +171,40 @@ class CodenamesLLMService:
                             raw_payload=response.raw_payload)
 
     def _build_guess_request(self, game_state: GameState, player_id: int) -> LLMRequest:
-        # Similar to _build_clue_request, but with a different system and user prompt tailored for
-        # proposing guesses. The user prompt should include the clue and count proposed by the clue
-        # giver, as well as the current board state and any relevant information for making a guess.
-        pass
+        """
+        Builds an LLMRequest for proposing guesses based on the current game state. This method 
+        extracts relevant information from the game state, formats it into a user prompt, and 
+        constructs the list of messages for the LLM request.
+
+        :param game_state: The current state of the game.
+        :param player_id: The ID of the player proposing the guess (0 for LLM).
+
+        :return: An instance of LLMRequest containing the messages and parameters for the LLM
+            generation.
+        """
+        # Extract relevant information from the game state
+        turn_number = game_state.turn_number
+        clue = game_state.current_clue.clue
+        count = game_state.current_clue.count
+        words_remaining = [card.text for card in game_state.board.cards if not card.revealed and
+                           player_id not in card.time_marker_by]
+
+        # Format the user prompt with the game state information
+        user_prompt = self._user_prompt_gg.format(
+            turn_number=turn_number,
+            clue=clue,
+            count=count,
+            words_remaining=", ".join(words_remaining)
+        )
+
+        # Build the list of messages for the LLM request
+        messages = [
+            LLMMessage(role="system", content=self._system_prompt_gg),
+            LLMMessage(role="user", content=user_prompt)
+        ]
+
+        return LLMRequest(messages=messages, model=self.default_model, temperature=self.temperature,
+                          max_tokens=self.max_tokens, timeout_s=self.timeout_s)
 
     def _build_guess_proposal(self, response: LLMResponse) -> GuessProposal:
         # Similar to _build_clue_proposal, but processes the LLMResponse to extract the proposed card
@@ -229,10 +277,19 @@ class CodenamesLLMService:
             with open(template_path, "r", encoding="utf-8") as f:
                 return f.read()
         except FileNotFoundError:
-            if prompt_type == 0:
-                return self._default_system_prompt_cg()
-            else:
-                return self._default_user_prompt_cg()
+            match prompt_type:
+                case 0:
+                    return self._default_system_prompt_cg()
+                case 1:
+                    return self._default_user_prompt_cg()
+                case 2:
+                    return self._default_system_prompt_gg()
+                case 3:
+                    return self._default_user_prompt_gg()
+                case _:
+                    raise ValueError(
+                        "Invalid prompt type specified. Must be 0 (system clue giver),"
+                        "1 (user clue giver), 2 (system guesser), or 3 (user guesser).")
 
     def _default_system_prompt_cg(self) -> str:
         """
