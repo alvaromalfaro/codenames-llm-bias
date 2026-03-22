@@ -94,16 +94,12 @@ class CodenamesLLMService:
         # words are relevant based on the player ID.
         if player_id == 0:
             # LLM is the clue giver, so we consider its perspective for the agent and dangerous words
-            agent_words = [card.text for card in game_state.board.cards if card.llm_perspective_role ==
-                           CardRole.AGENT and not card.revealed]
-            danger_words = [card.text for card in game_state.board.cards if card.llm_perspective_role !=
-                            CardRole.AGENT and 1 not in card.time_marker_by]
+            agent_words = self._get_llm_perspective_agent_words(game_state)
+            danger_words = self._get_llm_perspective_danger_words(game_state)
         else:
             # Same as above, but from the human player's perspective
-            agent_words = [card.text for card in game_state.board.cards if card.human_perspective_role ==
-                           CardRole.AGENT and not card.revealed]
-            danger_words = [card.text for card in game_state.board.cards if card.human_perspective_role !=
-                            CardRole.AGENT and 0 not in card.time_marker_by]
+            agent_words = self._get_human_perspective_agent_words(game_state)
+            danger_words = self._get_human_perspective_danger_words(game_state)
 
         rev_words = [
             card.text for card in game_state.board.cards if card.revealed]
@@ -168,6 +164,57 @@ class CodenamesLLMService:
         # LLM response should be defined in the system prompt for proposing guesses.
         pass
 
+    def _get_llm_perspective_agent_words(self, game_state: GameState) -> list[str]:
+        """
+        Extracts the non-revealed agent words from the game state based on the LLM's perspective.
+
+        :param game_state: The current state of the game.
+
+        :return: A list of agent words that are not revealed from the LLM's perspective.
+        """
+        return [card.text for card in game_state.board.cards if card.llm_perspective_role ==
+                CardRole.AGENT and not card.revealed]
+
+    def _get_llm_perspective_danger_words(self, game_state: GameState) -> list[str]:
+        """
+        Extracts the dangerous words (assassins and civilians) from the game state based on the LLM's
+        perspective. Words that are marked with a time marker are ignored to keep the final prompt
+        concise.
+
+        :param game_state: The current state of the game.
+
+        :return: A list of dangerous words that are not marked with a time marker from the LLM's
+            perspective.
+        """
+        return [card.text for card in game_state.board.cards if card.llm_perspective_role !=
+                CardRole.AGENT and 1 not in card.time_marker_by]
+
+    def _get_human_perspective_agent_words(self, game_state: GameState) -> list[str]:
+        """
+        Extracts the agent words from the game state based on the human's perspective. Words that are
+        marked with a time marker are ignored to keep the final prompt concise.
+
+        :param game_state: The current state of the game.
+
+        :return: A list of agent words that are not revealed from the human's perspective.
+        """
+        return [card.text for card in game_state.board.cards if card.human_perspective_role ==
+                CardRole.AGENT and not card.revealed]
+
+    def _get_human_perspective_danger_words(self, game_state: GameState) -> list[str]:
+        """
+        Extract the dangerous words (assassins and civilians) from the game state based on the 
+        human's perspective. Words that are marked with a time marker are ignored to keep the final
+        prompt concise.
+
+        :param game_state: The current state of the game.
+
+        :return: A list of dangerous words that are not marked with a time marker from the human's
+            perspective.
+        """
+        return [card.text for card in game_state.board.cards if card.human_perspective_role !=
+                CardRole.AGENT and 0 not in card.time_marker_by]
+
     def _load_prompt_template(self, template_path: str, prompt_type: int) -> str:
         """
         Loads a prompt template from the specified file path. If the file is not found, it returns
@@ -194,25 +241,27 @@ class CodenamesLLMService:
 
         :return: A default system prompt for the clue giver role.
         """
-        return ("You are a strategic master clue giver in a game of Codenames Duet. Your goal "
-                "is to connect as many agent words as possible with a single clue while "
-                "maintaining very low similarity to the assassin words and civilian words. "
-                "You have to propose a clue and a count for the guessing player.\n\n"
-                "### RULES ###\n"
-                "- The clue must be a single word.\n"
-                "- The clue must not be any word on the board.\n"
-                "- The clue must not be a derivative of a word on the board.\n"
-                "- The clue must not be contained in any of the words on the board.\n"
-                "- The count must be a positive integer indicating how many words on the board are "
-                "associated with the clue.\n"
-                "- Try to connect as many agent words as possible.\n"
-                "- Avoid clues strongly associated with dangerous words.\n\n"
-                "### OUTPUT FORMAT ###\n"
-                "Provide the clue and count in a JSON format like {{\"clue\": \"example_clue\", "
-                "\"count\": x, \"reasoning\": \"explanation of your reasoning for the clue and "
-                "count\"}}, where \"example_clue\" is the proposed clue, x is the number of agent "
-                "words you are trying to connect with \"example_clue\", and the reasoning field "
-                "contains your explanation for why you chose that clue and count.")
+        return (
+            "You are a strategic master clue giver in a game of Codenames Duet. Your goal "
+            "is to connect as many agent words as possible with a single clue while "
+            "maintaining very low similarity to the assassin words and civilian words. "
+            "You have to propose a clue and a count for the guessing player.\n\n"
+            "### RULES ###\n"
+            "- The clue must be a single word.\n"
+            "- The clue must not be any word on the board.\n"
+            "- The clue must not be a derivative of a word on the board.\n"
+            "- The clue must not be contained in any of the words on the board.\n"
+            "- The count must be a positive integer indicating how many words on the board are "
+            "associated with the clue.\n"
+            "- Try to connect as many agent words as possible.\n"
+            "- Avoid clues strongly associated with dangerous words.\n\n"
+            "### OUTPUT FORMAT ###\n"
+            "Provide the clue and count in a JSON format like {\"clue\": \"example_clue\", "
+            "\"count\": x, \"reasoning\": \"explanation of your reasoning for the clue and "
+            "count\"}, where \"example_clue\" is the proposed clue, x is the number of agent "
+            "words you are trying to connect with \"example_clue\", and the reasoning field "
+            "contains your explanation for why you chose that clue and count."
+        )
 
     def _default_user_prompt_cg(self) -> str:
         """
@@ -221,12 +270,79 @@ class CodenamesLLMService:
 
         :return: A default user prompt for the clue giver role.
         """
-        return ("You are generating a clue for the current Codenames Duet turn. The game is "
-                "in the turn {turn_number}.\n\n"
-                "### BOARD STATUS ###\n"
-                "The agent words are: {agent_words}\n\n"
-                "The dangerous words to avoid (assassins and civilians) are: {danger_words}\n\n"
-                "Already revealed words: {revealed_words}\n\n"
-                "### YOUR TASK ###\n"
-                "Propose a clue and a count for the guessing player. Remember the rules for valid "
-                "clues and counts.")
+        return (
+            "You are generating a clue for the current Codenames Duet turn. The game is "
+            "in the turn {turn_number}.\n\n"
+            "### BOARD STATUS ###\n"
+            "The agent words are: {agent_words}\n\n"
+            "The dangerous words to avoid (assassins and civilians) are: {danger_words}\n\n"
+            "Already revealed words: {revealed_words}\n\n"
+            "### YOUR TASK ###\n"
+            "Propose a clue and a count for the guessing player. Remember the rules for valid "
+            "clues and counts."
+        )
+
+    def _default_system_prompt_gg(self) -> str:
+        """
+        Provides a default system prompt for the guessing role in case the prompt template file is
+        not found.
+
+        :return: A default system prompt for the guessing role.
+        """
+        return (
+            "You are the guessing player in Codenames Duet. Your task is to propose all guesses for "
+            "the current turn in a single response, based on the received clue, count and words on "
+            "the board.\n\n"
+            "### OBJECTIVE ###\n"
+            "- Propose the best guesses for the current turn.\n"
+            "- Balance semantic relevance and ambiguity risk.\n\n"
+            "### RULES ###\n"
+            "- Do not invent words that are not on the board.\n"
+            "- Return at least 1 proposal.\n"
+            "- Return at most count proposals.\n"
+            "- If ambiguity is high, return fewer than count proposals.\n"
+            "- Do not output markdown or extra text outside the required JSON.\n"
+            "\n"
+            "### DECISION POLICY ###\n"
+            "- Use semantic relation between clue and candidate words.\n"
+            "- Prefer precision over coverage when uncertain.\n"
+            "- If two options are similar, prefer the less ambiguous one.\n"
+            "- Confidence must reflect relative certainty for each proposed word.\n\n"
+            "### OUTPUT FORMAT ###\n"
+            "Return ONLY valid JSON with this exact schema:\n"
+            "{\n"
+            "   \"proposals\": [\n"
+            "       {\"word\": \"apple\", \"confidence\": 0.82},\n"
+            "       {\"word\": \"tree\", \"confidence\": 0.67}\n"
+            "   ],"
+            "\"reasoning\": \"brief explanation of why these words fit the clue\",\n"
+            "\"stop_reason\": \"why you propose this number of guesses\""
+            "}\n\n"
+            "Field requirements:\n"
+            "- 'proposals': array with length 1..count\n"
+            "- each proposals[i].word: unique board word.\n"
+            "- each proposals[i].confidence: number between 0 and 1.\n"
+            "- 'reasoning': concise turn-specific rationale.\n"
+            "- 'stop_reason': concise reason for proposing exactly that many guesses."
+        )
+
+    def _default_user_prompt_gg(self) -> str:
+        """
+        Provides a default user prompt for the guessing role in case the prompt template file is
+        not found.
+
+        :return: A default user prompt for the guessing role.
+        """
+        return (
+            "You are guessing in Codenames Duet turn {turn_number}.\n\n"
+            "### CLUE RECEIVED ###\n"
+            "- clue: {clue}\n"
+            "- count: {count}\n\n"
+            "### BOARD STATUS ###\n"
+            "Choose from the following words:\n"
+            "{words_remaining}\n\n"
+            "### YOUR TASK ###\n"
+            "Propose all guesses you want to make this turn in one response.\n"
+            "Return a list of up to count proposals (you may return fewer if risk is high).\n"
+            "Follow the required JSON format exactly."
+        )

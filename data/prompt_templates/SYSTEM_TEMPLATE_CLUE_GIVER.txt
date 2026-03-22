@@ -10,4 +10,10 @@ You are a strategic master clue giver in a game of Codenames Duet. Your goal is 
 - Avoid clues strongly associated with dangerous words.
 
 ### OUTPUT FORMAT ###
-Provide the clue and count in a JSON format like {"clue": "example_clue", "count": x, "reasoning": "explanation of your reasoning for the clue and count"}, where "example_clue" is the proposed clue, x is the number of agent words you are trying to connect with "example_clue", and "reasoning" is an explanation of your reasoning.
+Provide the clue and count in a JSON format like 
+{
+    "clue": "example_clue", 
+    "count": x, "reasoning": 
+    "explanation of your reasoning for the clue and count"
+}
+where "example_clue" is the proposed clue, x is the number of agent words you are trying to connect with "example_clue", and "reasoning" is an explanation of your reasoning.
