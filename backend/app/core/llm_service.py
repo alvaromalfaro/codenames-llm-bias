@@ -207,10 +207,34 @@ class CodenamesLLMService:
                           max_tokens=self.max_tokens, timeout_s=self.timeout_s)
 
     def _build_guess_proposal(self, response: LLMResponse) -> GuessProposal:
-        # Similar to _build_clue_proposal, but processes the LLMResponse to extract the proposed card
-        # words for the guess and constructs a GuessProposal instance. The expected format of the
-        # LLM response should be defined in the system prompt for proposing guesses.
-        pass
+        """
+        Processes the LLMResponse to extract the proposed guesses, confidence scores, reasoning, and
+        stop reason, and constructs a GuessProposal instance.
+
+        :param response: The response from the LLM containing the generated guess proposal.
+
+        :return: An instance of GuessProposal containing the proposed guesses, confidence scores,
+            reasoning, stop reason, and raw payload from the LLM response.
+        """
+        response_content = response.text.strip()
+
+        try:
+            response_json = json.loads(response_content)
+            proposals = response_json.get("proposals", [])
+            reasoning = response_json.get("reasoning", "")
+            stop_reason = response_json.get("stop_reason", "")
+        except json.JSONDecodeError:
+            raise ValueError(
+                "LLM response is not valid JSON. Response content: " + response_content)
+
+        confidence = [proposal.get("confidence", 0) for proposal in proposals]
+        proposals = [proposal.get("word", "").strip()
+                     for proposal in proposals]
+
+        return GuessProposal(
+            proposals=proposals, confidence=confidence, reasoning=reasoning.strip(),
+            stop_reason=stop_reason.strip(), raw_payload=response.raw_payload
+        )
 
     def _get_llm_perspective_agent_words(self, game_state: GameState) -> list[str]:
         """
