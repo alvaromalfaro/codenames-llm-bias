@@ -27,12 +27,10 @@ class LLMClient(ABC):
         # Default implementation assumes the provider is healthy.
         return True
 
-    @abstractmethod
     async def close(self) -> None:
         """
         Optional method to close any resources or connections used by the LLM client. This can be 
         overridden by subclasses if they need to perform any cleanup when the client is no longer 
         needed.
         """
-        raise NotImplementedError("Subclasses must implement this method if they use any resources "
-                                  "that need to be closed.")
+        pass
