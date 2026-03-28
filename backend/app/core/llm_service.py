@@ -1,5 +1,5 @@
 import json
-from backend.app.core.llm_client import LLMClient
+from backend.app.core.lm.llm_client import LLMClient
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage
 from backend.app.models.game_schemas import GameState, GamePhase, CardRole
 
