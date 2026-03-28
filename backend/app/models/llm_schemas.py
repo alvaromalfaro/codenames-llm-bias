@@ -178,16 +178,22 @@ class GuessProposal(BaseModel):
     payload returned by the LLM provider for the proposal. The card words must be a list of 
     non-empty strings, and the raw payload is stored as a dictionary.
     """
-    # The card words proposed by the LLM for the guess
-    card_words: list[str] = Field(min_items=1)
+    # The card words proposed by the LLM for the guess.
+    proposals: list[str] = Field(min_items=1)
+    # The confidence scores for each proposed card word.
+    confidence: list[float] = Field(min_items=1)
+    # Reasoning provided by the LLM for the guesses.
+    reasoning: str
+    # The reason why the LLM stopped generating guesses.
+    stop_reason: str
     # The raw payload returned by the LLM provider for the proposal
     raw_payload: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_guess_proposal(self) -> "GuessProposal":
         # Validate that the card words are not empty or just whitespace
-        for card_word in self.card_words:
-            if not card_word.strip():
+        for proposal in self.proposals:
+            if not proposal.strip():
                 raise ValueError("Card words cannot be empty.")
 
         return self
