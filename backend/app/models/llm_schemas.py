@@ -180,6 +180,16 @@ class GuessProposal(BaseModel):
         # Validate that the card words are not empty or just whitespace
         for proposal in self.proposals:
             if not proposal.strip():
-                raise ValueError("Card words cannot be empty.")
+                raise ValueError("Proposals cannot contain empty strings.")
+
+        # Validate that proposals and confidence lists have the same length
+        if len(self.proposals) != len(self.confidence):
+            raise ValueError(
+                "The number of proposals must match the number of confidence scores.")
+
+        # Validate that confidence scores are between 0 and 1
+        for score in self.confidence:
+            if not (0.0 <= score <= 1.0):
+                raise ValueError("Confidence scores must be between 0 and 1.")
 
         return self
