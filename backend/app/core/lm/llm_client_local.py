@@ -1,6 +1,6 @@
 import json
 from json import JSONDecodeError
-from llm_client import LLMClient
+from backend.app.core.lm.llm_client import LLMClient
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import LLMModelNotProvidedError, LLMRefusalError, LLMParseError
 from ollama import chat, RequestError, ResponseError

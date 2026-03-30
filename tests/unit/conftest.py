@@ -1,5 +1,6 @@
 import pytest
 from backend.app.models.game_schemas import CardRole
+from backend.app.models.llm_schemas import LLMRequest, LLMMessage
 
 
 @pytest.fixture
@@ -8,7 +9,15 @@ def valid_board_data():
     Provides a valid board configuration for testing the Board schema validation. It is based on the
     board configuration used in the official Codenames Duet rulesbook.
     """
-    cards = [
+    return {
+        "board_id": "test_board_001",
+        "category": "neutral",
+        "cards": _get_cards()
+    }
+
+
+def _get_cards():
+    return [
         {
             "id": 0,
             "text": "BUCKET",
@@ -185,9 +194,3 @@ def valid_board_data():
             "category": "neutral"
         }
     ]
-
-    return {
-        "board_id": "test_board_001",
-        "category": "neutral",
-        "cards": cards
-    }

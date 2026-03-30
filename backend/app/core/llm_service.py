@@ -4,7 +4,7 @@ from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMReque
 from backend.app.models.game_schemas import GameState, GamePhase, CardRole
 
 
-class CodenamesLLMService:
+class LLMService:
     SYSTEM_TEMP_CG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_CLUE_GIVER.txt"
     USER_TEMP_CG_PATH = "data/prompt_templates/USER_TEMPLATE_CLUE_GIVER.txt"
     SYSTEM_TEMP_GG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_GUESSER.txt"
