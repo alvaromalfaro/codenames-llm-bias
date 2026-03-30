@@ -110,11 +110,11 @@ def test_engine_resolve_guess_normal_agent(valid_board_data: dict):
     engine.state.guesser = 1
     engine.state.current_phase = GamePhase.GUESSING
 
-    result = engine.resolve_guess(card_id=3, player_id=1)
+    result = engine.resolve_guess(card_id=4, player_id=1)
 
     assert result == "agent"
-    assert engine.state.board.cards[3].revealed is True
-    assert engine.state.board.cards[3].revealed_by == 1
+    assert engine.state.board.cards[4].revealed is True
+    assert engine.state.board.cards[4].revealed_by == 1
     # Agent count for player 1 should decrease by 1
     assert engine.state.agents_remaining[1] == 8
     assert engine.state.agents_remaining[0] == 9
@@ -137,11 +137,11 @@ def test_engine_resolve_guess_shared_agent(valid_board_data: dict):
     engine.state.guesser = 1
     engine.state.current_phase = GamePhase.GUESSING
 
-    result = engine.resolve_guess(card_id=0, player_id=1)
+    result = engine.resolve_guess(card_id=1, player_id=1)
 
     assert result == "agent"
-    assert engine.state.board.cards[0].revealed is True
-    assert engine.state.board.cards[0].revealed_by == 1
+    assert engine.state.board.cards[1].revealed is True
+    assert engine.state.board.cards[1].revealed_by == 1
     # Agent count for both players should decrease by 1 since it's a shared agent
     assert engine.state.agents_remaining[0] == 8
     assert engine.state.agents_remaining[1] == 8
@@ -171,14 +171,14 @@ def test_engine_resolve_guess_victory(valid_board_data: dict):
             card.revealed_by = 1
 
     # Ensure the last agent card is not revealed
-    engine.state.board.cards[0].revealed = False
-    engine.state.board.cards[0].revealed_by = None
+    engine.state.board.cards[1].revealed = False
+    engine.state.board.cards[1].revealed_by = None
 
     # Set remaining agents to 1 for testing victory condition
     engine.state.agents_remaining[1] = 1
     engine.state.agents_remaining[0] = 1
 
-    result = engine.resolve_guess(card_id=0, player_id=1)
+    result = engine.resolve_guess(card_id=1, player_id=1)
 
     assert result == "victory"
     assert engine.state.current_phase == GamePhase.GAME_OVER
@@ -201,7 +201,7 @@ def test_engine_resolve_guess_assassin(valid_board_data: dict):
     engine.state.guesser = 1
     engine.state.current_phase = GamePhase.GUESSING
 
-    result = engine.resolve_guess(card_id=15, player_id=1)
+    result = engine.resolve_guess(card_id=2, player_id=1)
 
     assert result == "assassin"
     assert engine.state.current_phase == GamePhase.GAME_OVER
@@ -224,12 +224,12 @@ def test_engine_resolve_guess_civilian(valid_board_data: dict):
     engine.state.guesser = 1
     engine.state.current_phase = GamePhase.GUESSING
 
-    result = engine.resolve_guess(card_id=17, player_id=1)
+    result = engine.resolve_guess(card_id=5, player_id=1)
 
     assert result == "civilian"
-    assert engine.state.board.cards[17].revealed is False
-    assert engine.state.board.cards[17].revealed_by is None
-    assert 1 in engine.state.board.cards[17].time_marker_by
+    assert engine.state.board.cards[5].revealed is False
+    assert engine.state.board.cards[5].revealed_by is None
+    assert 1 in engine.state.board.cards[5].time_marker_by
     assert engine.state.timer_tokens == 8
     # Should switch roles after guessing a civilian
     assert engine.state.clue_giver == 1
@@ -333,7 +333,7 @@ def test_engine_resolve_guess_change_to_sudden_death(valid_board_data: dict):
     # Force the timer tokens to run out
     engine.state.timer_tokens = 1
 
-    result = engine.resolve_guess(card_id=17, player_id=1)
+    result = engine.resolve_guess(card_id=16, player_id=1)
     assert result == "civilian"
     assert engine.state.current_phase == GamePhase.SUDDEN_DEATH
     assert engine.state.timer_tokens == 0
@@ -357,7 +357,7 @@ def test_engine_resolve_guess_sudden_death(valid_board_data: dict):
     engine.state.agents_remaining[0] = 1
 
     # Guess the last agent card correctly
-    result = engine.resolve_guess(card_id=0, player_id=1)
+    result = engine.resolve_guess(card_id=1, player_id=1)
 
     assert result == "victory_sd"
     assert engine.state.current_phase == GamePhase.GAME_OVER
@@ -390,11 +390,11 @@ def test_engine_resolve_guess_sudden_death_loss_civilian(valid_board_data: dict,
 
     if modification == "guess_assassin":
         # Guess the assassin card
-        result = engine.resolve_guess(card_id=15, player_id=1)
+        result = engine.resolve_guess(card_id=2, player_id=1)
         assert result == "loss_assassin_sd"
     else:
         # Guess a civilian card
-        result = engine.resolve_guess(card_id=17, player_id=1)
+        result = engine.resolve_guess(card_id=5, player_id=1)
         assert result == "loss_civilian_sd"
 
     assert engine.state.current_phase == GamePhase.GAME_OVER
