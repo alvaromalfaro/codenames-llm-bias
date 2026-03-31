@@ -16,6 +16,42 @@ def valid_board_data():
     }
 
 
+@pytest.fixture
+def llm_request_cg():
+    """
+    Provides a valid LLM request for testing the LLM client when generating a response for a clue
+    generation task.
+    """
+    with open("data/prompt_templates/SYSTEM_TEMPLATE_CLUE_GIVER.txt", "r") as f:
+        system_prompt = f.read()
+
+    with open("data/prompt_templates/USER_TEMPLATE_CLUE_GIVER.txt", "r") as f:
+        user_prompt = f.read()
+
+    turn_number = 1
+    cards = _get_cards()
+    agent_words = [i["text"]
+                   for i in cards if i["llm_perspective_role"] == CardRole.AGENT]
+    danger_words = [i["text"]
+                    for i in cards if i["llm_perspective_role"] != CardRole.AGENT]
+    revealed_words = []
+
+    user_prompt = user_prompt.format(
+        turn_number=turn_number,
+        agent_words=agent_words,
+        danger_words=danger_words,
+        revealed_words=revealed_words
+    )
+
+    return LLMRequest(
+        messages=[
+            LLMMessage(role="system", content=system_prompt),
+            LLMMessage(role="user", content=user_prompt)
+        ],
+        model="ollama3.2:latest"
+    )
+
+
 def _get_cards():
     return [
         {

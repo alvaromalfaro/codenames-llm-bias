@@ -28,9 +28,10 @@ class LLMClientLocal(LLMClient):
             )
 
             # Convert the Ollama response to LLMResponse format
-            response_json = json.dumps(ollama_response.model_dump_json())
+            response_json = json.loads(ollama_response.model_dump_json())
+
             return LLMResponse(
-                text=response_json.message.content,
+                text=ollama_response.message.content,
                 model_used=self.local_model,
                 latency_ms=ollama_response.total_duration,
                 usage=TokenUsage(
@@ -44,6 +45,7 @@ class LLMClientLocal(LLMClient):
                 execution_mode="local",
                 provider="ollama"
             )
+
         except RequestError as re:
             raise LLMModelNotProvidedError(
                 provider="ollama", cause=re, execution_mode="local"
