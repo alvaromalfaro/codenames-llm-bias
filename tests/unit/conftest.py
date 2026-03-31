@@ -1,10 +1,10 @@
 import pytest
-from backend.app.models.game_schemas import CardRole
+from backend.app.models.game_schemas import CardRole, GameState, Board, WordCard, GamePhase, ClueEntry
 from backend.app.models.llm_schemas import LLMRequest, LLMMessage
 
 
 @pytest.fixture
-def valid_board_data():
+def valid_board_data() -> dict:
     """
     Provides a valid board configuration for testing the Board schema validation. It is based on the
     board configuration used in the official Codenames Duet rulesbook.
@@ -17,7 +17,7 @@ def valid_board_data():
 
 
 @pytest.fixture
-def llm_request_cg():
+def llm_request_cg() -> LLMRequest:
     """
     Provides a valid LLM request for testing the LLM client when generating a response for a clue
     generation task.
@@ -49,6 +49,58 @@ def llm_request_cg():
             LLMMessage(role="user", content=user_prompt)
         ],
         model="ollama3.2:latest"
+    )
+
+
+@pytest.fixture
+def game_state_cg() -> GameState:
+    """
+    Provides a valid game state in the clue-giving phase for testing the LLM service when proposing
+    a clue.
+    """
+    return GameState(
+        game_id="test_game_001",
+        board=_get_board(),
+        clue_giver=0,
+        guesser=1
+    )
+
+
+@pytest.fixture
+def game_state_guessing() -> GameState:
+    """
+    Provides a valid game state in the guessing phase for testing the LLM service when proposing
+    a clue during an invalid phase of the game.
+    """
+    game_state = GameState(
+        game_id="test_game_001",
+        board=_get_board(),
+        clue_giver=1,
+        guesser=0
+    )
+    game_state.current_phase = GamePhase.GUESSING
+    clue = ClueEntry(
+        clue="battle",
+        count=3,
+        clue_giver=1,
+        turn_number=1
+    )
+    game_state.current_clue = clue
+    game_state.clue_history.append(clue)
+
+    return game_state
+
+
+def _get_board():
+    return Board(
+        board_id="test_board_001",
+        category="neutral",
+        cards=[
+            WordCard(id=i["id"], text=i["text"],
+                     human_perspective_role=i["human_perspective_role"],
+                     llm_perspective_role=i["llm_perspective_role"],
+                     category=i["category"]) for i in _get_cards()
+        ]
     )
 
 

@@ -75,12 +75,11 @@ class LLMService:
 
         if game_state.guesser != player_id:
             raise ValueError(
-                "The player must be the guessing player to propose a guess.")
+                "The player must be the guesser to propose a guess.")
 
-        if game_state.clue_history[-1].turn_number != game_state.turn_number:
+        if game_state.current_clue.turn_number != game_state.turn_number:
             raise ValueError(
-                "Cannot propose a guess without an active clue. No clue has been proposed for this "
-                "turn."
+                "Cannot propose a guess when there is no clue available."
             )
 
         # Build the LLM request for proposing a guess
