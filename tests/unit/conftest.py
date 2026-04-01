@@ -1,6 +1,6 @@
 import pytest
 from backend.app.models.game_schemas import CardRole, GameState, Board, WordCard, GamePhase, ClueEntry
-from backend.app.models.llm_schemas import LLMRequest, LLMMessage
+from backend.app.models.llm_schemas import LLMRequest, LLMMessage, LLMResponse, TokenUsage
 
 
 @pytest.fixture
@@ -49,6 +49,34 @@ def llm_request_cg() -> LLMRequest:
             LLMMessage(role="user", content=user_prompt)
         ],
         model="ollama3.2:latest"
+    )
+
+
+@pytest.fixture
+def llm_response() -> LLMResponse:
+    """
+    Provides a valid LLM response for testing the LLM client when generating a response for a clue
+    generation task. The content of the response is based on the expected format of the response
+    from the Ollama client for a clue generation request.
+    """
+    return LLMResponse(
+        text=(
+            "{\"clue\": \"battle\", "
+            "\"count\": 3, "
+            "\"reasoning\": \"The word 'battle' captures a military commander ('NAPOLEON'),"
+            "the hardware ('RIFLE') and a primary theater of conflict ('RUSSIA')\""
+            "}"
+        ),
+        model_used="ollama3.2:latest",
+        latency_ms=500,
+        usage=TokenUsage(
+            prompt_tokens=50,
+            completion_tokens=30,
+            total_tokens=80
+        ),
+        finish_reason="stop",
+        provider="ollama",
+        execution_mode="local"
     )
 
 

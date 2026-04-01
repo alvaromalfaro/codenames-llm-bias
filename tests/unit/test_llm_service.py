@@ -172,3 +172,56 @@ async def test_llm_service_propose_guess_no_clue(game_state_guessing):
 
     with pytest.raises(ValueError, match="Cannot propose a guess when there is no clue available."):
         await service.propose_guess(game_state_guessing)
+
+
+def test_llm_service_build_clue_request_player1(game_state_cg):
+    """
+    Tests that the LLMService correctly builds an LLMRequest for proposing a clue when the current
+    player is Player 1 (human [an LLM in fact, to automate future games]).
+    """
+    mock_client = MagicMock(spec=LLMClient)
+    service = LLMService(llm_client=mock_client)
+
+    request = service._build_clue_request(game_state_cg, player_id=1)
+
+    agent_words = [
+        card.text for card in game_state_cg.board.cards if card.human_perspective_role == "agent"]
+    danger_words = [
+        card.text for card in game_state_cg.board.cards if card.human_perspective_role != "agent"]
+
+    assert request is not None
+    assert len(request.messages) == 2
+    assert request.messages[0].role == "system"
+    assert request.messages[1].role == "user"
+    assert f"agent_words={{", ".join(agent_words)}}" in request.messages[1].content
+    assert f"danger_words={{", ".join(danger_words)}}" in request.messages[1].content
+
+
+def test_llm_service_build_clue_proposal_json_error(llm_response):
+    """
+    Tests that the LLMService raises a ValueError when the LLMResponse text cannot be parsed as JSON
+    when building a clue proposal.
+    """
+    service = LLMService(llm_client=MagicMock(spec=LLMClient))
+
+    # Modify the LLMResponse text to be invalid JSON
+    llm_response.text = "This is not valid JSON"
+
+    with pytest.raises(ValueError, match="LLM response is not valid JSON. Response content: " +
+                       llm_response.text):
+        service._build_clue_proposal(llm_response)
+
+
+def test_llm_service_build_guess_proposal_json_error(llm_response):
+    """
+    Tests that the LLMService raises a ValueError when the LLMResponse text cannot be parsed as JSON
+    when building a guess proposal.
+    """
+    service = LLMService(llm_client=MagicMock(spec=LLMClient))
+
+    # Modify the LLMResponse text to be invalid JSON
+    llm_response.text = "This is not valid JSON"
+
+    with pytest.raises(ValueError, match="LLM response is not valid JSON. Response content: " +
+                       llm_response.text):
+        service._build_guess_proposal(llm_response)
