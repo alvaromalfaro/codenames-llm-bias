@@ -27,7 +27,7 @@ def test_load_board_success(tmp_path, valid_board_data):
     assert len(board.cards) == 25
     for i, card in enumerate(board.cards):
         assert card.id == i
-        assert card.text == f"Word_{i}"
+        assert card.text == valid_board_data["cards"][i]["text"]
         assert card.llm_perspective_role == valid_board_data["cards"][i]["llm_perspective_role"]
         assert card.human_perspective_role == valid_board_data["cards"][i]["human_perspective_role"]
 

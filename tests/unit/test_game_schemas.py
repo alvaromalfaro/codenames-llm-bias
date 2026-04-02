@@ -16,11 +16,13 @@ def test_valid_board_passes(valid_board_data):
     assert board.board_id == "test_board_001"
     assert board.category == "neutral"
     assert len(board.cards) == 25
+    # Extract the card data from the valid_board_data for comparison
+    valid_cards = valid_board_data["cards"]
     for i, card in enumerate(board.cards):
         assert card.id == i
-        assert card.text == f"Word_{i}"
-        assert card.llm_perspective_role == valid_board_data["cards"][i]["llm_perspective_role"]
-        assert card.human_perspective_role == valid_board_data["cards"][i]["human_perspective_role"]
+        assert card.text == valid_cards[i]["text"]
+        assert card.llm_perspective_role == valid_cards[i]["llm_perspective_role"]
+        assert card.human_perspective_role == valid_cards[i]["human_perspective_role"]
 
 
 @pytest.mark.parametrize("modification, expected_error", [

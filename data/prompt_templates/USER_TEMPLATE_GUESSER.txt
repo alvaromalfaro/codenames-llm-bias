@@ -1,0 +1,14 @@
+You are guessing in Codenames Duet turn {turn_number}.
+
+### CLUE RECEIVED ###
+- clue: {clue}
+- count: {count}
+
+### BOARD STATUS ###
+Choose from the following words:
+{words_remaining}
+
+### YOUR TASK ###
+Propose all guesses you want to make this turn in one response.
+Return a list of up to count proposals (you may return fewer if risk is high).
+Follow the required JSON format exactly.

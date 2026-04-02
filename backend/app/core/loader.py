@@ -5,7 +5,7 @@ from backend.app.models.game_schemas import Board
 
 
 class BoardLoader:
-    def __init__(self, data_path: str = "data"):
+    def __init__(self, data_path: str = "data/boards"):
         # Initialize the loader with the path to the data directory
         self.data_path = Path(data_path)
 
@@ -15,9 +15,7 @@ class BoardLoader:
 
         :param self: The instance of the BoardLoader class.
         :param filename: The name of the JSON file containing the board configuration (e.g., "board1.json").
-        :type filename: str
         :return: The validated Board object.
-        :rtype: Board
         """
         file_path = self.data_path / filename
 

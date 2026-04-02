@@ -1,0 +1,14 @@
+You are generating a clue for the current Codenames Duet turn. The game is in the turn {turn_number}.
+
+### BOARD STATUS ###
+The agent words are:
+{agent_words}
+
+The dangerous words to avoid (assassins and civilians) are:
+{danger_words}
+
+Already revealed words:
+{revealed_words}
+
+### YOUR TASK ###
+Propose a clue and a count for the guessing player. Remember the rules for valid clues and counts.

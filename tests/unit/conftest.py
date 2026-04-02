@@ -1,70 +1,312 @@
 import pytest
-from backend.app.models.game_schemas import CardRole
+from backend.app.models.game_schemas import CardRole, GameState, Board, WordCard, GamePhase, ClueEntry
+from backend.app.models.llm_schemas import LLMRequest, LLMMessage, LLMResponse, TokenUsage
 
 
 @pytest.fixture
-def valid_board_data():
+def valid_board_data() -> dict:
     """
-    Provides a valid board configuration for testing the Board schema validation.
+    Provides a valid board configuration for testing the Board schema validation. It is based on the
+    board configuration used in the official Codenames Duet rulesbook.
     """
-    cards = []
-
-    for i in range(25):
-        # 0-2: SHARED AGENTS (3)
-        # LLM: Agent | Human: Agent
-        if i < 3:
-            llm_perspective_role, human_perspective_role = CardRole.AGENT, CardRole.AGENT
-
-        # 3-7: UNIQUE LLM AGENTS (5)
-        # LLM: Agent | Human: Civilian
-        elif i < 8:
-            llm_perspective_role, human_perspective_role = CardRole.AGENT, CardRole.CIVILIAN
-
-        # 8: LLM AGENT / HUMAN ASSASSIN INTERSECTION (1)
-        # LLM: Agent | Human: Assassin -> Total LLM Agents: 3+5+1 = 9
-        elif i == 8:
-            llm_perspective_role, human_perspective_role = CardRole.AGENT, CardRole.ASSASSIN
-
-        # 9-13: UNIQUE HUMAN AGENTS (5)
-        # LLM: Civilian | Human: Agent
-        elif i < 14:
-            llm_perspective_role, human_perspective_role = CardRole.CIVILIAN, CardRole.AGENT
-
-        # 14: HUMAN AGENT / LLM ASSASSIN INTERSECTION (1)
-        # LLM: Assassin | Human: Agent -> Total Human Agents: 3+5+1 = 9
-        elif i == 14:
-            llm_perspective_role, human_perspective_role = CardRole.ASSASSIN, CardRole.AGENT
-
-        # 15: SHARED ASSASSIN (1)
-        # LLM: Assassin | Human: Assassin
-        elif i == 15:
-            llm_perspective_role, human_perspective_role = CardRole.ASSASSIN, CardRole.ASSASSIN
-
-        # 16: UNIQUE LLM ASSASSIN (1)
-        # LLM: Assassin | Human: Civilian -> Total LLM Assassins: 1+1+1 = 3
-        elif i == 16:
-            llm_perspective_role, human_perspective_role = CardRole.ASSASSIN, CardRole.CIVILIAN
-
-        # 17: UNIQUE HUMAN ASSASSIN (1)
-        # LLM: Civilian | Human: Assassin -> Total Human Assassins: 1+1+1 = 3
-        elif i == 17:
-            llm_perspective_role, human_perspective_role = CardRole.CIVILIAN, CardRole.ASSASSIN
-
-        # 18-24: PURE CIVILIANS (7)
-        # LLM: Civilian | Human: Civilian
-        else:
-            llm_perspective_role, human_perspective_role = CardRole.CIVILIAN, CardRole.CIVILIAN
-
-        cards.append({
-            "id": i,
-            "text": f"Word_{i}",
-            "llm_perspective_role": llm_perspective_role,
-            "human_perspective_role": human_perspective_role,
-            "category": "neutral"
-        })
-
     return {
         "board_id": "test_board_001",
         "category": "neutral",
-        "cards": cards
+        "cards": _get_cards()
     }
+
+
+@pytest.fixture
+def llm_request_cg() -> LLMRequest:
+    """
+    Provides a valid LLM request for testing the LLM client when generating a response for a clue
+    generation task.
+    """
+    with open("data/prompt_templates/SYSTEM_TEMPLATE_CLUE_GIVER.txt", "r") as f:
+        system_prompt = f.read()
+
+    with open("data/prompt_templates/USER_TEMPLATE_CLUE_GIVER.txt", "r") as f:
+        user_prompt = f.read()
+
+    turn_number = 1
+    cards = _get_cards()
+    agent_words = [i["text"]
+                   for i in cards if i["llm_perspective_role"] == CardRole.AGENT]
+    danger_words = [i["text"]
+                    for i in cards if i["llm_perspective_role"] != CardRole.AGENT]
+    revealed_words = []
+
+    user_prompt = user_prompt.format(
+        turn_number=turn_number,
+        agent_words=agent_words,
+        danger_words=danger_words,
+        revealed_words=revealed_words
+    )
+
+    return LLMRequest(
+        messages=[
+            LLMMessage(role="system", content=system_prompt),
+            LLMMessage(role="user", content=user_prompt)
+        ],
+        model="ollama3.2:latest"
+    )
+
+
+@pytest.fixture
+def llm_response() -> LLMResponse:
+    """
+    Provides a valid LLM response for testing the LLM client when generating a response for a clue
+    generation task. The content of the response is based on the expected format of the response
+    from the Ollama client for a clue generation request.
+    """
+    return LLMResponse(
+        text=(
+            "{\"clue\": \"battle\", "
+            "\"count\": 3, "
+            "\"reasoning\": \"The word 'battle' captures a military commander ('NAPOLEON'),"
+            "the hardware ('RIFLE') and a primary theater of conflict ('RUSSIA')\""
+            "}"
+        ),
+        model_used="ollama3.2:latest",
+        latency_ms=500,
+        usage=TokenUsage(
+            prompt_tokens=50,
+            completion_tokens=30,
+            total_tokens=80
+        ),
+        finish_reason="stop",
+        provider="ollama",
+        execution_mode="local"
+    )
+
+
+@pytest.fixture
+def game_state_cg() -> GameState:
+    """
+    Provides a valid game state in the clue-giving phase for testing the LLM service when proposing
+    a clue.
+    """
+    return GameState(
+        game_id="test_game_001",
+        board=_get_board(),
+        clue_giver=0,
+        guesser=1
+    )
+
+
+@pytest.fixture
+def game_state_guessing() -> GameState:
+    """
+    Provides a valid game state in the guessing phase for testing the LLM service when proposing
+    a clue during an invalid phase of the game.
+    """
+    game_state = GameState(
+        game_id="test_game_001",
+        board=_get_board(),
+        clue_giver=1,
+        guesser=0
+    )
+    game_state.current_phase = GamePhase.GUESSING
+    clue = ClueEntry(
+        clue="battle",
+        count=3,
+        clue_giver=1,
+        turn_number=1
+    )
+    game_state.current_clue = clue
+    game_state.clue_history.append(clue)
+
+    return game_state
+
+
+def _get_board():
+    return Board(
+        board_id="test_board_001",
+        category="neutral",
+        cards=[
+            WordCard(id=i["id"], text=i["text"],
+                     human_perspective_role=i["human_perspective_role"],
+                     llm_perspective_role=i["llm_perspective_role"],
+                     category=i["category"]) for i in _get_cards()
+        ]
+    )
+
+
+def _get_cards():
+    return [
+        {
+            "id": 0,
+            "text": "BUCKET",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 1,
+            "text": "BRICK",
+            "human_perspective_role": CardRole.AGENT,
+            "llm_perspective_role": CardRole.AGENT,
+            "category": "neutral"
+        },
+        {
+            "id": 2,
+            "text": "ANT",
+            "human_perspective_role": CardRole.AGENT,
+            "llm_perspective_role": CardRole.ASSASSIN,
+            "category": "neutral"
+        },
+        {
+            "id": 3,
+            "text": "LEMONADE",
+            "human_perspective_role": CardRole.ASSASSIN,
+            "llm_perspective_role": CardRole.ASSASSIN,
+            "category": "neutral"
+        },
+        {
+            "id": 4,
+            "text": "RUSSIA",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.AGENT,
+            "category": "neutral"
+        },
+        {
+            "id": 5,
+            "text": "CAVE",
+            "human_perspective_role": CardRole.AGENT,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 6,
+            "text": "FIDDLE",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 7,
+            "text": "VAMPIRE",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 8,
+            "text": "TATTOO",
+            "human_perspective_role": CardRole.AGENT,
+            "llm_perspective_role": CardRole.AGENT,
+            "category": "neutral"
+        },
+        {
+            "id": 9,
+            "text": "RANCH",
+            "human_perspective_role": CardRole.AGENT,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 10,
+            "text": "LOCUST",
+            "human_perspective_role": CardRole.ASSASSIN,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 11,
+            "text": "RIFLE",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.AGENT,
+            "category": "neutral"
+        },
+        {
+            "id": 12,
+            "text": "VIRUS",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.AGENT,
+            "category": "neutral"
+        },
+        {
+            "id": 13,
+            "text": "IGLOO",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 14,
+            "text": "MAKEUP",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.ASSASSIN,
+            "category": "neutral"
+        },
+        {
+            "id": 15,
+            "text": "POTTER",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.AGENT,
+            "category": "neutral"
+        },
+        {
+            "id": 16,
+            "text": "CAESAR",
+            "human_perspective_role": CardRole.AGENT,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 17,
+            "text": "NAPOLEON",
+            "human_perspective_role": CardRole.AGENT,
+            "llm_perspective_role": CardRole.AGENT,
+            "category": "neutral"
+        },
+        {
+            "id": 18,
+            "text": "GOLF",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 19,
+            "text": "PINE",
+            "human_perspective_role": CardRole.ASSASSIN,
+            "llm_perspective_role": CardRole.AGENT,
+            "category": "neutral"
+        },
+        {
+            "id": 20,
+            "text": "DOLL",
+            "human_perspective_role": CardRole.AGENT,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 21,
+            "text": "LUNCH",
+            "human_perspective_role": CardRole.AGENT,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 22,
+            "text": "SKATES",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 23,
+            "text": "CRAFT",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.CIVILIAN,
+            "category": "neutral"
+        },
+        {
+            "id": 24,
+            "text": "PEW",
+            "human_perspective_role": CardRole.CIVILIAN,
+            "llm_perspective_role": CardRole.AGENT,
+            "category": "neutral"
+        }
+    ]
