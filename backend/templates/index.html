@@ -19,11 +19,11 @@
             </p>
         </div>
         <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-            <button
+            <a href="/play"
                 class="inline-flex items-center justify-center rounded-lg bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all min-w-[160px]">
                 <span class="material-symbols-outlined mr-2">play_arrow</span>
                 Start Game
-            </button>
+            </a>
             <button
                 class="inline-flex items-center justify-center rounded-lg bg-white dark:bg-surface-dark px-8 py-3.5 text-base font-semibold text-text-main dark:text-white shadow-sm ring-1 ring-inset ring-border-light dark:ring-border-dark hover:bg-gray-50 dark:hover:bg-gray-800 transition-all min-w-[160px]">
                 <span class="material-symbols-outlined mr-2">bar_chart</span>
@@ -154,6 +154,11 @@
             </div>
             <div class="flex-1 w-full relative">
                 <!-- Decorative representation of a game board -->
+                <!-- TODO:
+                    Fake board that loops through a scripted game sequence using setInterval.
+                    Cards flip one by one, a clue text appears above, then two matching cards highlight,
+                    then it resets.  
+                 -->
                 <div
                     class="aspect-video w-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 rounded-xl overflow-hidden border border-border-light dark:border-border-dark shadow-sm relative">
                     <div class="absolute inset-0 flex items-center justify-center opacity-30">
