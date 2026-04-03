@@ -4,153 +4,178 @@
     "cards": [
         {
             "id": 0,
-            "text": "Árbol",
-            "role_llm": "agent",
-            "role_human": "agent"
+            "text": "BUCKET",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 1,
-            "text": "Libro",
-            "role_llm": "agent",
-            "role_human": "agent"
+            "text": "BRICK",
+            "human_perspective_role": "agent",
+            "llm_perspective_role": "agent",
+            "category": "neutral"
         },
         {
             "id": 2,
-            "text": "Silla",
-            "role_llm": "agent",
-            "role_human": "agent"
+            "text": "ANT",
+            "human_perspective_role": "agent",
+            "llm_perspective_role": "assassin",
+            "category": "neutral"
         },
         {
             "id": 3,
-            "text": "Nube",
-            "role_llm": "agent",
-            "role_human": "civilian"
+            "text": "LEMONADE",
+            "human_perspective_role": "assassin",
+            "llm_perspective_role": "assassin",
+            "category": "neutral"
         },
         {
             "id": 4,
-            "text": "Río",
-            "role_llm": "agent",
-            "role_human": "civilian"
+            "text": "RUSSIA",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "agent",
+            "category": "neutral"
         },
         {
             "id": 5,
-            "text": "Montaña",
-            "role_llm": "agent",
-            "role_human": "civilian"
+            "text": "CAVE",
+            "human_perspective_role": "agent",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 6,
-            "text": "Camino",
-            "role_llm": "agent",
-            "role_human": "civilian"
+            "text": "FIDDLE",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 7,
-            "text": "Viento",
-            "role_llm": "agent",
-            "role_human": "civilian"
+            "text": "VAMPIRE",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 8,
-            "text": "Puente",
-            "role_llm": "agent",
-            "role_human": "assassin"
+            "text": "TATTOO",
+            "human_perspective_role": "agent",
+            "llm_perspective_role": "agent",
+            "category": "neutral"
         },
         {
             "id": 9,
-            "text": "Ciudad",
-            "role_llm": "civilian",
-            "role_human": "agent"
+            "text": "RANCH",
+            "human_perspective_role": "agent",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 10,
-            "text": "Coche",
-            "role_llm": "civilian",
-            "role_human": "agent"
+            "text": "LOCUST",
+            "human_perspective_role": "assassin",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 11,
-            "text": "Reloj",
-            "role_llm": "civilian",
-            "role_human": "agent"
+            "text": "RIFLE",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "agent",
+            "category": "neutral"
         },
         {
             "id": 12,
-            "text": "Lámpara",
-            "role_llm": "civilian",
-            "role_human": "agent"
+            "text": "VIRUS",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "agent",
+            "category": "neutral"
         },
         {
             "id": 13,
-            "text": "Espejo",
-            "role_llm": "civilian",
-            "role_human": "agent"
+            "text": "IGLOO",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 14,
-            "text": "Cuadro",
-            "role_llm": "assassin",
-            "role_human": "agent"
+            "text": "MAKEUP",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "assassin",
+            "category": "neutral"
         },
         {
             "id": 15,
-            "text": "Teléfono",
-            "role_llm": "assassin",
-            "role_human": "assassin"
+            "text": "POTTER",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "agent",
+            "category": "neutral"
         },
         {
             "id": 16,
-            "text": "Teclado",
-            "role_llm": "assassin",
-            "role_human": "civilian"
+            "text": "CAESAR",
+            "human_perspective_role": "agent",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 17,
-            "text": "Papel",
-            "role_llm": "civilian",
-            "role_human": "assassin"
+            "text": "NAPOLEON",
+            "human_perspective_role": "agent",
+            "llm_perspective_role": "agent",
+            "category": "neutral"
         },
         {
             "id": 18,
-            "text": "Ventana",
-            "role_llm": "civilian",
-            "role_human": "civilian"
+            "text": "GOLF",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 19,
-            "text": "Puerta",
-            "role_llm": "civilian",
-            "role_human": "civilian"
+            "text": "PINE",
+            "human_perspective_role": "assassin",
+            "llm_perspective_role": "agent",
+            "category": "neutral"
         },
         {
             "id": 20,
-            "text": "Suelo",
-            "role_llm": "civilian",
-            "role_human": "civilian"
+            "text": "DOLL",
+            "human_perspective_role": "agent",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 21,
-            "text": "Techo",
-            "role_llm": "civilian",
-            "role_human": "civilian"
+            "text": "LUNCH",
+            "human_perspective_role": "agent",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 22,
-            "text": "Pared",
-            "role_llm": "civilian",
-            "role_human": "civilian"
+            "text": "SKATES",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 23,
-            "text": "Jardín",
-            "role_llm": "civilian",
-            "role_human": "civilian"
+            "text": "CRAFT",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "civilian",
+            "category": "neutral"
         },
         {
             "id": 24,
-            "text": "Plaza",
-            "role_llm": "civilian",
-            "role_human": "civilian"
+            "text": "PEW",
+            "human_perspective_role": "civilian",
+            "llm_perspective_role": "agent",
+            "category": "neutral"
         }
     ]
 }
