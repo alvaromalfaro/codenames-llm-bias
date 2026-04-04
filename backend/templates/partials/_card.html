@@ -57,7 +57,7 @@ hover:border-primary/50 hover:bg-primary/5' %}
 
 <div id="card-{{ card.id }}" {% if oob %}hx-swap-oob="outerHTML" {% endif %} class="group relative flex items-center justify-center {{ card_classes }} rounded-lg shadow-sm transition-all duration-200
             {% if interactive %}cursor-pointer hover:shadow-md{% endif %}" {% if interactive %}
-    hx-post="/game/{{ game_id }}/guess" hx-vals='{"card_id": {{ card.id }}, "player_id": 1}' hx-target="#log-entries"
+    hx-post="/play/{{ game_id }}/guess" hx-vals='{"card_id": {{ card.id }}, "player_id": 1}' hx-target="#log-entries"
     hx-swap="beforeend" {% endif %}>
     <span class="font-bold text-sm tracking-widest {{ text_classes }}">{{ card.text }}</span>
     {% if label %}
