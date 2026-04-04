@@ -18,9 +18,9 @@
             <label for="model_provider" class="block text-sm font-medium text-text-main dark:text-white mb-2">Model
                 Provider</label>
             <!-- Dropdown for selecting the model provider. If selected, the model dropdown will be enabled -->
-            <select id="model_provider" name="model_provider" hx-get="/config/models" hx-target="#model"
+            <select id="model_provider" name="model_provider" hx-get="/config/models" hx-target="#model_name"
                 hx-trigger="change" hx-swap="innerHTML"
-                onchange="document.getElementById('model').disabled = this.value === 'Auto'"
+                onchange="document.getElementById('model_name').disabled = this.value === 'Auto'"
                 class="block w-full rounded-md border border-border-light dark:border-border-dark bg-transparent py-2 px-3 text-base focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
                 {% for provider in providers %}
                 <option value="{{ provider }}">{{ provider }}</option>
@@ -29,8 +29,8 @@
         </div>
 
         <div class="mb-4">
-            <label for="model" class="block text-sm font-medium text-text-main dark:text-white mb-2">Model</label>
-            <select id="model" name="model" disabled
+            <label for="model_name" class="block text-sm font-medium text-text-main dark:text-white mb-2">Model</label>
+            <select id="model_name" name="model_name" disabled
                 class="block w-full rounded-md border border-border-light dark:border-border-dark bg-transparent py-2 px-3 text-base focus:outline-none focus:ring-primary focus:border-primary sm:text-sm">
                 <!-- Options will be populated dynamically by the backend once a provider is selected -->
             </select>
