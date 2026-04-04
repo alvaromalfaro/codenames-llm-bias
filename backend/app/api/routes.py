@@ -171,3 +171,5 @@ async def pass_turn(game_id: str, player_id: int = Form(...)):
         "state": engine.state,
         "oob": True
     })
+
+    return HTMLResponse(content=log_html + clue_html + stats_html)
