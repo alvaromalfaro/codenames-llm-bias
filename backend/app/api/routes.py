@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 from fastapi import APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
@@ -5,6 +6,7 @@ from fastapi.responses import HTMLResponse
 
 from backend.app.core.loader import BoardLoader
 from backend.app.core.engine import CodenamesDuetEngine
+from backend.app.config.llm_models import llm_models
 
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
@@ -25,11 +27,10 @@ async def home(request: Request):
 
 @router.get("/config")
 async def game_configuration(request: Request):
-    # TODO: Implement provider and bias category retrieval logic
     return templates.TemplateResponse(
         request, "game_config.html", {
-            "providers": ["Auto", "Ollama"],
-            "bias_categories": ["example"]
+            "providers": ["Auto"] + list(llm_models.keys()),
+            "bias_categories": _board_loader.boards.keys()
         }
     )
 
@@ -39,11 +40,10 @@ async def get_models(request: Request, model_provider: str | None = None):
     """
     Retrieves available models based on the selected provider and returns them as HTML options.
     """
-    # TODO: Implement model retrieval logic based on provider
     if not model_provider or model_provider == "Auto":
         return HTMLResponse("")
 
-    models = ["llama3.2:latest"]
+    models = [model["name"] for model in llm_models.get(model_provider, [])]
 
     html = "".join(
         f'<option value="{model}">{model}</option>' for model in models)
@@ -59,10 +59,15 @@ async def play(request: Request, model_provider: str, bias_category: str, model_
     engine = CodenamesDuetEngine(board)
     _games[engine.state.game_id] = engine
 
+    if model_provider == "Auto":
+        # Auto-select the provider and model randomly
+        model_provider = random.choice(list(llm_models.keys()))
+        model_name = random.choice(llm_models[model_provider])["name"]
+
     return templates.TemplateResponse(request, "game.html", {
         "model_provider": model_provider,
         "bias_category": bias_category,
-        "model_name": model_name or model_provider,
+        "model_name": model_name,
         "state": engine.state,
         "game_id": engine.state.game_id,
     })

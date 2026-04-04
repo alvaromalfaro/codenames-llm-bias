@@ -8,6 +8,8 @@ class BoardLoader:
     def __init__(self, data_path: str = "data/boards"):
         # Initialize the loader with the path to the data directory
         self.data_path = Path(data_path)
+        # Construct a dictionary to hold the available boards, keyed by their category
+        self.boards = self._load_boards()
 
     def load_board(self, filename: str) -> Board:
         """
@@ -34,7 +36,7 @@ class BoardLoader:
         Lists all available board configuration files in the data directory.
 
         :param self: The instance of the BoardLoader class.
-        :return: A list of filenames for the available board configurations (e.g., ["board1.json", "board2.json"]).
+        :return: A list of filenames for the available board configurations.
         :rtype: List[str]
         """
         if not self.data_path.exists():
@@ -43,3 +45,23 @@ class BoardLoader:
             )
 
         return [f.name for f in self.data_path.glob("*.json")]
+
+    def _load_boards(self) -> dict[str, list[Board]]:
+        """
+        Internal method to load all board configurations from the data directory and store them in a 
+        dictionary.
+
+        :param self: The instance of the BoardLoader class.
+        :return: A dictionary mapping board categories to their corresponding Board objects.
+        :rtype: dict[str, list[Board]]
+        """
+        boards = {}
+        for file_path in self.data_path.glob("*.json"):
+            try:
+                board = self.load_board(file_path.name)
+                if board.category not in boards:
+                    boards[board.category] = []
+                boards[board.category].append(board)
+            except Exception as e:
+                print(f"Error loading board from '{file_path}': {e}")
+        return boards
