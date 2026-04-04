@@ -21,11 +21,17 @@ class LLMClientLocal(LLMClient):
 
         try:
             # Call the Ollama client to get the response from the local LLM
-            ollama_response = chat(
-                model=self.local_model,
-                messages=messages,
-                think=self.think,
-            )
+            if self.think:
+                ollama_response = chat(
+                    model=self.local_model,
+                    messages=messages,
+                    think=self.think,
+                )
+            else:
+                ollama_response = chat(
+                    model=self.local_model,
+                    messages=messages,
+                )
 
             # Convert the Ollama response to LLMResponse format
             response_json = json.loads(ollama_response.model_dump_json())

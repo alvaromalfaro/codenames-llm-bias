@@ -4,22 +4,20 @@
 
 # The structure of the `llm_models` dictionary is as follows:
 # {
-#     "ProviderName": [
-#         {
-#             "name": "ModelName",
+#     "ProviderName": {
+#         "ModelName": {
 #             "think": True/False,  # Optional configuration for the model
 #             ... # Other model-specific configurations can be added here
 #         },
 #         ...
-#     ],
+#     },
 #     ...
 # }
 
 llm_models = {
-    "Ollama": [
-        {
-            "name": "llama3.2:latest",
+    "Ollama": {
+        "llama3.2:latest": {
             "think": False
         }
-    ]
+    }
 }

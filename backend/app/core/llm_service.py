@@ -10,10 +10,7 @@ class LLMService:
     SYSTEM_TEMP_GG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_GUESSER.txt"
     USER_TEMP_GG_PATH = "data/prompt_templates/USER_TEMPLATE_GUESSER.txt"
 
-    def __init__(self, llm_client: LLMClient, default_model: str = "local", temperature: float = 0.7,
-                 max_tokens: int = 1000, timeout_s: int = 30):
-        self.llm_client = llm_client
-        self.default_model = default_model
+    def __init__(self, temperature: float = 0.7, max_tokens: int = 1000, timeout_s: int = 30):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_s = timeout_s
@@ -28,12 +25,13 @@ class LLMService:
         self._user_prompt_gg = self._load_prompt_template(
             self.USER_TEMP_GG_PATH, 3)
 
-    async def propose_clue(self, game_state: GameState, player_id: int = 0) -> ClueProposal:
+    async def propose_clue(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> ClueProposal:
         """
         Proposes a clue for the current game state. This method checks that the game is in the 
         correct phase and that the LLM is the clue giver before building the request, sending it to
         the LLM, and processing the response.
 
+        :param llm_client: The LLM client to use for generating responses.
         :param game_state: The current state of the game.
         :param player_id: The ID of the player proposing the clue (0 for LLM).
 
@@ -51,19 +49,20 @@ class LLMService:
         request = self._build_clue_request(game_state, player_id)
 
         # Send the request to the LLM client and get the response
-        response = await self.llm_client.generate(request)
+        response = await llm_client.generate(request)
 
         # Process the response and convert it into a ClueProposal
         clue_proposal = self._build_clue_proposal(response)
 
         return clue_proposal
 
-    async def propose_guess(self, game_state: GameState, player_id: int = 0) -> GuessProposal:
+    async def propose_guess(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> GuessProposal:
         """
         Proposes guesses for the current game state. This method checks that the game is in the 
         correct phase and that the LLM is the guesser before building the request, sending it to
         the LLM, and processing the response.
 
+        :param llm_client: The LLM client to use for generating responses.
         :param game_state: The current state of the game.
         :param player_id: The ID of the player proposing the guesses (0 for LLM).
 
@@ -86,7 +85,7 @@ class LLMService:
         request = self._build_guess_request(game_state, player_id)
 
         # Send the request to the LLM client and get the response.
-        response = await self.llm_client.generate(request)
+        response = await llm_client.generate(request)
 
         # Process the response and convert it into a GuessProposal.
         guess_proposal = self._build_guess_proposal(response)

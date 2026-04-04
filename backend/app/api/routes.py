@@ -6,6 +6,9 @@ from fastapi.responses import HTMLResponse
 
 from backend.app.core.loader import BoardLoader
 from backend.app.core.engine import CodenamesDuetEngine
+from backend.app.core.llm_service import LLMService
+from backend.app.core.lm.llm_client import LLMClient
+from backend.app.core.lm.llm_client_local import LLMClientLocal
 from backend.app.config.llm_models import llm_models
 
 
@@ -17,7 +20,11 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 router = APIRouter()
 
 _board_loader = BoardLoader(data_path=str(_DATA_DIR / "boards"))
-_games: dict[str, CodenamesDuetEngine] = {}
+_model_providers = list(llm_models.keys())
+_model_names = {provider: list(models.keys())
+                for provider, models in llm_models.items()}
+_llm_service = LLMService()
+_games: dict[str, tuple[CodenamesDuetEngine, LLMClient]] = {}
 
 
 @router.get("/")
@@ -29,7 +36,7 @@ async def home(request: Request):
 async def game_configuration(request: Request):
     return templates.TemplateResponse(
         request, "game_config.html", {
-            "providers": ["Auto"] + list(llm_models.keys()),
+            "providers": ["Auto"] + _model_providers,
             "bias_categories": _board_loader.boards.keys()
         }
     )
@@ -43,10 +50,8 @@ async def get_models(request: Request, model_provider: str | None = None):
     if not model_provider or model_provider == "Auto":
         return HTMLResponse("")
 
-    models = [model["name"] for model in llm_models.get(model_provider, [])]
-
     html = "".join(
-        f'<option value="{model}">{model}</option>' for model in models)
+        f'<option value="{model}">{model}</option>' for model in _model_names.get(model_provider, []))
     return HTMLResponse(content=html)
 
 
@@ -57,12 +62,16 @@ async def play(request: Request, model_provider: str, bias_category: str, model_
     """
     board = _board_loader.load_board("example_board.json")
     engine = CodenamesDuetEngine(board)
-    _games[engine.state.game_id] = engine
 
     if model_provider == "Auto":
-        # Auto-select the provider and model randomly
-        model_provider = random.choice(list(llm_models.keys()))
-        model_name = random.choice(llm_models[model_provider])["name"]
+        model_provider = random.choice(_model_providers)
+        model_name = random.choice(_model_names.get(model_provider, []))
+
+    model_config = llm_models.get(model_provider, {}).get(model_name, {})
+    llm_client = LLMClientLocal(
+        local_model=model_name, think=model_config.get("think", False))
+
+    _games[engine.state.game_id] = (engine, llm_client)
 
     return templates.TemplateResponse(request, "game.html", {
         "model_provider": model_provider,
@@ -78,10 +87,11 @@ async def give_clue(game_id: str, clue: str = Form(...), count: int = Form(...),
     """
 
     """
-    engine = _games.get(game_id)
-    if not engine:
+    game = _games.get(game_id)
+    if not game:
         return HTMLResponse("Game not found.", status_code=404)
 
+    engine, _ = game
     try:
         engine.receive_clue(clue, count, player_id)
     except (ValueError, PermissionError) as e:
@@ -108,10 +118,11 @@ async def make_guess(game_id: str, card_id: str = Form(...), player_id: int = Fo
     Handle a guess made by a player, update the game state, and return the updated log and clue 
     banner.
     """
-    engine = _games.get(game_id)
-    if not engine:
+    game = _games.get(game_id)
+    if not game:
         return HTMLResponse("Game not found.", status_code=404)
 
+    engine, _ = game
     try:
         result = engine.resolve_guess(card_id, player_id)
     except (ValueError, PermissionError) as e:
@@ -148,10 +159,11 @@ async def pass_turn(game_id: str, player_id: int = Form(...)):
     """
     Handle a pass action by a player, update the game state, and return the updated clue banner.
     """
-    engine = _games.get(game_id)
-    if not engine:
+    game = _games.get(game_id)
+    if not game:
         return HTMLResponse("Game not found.", status_code=404)
 
+    engine, _ = game
     try:
         engine.pass_turn(player_id)
     except (ValueError, PermissionError) as e:
