@@ -100,3 +100,74 @@ async def give_clue(game_id: str, clue: str = Form(...), count: int = Form(...),
     })
 
     return HTMLResponse(content=log_html + clue_html)
+
+
+@router.post("/play/{game_id}/guess")
+async def make_guess(game_id: str, card_id: str = Form(...), player_id: int = Form(...)):
+    """
+    Handle a guess made by a player, update the game state, and return the updated log and clue 
+    banner.
+    """
+    engine = _games.get(game_id)
+    if not engine:
+        return HTMLResponse("Game not found.", status_code=404)
+
+    try:
+        result = engine.resolve_guess(card_id, player_id)
+    except (ValueError, PermissionError) as e:
+        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
+
+    card = engine.state.board.cards.get(card_id)
+
+    log_html = templates.get_template("partials/_log_entry.html").render({
+        "card": card,
+        "result": result,
+        "state": engine.state
+    })
+    card_html = templates.get_template("partials/_card.html").render({
+        "card": card,
+        "game_id": game_id,
+        "state": engine.state,
+        "oob": True
+    })
+    clue_html = templates.get_template("partials/_clue_banner.html").render({
+        "state": engine.state,
+        "game_id": game_id,
+        "oob": True
+    })
+    stats_html = templates.get_template("partials/_stats.html").render({
+        "state": engine.state,
+        "oob": True
+    })
+
+    return HTMLResponse(content=log_html + card_html + clue_html + stats_html)
+
+
+@router.post("/play/{game_id}/pass")
+async def pass_turn(game_id: str, player_id: int = Form(...)):
+    """
+    Handle a pass action by a player, update the game state, and return the updated clue banner.
+    """
+    engine = _games.get(game_id)
+    if not engine:
+        return HTMLResponse("Game not found.", status_code=404)
+
+    try:
+        engine.pass_turn(player_id)
+    except (ValueError, PermissionError) as e:
+        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
+
+    log_html = templates.get_template("partials/_log_entry.html").render({
+        "card": None,
+        "result": "pass",
+        "state": engine.state
+    })
+    clue_html = templates.get_template("partials/_clue_banner.html").render({
+        "state": engine.state,
+        "game_id": game_id,
+        "oob": True
+    })
+    stats_html = templates.get_template("partials/_game_stats.html").render({
+        "state": engine.state,
+        "oob": True
+    })
