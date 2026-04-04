@@ -3,10 +3,19 @@ from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
+from backend.app.core.loader import BoardLoader
+from backend.app.core.engine import CodenamesDuetEngine
+
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
+_DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
+
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 router = APIRouter()
+
+_board_loader = BoardLoader(data_path=str(_DATA_DIR / "boards"))
+_games: dict[str, CodenamesDuetEngine] = {}
 
 
 @router.get("/")
@@ -39,3 +48,21 @@ async def get_models(request: Request, model_provider: str | None = None):
     html = "".join(
         f'<option value="{model}">{model}</option>' for model in models)
     return HTMLResponse(content=html)
+
+
+@router.get("/play")
+async def play(request: Request, model_provider: str, bias_category: str, model_name: str | None = None):
+    """
+    Start the game engine, load the board configuration, and render the game page.
+    """
+    board = _board_loader.load_board("example_board.json")
+    engine = CodenamesDuetEngine(board)
+    _games[engine.state.game_id] = engine
+
+    return templates.TemplateResponse(request, "game.html", {
+        "model_provider": model_provider,
+        "bias_category": bias_category,
+        "model_name": model_name or model_provider,
+        "state": engine.state,
+        "game_id": engine.state.game_id,
+    })
