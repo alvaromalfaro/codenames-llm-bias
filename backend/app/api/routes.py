@@ -1,5 +1,5 @@
 from pathlib import Path
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Form
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 
@@ -66,3 +66,32 @@ async def play(request: Request, model_provider: str, bias_category: str, model_
         "state": engine.state,
         "game_id": engine.state.game_id,
     })
+
+
+@router.post("/play/{game_id}/clue")
+async def give_clue(game_id: str, clue: str = Form(...), count: int = Form(...), player_id: int = Form(...)):
+    """
+
+    """
+    engine = _games.get(game_id)
+    if not engine:
+        return HTMLResponse("Game not found.", status_code=404)
+
+    try:
+        engine.receive_clue(clue, count, player_id)
+    except (ValueError, PermissionError) as e:
+        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
+
+    log_html = templates.get_template("partials/_log_entry.html").render({
+        "card": None,
+        "result": "clue",
+        "state": engine.state,
+        "clue": engine.state.current_clue
+    })
+    clue_html = templates.get_template("partials/_clue_banner.html").render({
+        "state": engine.state,
+        "game_id": game_id,
+        "oob": True
+    })
+
+    return HTMLResponse(content=log_html + clue_html)
