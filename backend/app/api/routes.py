@@ -101,7 +101,8 @@ async def give_clue(game_id: str, clue: str = Form(...), count: int = Form(...),
         "card": None,
         "result": "clue",
         "state": engine.state,
-        "clue": engine.state.current_clue
+        "clue": engine.state.current_clue,
+        "player": "Human"
     })
     clue_html = templates.get_template("partials/_clue_banner.html").render({
         "state": engine.state,
@@ -113,7 +114,7 @@ async def give_clue(game_id: str, clue: str = Form(...), count: int = Form(...),
 
 
 @router.post("/play/{game_id}/guess")
-async def make_guess(game_id: str, card_id: str = Form(...), player_id: int = Form(...)):
+async def make_guess(game_id: str, card_id: int = Form(...), player_id: int = Form(...)):
     """
     Handle a guess made by a player, update the game state, and return the updated log and clue 
     banner.
@@ -128,12 +129,13 @@ async def make_guess(game_id: str, card_id: str = Form(...), player_id: int = Fo
     except (ValueError, PermissionError) as e:
         return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
 
-    card = engine.state.board.cards.get(card_id)
+    card = engine.state.board.cards[card_id]
 
     log_html = templates.get_template("partials/_log_entry.html").render({
         "card": card,
         "result": result,
-        "state": engine.state
+        "state": engine.state,
+        "player": "Human"
     })
     card_html = templates.get_template("partials/_card.html").render({
         "card": card,
@@ -146,12 +148,16 @@ async def make_guess(game_id: str, card_id: str = Form(...), player_id: int = Fo
         "game_id": game_id,
         "oob": True
     })
-    stats_html = templates.get_template("partials/_stats.html").render({
+    stats_html = templates.get_template("partials/_game_stats.html").render({
         "state": engine.state,
         "oob": True
     })
 
-    return HTMLResponse(content=log_html + card_html + clue_html + stats_html)
+    cards_html = ""
+    if result in ("civilian", "assassin", "victory", "victory_sd"):
+        cards_html = _render_cards_oob(engine, game_id)
+
+    return HTMLResponse(content=log_html + card_html + clue_html + stats_html + cards_html)
 
 
 @router.post("/play/{game_id}/pass")
@@ -172,7 +178,8 @@ async def pass_turn(game_id: str, player_id: int = Form(...)):
     log_html = templates.get_template("partials/_log_entry.html").render({
         "card": None,
         "result": "pass",
-        "state": engine.state
+        "state": engine.state,
+        "player": "Human"
     })
     clue_html = templates.get_template("partials/_clue_banner.html").render({
         "state": engine.state,
@@ -183,5 +190,103 @@ async def pass_turn(game_id: str, player_id: int = Form(...)):
         "state": engine.state,
         "oob": True
     })
+    cards_html = _render_cards_oob(engine, game_id)
 
-    return HTMLResponse(content=log_html + clue_html + stats_html)
+    return HTMLResponse(content=log_html + clue_html + stats_html + cards_html)
+
+
+@router.post("/play/{game_id}/llm-clue")
+async def llm_give_clue(game_id: str):
+    game = _games.get(game_id)
+    if not game:
+        return HTMLResponse("Game not found.", status_code=404)
+
+    engine, llm_client = game
+
+    proposal = await _llm_service.propose_clue(llm_client, engine.state)
+
+    engine.receive_clue(proposal.clue, proposal.count,
+                        player_id=0, raw_payload=proposal.raw_payload)
+
+    print(
+        f"LLM proposed clue: {proposal.clue} ({proposal.count}) with reasoning: {proposal.reasoning}")
+
+    cards_html = _render_cards_oob(engine, game_id)
+    log_html = templates.get_template("partials/_log_entry.html").render({
+        "card": None,
+        "result": "clue",
+        "state": engine.state,
+        "clue": engine.state.current_clue,
+        "player": "LLM"
+    })
+    clue_html = templates.get_template("partials/_clue_banner.html").render({
+        "state": engine.state,
+        "game_id": game_id,
+        "oob": True
+    })
+
+    return HTMLResponse(content=cards_html + log_html + clue_html)
+
+
+@router.post("/play/{game_id}/llm-guess")
+async def llm_make_guess(game_id: str):
+    game = _games.get(game_id)
+    if not game:
+        return HTMLResponse("Game not found.", status_code=404)
+
+    engine, llm_client = game
+
+    try:
+        proposal = await _llm_service.propose_guess(llm_client, engine.state, player_id=0)
+    except (ValueError, PermissionError) as e:
+        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
+
+    html = ""
+    for word in proposal.proposals:
+        card_id = engine.state.board.get_card_id_by_word(word)
+        if card_id is None:
+            # LLM hallucinated a word not on the board
+            continue
+
+        try:
+            result = engine.resolve_guess(card_id, player_id=0)
+        except (ValueError, PermissionError):
+            break
+
+        print(
+            f"LLM proposed guess: {word}")
+
+        card = engine.state.board.cards[card_id]
+
+        html += templates.get_template("partials/_log_entry.html").render({
+            "card": card, "result": result, "state": engine.state, "player": "LLM"
+        })
+        html += templates.get_template("partials/_card.html").render({
+            "card": card, "game_id": game_id, "state": engine.state, "oob": True
+        })
+        html += templates.get_template("partials/_clue_banner.html").render({
+            "state": engine.state, "game_id": game_id, "oob": True
+        })
+        html += templates.get_template("partials/_game_stats.html").render({
+            "state": engine.state, "oob": True
+        })
+
+        if result != "agent":
+            # civilian, assassin, or victory - turn or game ended
+            if result in ("civilian", "assassin", "victory", "victory_sd"):
+                html += _render_cards_oob(engine, game_id)
+            break
+
+    return HTMLResponse(content=html)
+
+
+def _render_cards_oob(engine: CodenamesDuetEngine, game_id: str) -> str:
+    return "".join(
+        templates.get_template("partials/_card.html").render({
+            "card": card,
+            "game_id": game_id,
+            "state": engine.state,
+            "oob": True
+        })
+        for card in engine.state.board.cards if not card.revealed
+    )

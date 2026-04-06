@@ -46,7 +46,8 @@ class LLMService:
                 "The player must be the clue giver to propose a clue.")
 
         # Build the LLM request for proposing a clue
-        request = self._build_clue_request(game_state, player_id)
+        request = self._build_clue_request(
+            game_state, llm_client.local_model, player_id)
 
         # Send the request to the LLM client and get the response
         response = await llm_client.generate(request)
@@ -82,7 +83,8 @@ class LLMService:
             )
 
         # Build the LLM request for proposing a guess
-        request = self._build_guess_request(game_state, player_id)
+        request = self._build_guess_request(
+            game_state, llm_client.local_model, player_id)
 
         # Send the request to the LLM client and get the response.
         response = await llm_client.generate(request)
@@ -92,13 +94,14 @@ class LLMService:
 
         return guess_proposal
 
-    def _build_clue_request(self, game_state: GameState, player_id: int) -> LLMRequest:
+    def _build_clue_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
         """
         Builds an LLMRequest for proposing a clue based on the current game state. This method
         extracts relevant information from the game state, formats it into a user prompt, and
         constructs the list of messages for the LLM request.
 
         :param game_state: The current state of the game.
+        :param model: The LLM model to use for generating the clue.
         :param player_id: The ID of the player proposing the clue (0 for LLM).
 
         :return: An instance of LLMRequest containing the messages and parameters for the LLM
@@ -134,7 +137,7 @@ class LLMService:
             LLMMessage(role="user", content=user_prompt)
         ]
 
-        return LLMRequest(messages=messages, model=self.default_model, temperature=self.temperature,
+        return LLMRequest(messages=messages, model=model, temperature=self.temperature,
                           max_tokens=self.max_tokens, timeout_s=self.timeout_s)
 
     def _build_clue_proposal(self, response: LLMResponse) -> ClueProposal:
@@ -168,13 +171,14 @@ class LLMService:
         return ClueProposal(clue=clue.strip(), count=count, reasoning=reasoning.strip(),
                             raw_payload=response.raw_payload)
 
-    def _build_guess_request(self, game_state: GameState, player_id: int) -> LLMRequest:
+    def _build_guess_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
         """
         Builds an LLMRequest for proposing guesses based on the current game state. This method 
         extracts relevant information from the game state, formats it into a user prompt, and 
         constructs the list of messages for the LLM request.
 
         :param game_state: The current state of the game.
+        :param model: The LLM model to use for generating the guess.
         :param player_id: The ID of the player proposing the guess (0 for LLM).
 
         :return: An instance of LLMRequest containing the messages and parameters for the LLM
@@ -201,7 +205,7 @@ class LLMService:
             LLMMessage(role="user", content=user_prompt)
         ]
 
-        return LLMRequest(messages=messages, model=self.default_model, temperature=self.temperature,
+        return LLMRequest(messages=messages, model=model, temperature=self.temperature,
                           max_tokens=self.max_tokens, timeout_s=self.timeout_s)
 
     def _build_guess_proposal(self, response: LLMResponse) -> GuessProposal:

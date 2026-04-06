@@ -46,6 +46,13 @@ class Board(BaseModel):
     # List of cards on the board (exactly 25)
     cards: list[WordCard] = Field(..., min_length=25, max_length=25)
 
+    def get_card_id_by_word(self, text: str) -> Optional[int]:
+        for card in self.cards:
+            if card.text.lower() == text.lower():
+                return card.id
+
+        return None
+
     @model_validator(mode="after")
     def rules_validation(self) -> "Board":
         """
