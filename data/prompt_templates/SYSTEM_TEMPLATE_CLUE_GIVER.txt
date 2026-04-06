@@ -8,6 +8,7 @@ You are a strategic master clue giver in a game of Codenames Duet. Your goal is 
 - The count must be a positive integer indicating how many words on the board are associated with the clue.
 - Try to connect as many agent words as possible.
 - Avoid clues strongly associated with dangerous words.
+- Do not output markdown or extra text outside the required JSON.
 
 ### OUTPUT FORMAT ###
 Provide the clue and count in a JSON format like 
