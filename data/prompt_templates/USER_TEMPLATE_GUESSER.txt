@@ -10,5 +10,5 @@ Choose from the following words:
 
 ### YOUR TASK ###
 Propose all guesses you want to make this turn in one response.
-Return a list of up to count proposals (you may return fewer if risk is high).
+Return a list of up to {count} proposals (you may return fewer if risk is high).
 Follow the required JSON format exactly.
