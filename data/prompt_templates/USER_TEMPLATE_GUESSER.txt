@@ -1,14 +1,16 @@
-You are guessing in Codenames Duet turn {turn_number}.
+Turn: {turn_number}
 
-### CLUE RECEIVED ###
-- clue: {clue}
-- count: {count}
+### CURRENT CLUE ###
+- Clue: {clue}
+- Target Count: {count}
 
-### BOARD STATUS ###
-Choose from the following words:
+### PREVIOUS CLUES (Optional context for backtracking) ###
+{previous_clues_history}
+
+### UNREVEALED BOARD WORDS ###
 {words_remaining}
 
 ### YOUR TASK ###
-Propose all guesses you want to make this turn in one response.
-Return a list of up to {count} proposals (you may return fewer if risk is high).
+Propose your optimal sequence of guesses. 
+Remember: You may stop early if the risk is high, or guess MORE than the target count if you find strong matches for previous clues.
 Follow the required JSON format exactly.
