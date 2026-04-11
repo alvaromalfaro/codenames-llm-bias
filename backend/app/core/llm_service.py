@@ -114,11 +114,17 @@ class LLMService:
         if player_id == 0:
             # LLM is the clue giver, so we consider its perspective for the agent and dangerous words
             agent_words = self._get_llm_perspective_agent_words(game_state)
-            danger_words = self._get_llm_perspective_danger_words(game_state)
+            assassin_words = self._get_llm_perspective_assassin_words(
+                game_state)
+            civilian_words = self._get_llm_perspective_civilian_words(
+                game_state)
         else:
             # Same as above, but from the human player's perspective
             agent_words = self._get_human_perspective_agent_words(game_state)
-            danger_words = self._get_human_perspective_danger_words(game_state)
+            assassin_words = self._get_human_perspective_assassin_words(
+                game_state)
+            civilian_words = self._get_human_perspective_civilian_words(
+                game_state)
 
         rev_words = [
             card.text for card in game_state.board.cards if card.revealed]
@@ -126,8 +132,9 @@ class LLMService:
         # Format the user prompt with the current game state information
         user_prompt = self._user_prompt_cg.format(
             turn_number=turn_number,
-            agent_words=", ".join(agent_words),
-            danger_words=", ".join(danger_words),
+            agent_words="\n".join([f"- {word}" for word in agent_words]),
+            assassin_words="\n".join([f"- {word}" for word in assassin_words]),
+            civilian_words="\n".join([f"- {word}" for word in civilian_words]),
             revealed_words=", ".join(rev_words)
         )
 
@@ -249,19 +256,31 @@ class LLMService:
         return [card.text for card in game_state.board.cards if card.llm_perspective_role ==
                 CardRole.AGENT and not card.revealed]
 
-    def _get_llm_perspective_danger_words(self, game_state: GameState) -> list[str]:
+    def _get_llm_perspective_assassin_words(self, game_state: GameState) -> list[str]:
         """
-        Extracts the dangerous words (assassins and civilians) from the game state based on the LLM's
-        perspective. Words that are marked with a time marker are ignored to keep the final prompt
-        concise.
+        Extracts the assassin words from the game state based on the LLM's perspective. Words that 
+        are marked with a time marker are ignored to keep the final prompt concise.
 
         :param game_state: The current state of the game.
 
-        :return: A list of dangerous words that are not marked with a time marker from the LLM's
+        :return: A list of assassin words that are not marked with a time marker from the LLM's
             perspective.
         """
-        return [card.text for card in game_state.board.cards if card.llm_perspective_role !=
-                CardRole.AGENT and 1 not in card.time_marker_by]
+        return [card.text for card in game_state.board.cards if card.llm_perspective_role ==
+                CardRole.ASSASSIN and 1 not in card.time_marker_by]
+
+    def _get_llm_perspective_civilian_words(self, game_state: GameState) -> list[str]:
+        """
+        Extracts the civilian words from the game state based on the LLM's perspective. Words that 
+        are marked with a time marker are ignored to keep the final prompt concise.
+
+        :param game_state: The current state of the game.
+
+        :return: A list of civilian words that are not marked with a time marker from the LLM's
+            perspective.
+        """
+        return [card.text for card in game_state.board.cards if card.llm_perspective_role ==
+                CardRole.CIVILIAN and 1 not in card.time_marker_by]
 
     def _get_human_perspective_agent_words(self, game_state: GameState) -> list[str]:
         """
@@ -275,19 +294,31 @@ class LLMService:
         return [card.text for card in game_state.board.cards if card.human_perspective_role ==
                 CardRole.AGENT and not card.revealed]
 
-    def _get_human_perspective_danger_words(self, game_state: GameState) -> list[str]:
+    def _get_human_perspective_assassin_words(self, game_state: GameState) -> list[str]:
         """
-        Extract the dangerous words (assassins and civilians) from the game state based on the 
-        human's perspective. Words that are marked with a time marker are ignored to keep the final
-        prompt concise.
+        Extract the assassin words from the game state based on the human's perspective. Words that 
+        are marked with a time marker are ignored to keep the final prompt concise.
 
         :param game_state: The current state of the game.
 
-        :return: A list of dangerous words that are not marked with a time marker from the human's
+        :return: A list of assassin words that are not marked with a time marker from the human's
             perspective.
         """
-        return [card.text for card in game_state.board.cards if card.human_perspective_role !=
-                CardRole.AGENT and 0 not in card.time_marker_by]
+        return [card.text for card in game_state.board.cards if card.human_perspective_role ==
+                CardRole.ASSASSIN and 0 not in card.time_marker_by]
+
+    def _get_human_perspective_civilian_words(self, game_state: GameState) -> list[str]:
+        """
+        Extract the civilian words from the game state based on the human's perspective. Words that 
+        are marked with a time marker are ignored to keep the final prompt concise.
+
+        :param game_state: The current state of the game.
+
+        :return: A list of civilian words that are not marked with a time marker from the human's
+            perspective.
+        """
+        return [card.text for card in game_state.board.cards if card.human_perspective_role ==
+                CardRole.CIVILIAN and 0 not in card.time_marker_by]
 
     def _load_prompt_template(self, template_path: str, prompt_type: int) -> str:
         """
