@@ -31,7 +31,7 @@ class WordCard(BaseModel):
 
     # Card state
     revealed: bool = False
-    revealed_by: Optional[int] = None  # 0: "llm" or 1: "human"
+    revealed_by: list[int] = []  # 0: "llm" or 1: "human"
 
     # Time marker state
     time_marker_by: list[int] = []  # 0: "llm" or 1: "human"
