@@ -35,6 +35,8 @@ class LLMClientLocal(LLMClient):
 
             # Convert the Ollama response to LLMResponse format
             response_json = json.loads(ollama_response.model_dump_json())
+            # Debugging statement
+            print(f"Ollama response JSON: {response_json}")
 
             return LLMResponse(
                 text=ollama_response.message.content,

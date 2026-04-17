@@ -156,8 +156,9 @@ async def make_guess(game_id: str, card_id: int = Form(...), player_id: int = Fo
     cards_html = ""
     if result in ("civilian", "assassin", "victory", "victory_sd"):
         cards_html = _render_cards_oob(engine, game_id)
+        return HTMLResponse(content=log_html + cards_html + clue_html + stats_html)
 
-    return HTMLResponse(content=log_html + card_html + clue_html + stats_html + cards_html)
+    return HTMLResponse(content=log_html + card_html + clue_html + stats_html)
 
 
 @router.post("/play/{game_id}/pass")
@@ -288,5 +289,5 @@ def _render_cards_oob(engine: CodenamesDuetEngine, game_id: str) -> str:
             "state": engine.state,
             "oob": True
         })
-        for card in engine.state.board.cards if not card.revealed
+        for card in engine.state.board.cards
     )
