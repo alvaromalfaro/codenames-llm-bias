@@ -11,7 +11,7 @@
 {% set label = "AGENT" %}
 {% set label_classes = "text-green-600" %}
 {% elif human_role == "civilian" %}
-{% set card_classes = "bg-amber-100 border-amber-300" %}
+{% set card_classes = "bg-amber-100 border border-amber-400" %}
 {% set text_classes = "text-amber-800" %}
 {% set label = "CIVILIAN" %}
 {% set label_classes = "text-amber-600" %}
@@ -43,7 +43,7 @@
 {% set label_classes = "text-green-600" %}
 <!-- Civilian revealed by human: crossed out yellow -->
 {% elif llm_role == "civilian" %}
-{% set card_classes = "bg-amber-100 border-amber-300" %}
+{% set card_classes = "bg-amber-100 border border-amber-400" %}
 {% set text_classes = "text-amber-800 line-through decoration-2" %}
 {% set label = "CIVILIAN" %}
 {% set label_classes = "text-amber-600" %}
