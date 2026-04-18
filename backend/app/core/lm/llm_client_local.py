@@ -7,9 +7,7 @@ from ollama import chat, RequestError, ResponseError
 
 
 class LLMClientLocal(LLMClient):
-    LLM_MODEL = "llama3.2:latest"
-
-    def __init__(self, local_model: str = LLM_MODEL, think: bool = True):
+    def __init__(self, local_model: str, think: bool = True):
         self.local_model = local_model
         self.think = think
 

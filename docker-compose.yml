@@ -25,12 +25,15 @@ services:
 
   # Local LLM inference via Ollama
   ollama:
-    image: ollama/ollama
+    image: ollama/ollama:latest
     container_name: codenames-ollama
+    entrypoint: [ "/bin/bash", "/ollama_entrypoint.sh" ]
     ports:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama # Persists downloaded models and configurations across restarts
+      - ./ollama_entrypoint.sh:/ollama_entrypoint.sh:ro
+      - ./backend/app/config/llm_models.py:/llm_models.py:ro
     deploy:
       resources:
         reservations:
