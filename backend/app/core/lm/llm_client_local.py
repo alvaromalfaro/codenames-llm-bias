@@ -1,5 +1,7 @@
 import json
 from json import JSONDecodeError
+import re
+from pydantic import BaseModel
 from backend.app.core.lm.llm_client import LLMClient
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import LLMModelNotProvidedError, LLMRefusalError, LLMParseError
@@ -11,11 +13,13 @@ class LLMClientLocal(LLMClient):
         self.local_model = local_model
         self.think = think
 
-    async def generate(self, request: LLMRequest) -> LLMResponse:
+    async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
         # Convert LLMRequest to the format expected by the Ollama client
         messages = [
             {"role": message.role, "content": message.content} for message in request.messages
         ]
+
+        format = expected_format.model_json_schema() if expected_format else "json"
 
         try:
             # Call the Ollama client to get the response from the local LLM
@@ -24,20 +28,31 @@ class LLMClientLocal(LLMClient):
                     model=self.local_model,
                     messages=messages,
                     think=self.think,
+                    format=format
                 )
             else:
                 ollama_response = chat(
                     model=self.local_model,
                     messages=messages,
+                    format=format
                 )
 
-            # Convert the Ollama response to LLMResponse format
+            # Convert the Ollama response to JSON
             response_json = json.loads(ollama_response.model_dump_json())
-            # Debugging statement
-            print(f"Ollama response JSON: {response_json}")
+            content = response_json.get("message", {}).get("content", "")
+            content = self._remove_markdown_code_blocks(content)
+
+            # Validate the response against the expected format if provided
+            if expected_format:
+                try:
+                    expected_format.model_validate_json(content)
+                except Exception as e:
+                    raise LLMParseError(
+                        provider="ollama", cause=e, execution_mode="local"
+                    )
 
             return LLMResponse(
-                text=ollama_response.message.content,
+                text=content,
                 model_used=self.local_model,
                 latency_ms=ollama_response.total_duration,
                 usage=TokenUsage(
@@ -64,3 +79,10 @@ class LLMClientLocal(LLMClient):
             raise LLMParseError(
                 provider="ollama", cause=je, execution_mode="local"
             )
+
+    def _remove_markdown_code_blocks(self, text: str) -> str:
+        """
+        Utility method to extract JSON content from a string, especially if it's wrapped in markdown
+        code blocks.
+        """
+        return re.sub(r"```json(.*?)```", r"\1", text, flags=re.DOTALL).strip()

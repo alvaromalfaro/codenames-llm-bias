@@ -88,7 +88,7 @@ class CodenamesDuetEngine:
                 "The guesser has already revealed all of their agents and cannot make more guesses.")
 
         card = self.state.board.cards[card_id]
-        if card.revealed:
+        if player_id in card.revealed_by:
             raise ValueError("This card has already been revealed.")
 
         if player_id in card.time_marker_by:

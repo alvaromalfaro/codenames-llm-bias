@@ -1,6 +1,6 @@
 import json
 from backend.app.core.lm.llm_client import LLMClient
-from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage
+from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage, ClueJSONFormat, GuessJSONFormat
 from backend.app.models.game_schemas import GameState, GamePhase, CardRole
 
 
@@ -50,7 +50,7 @@ class LLMService:
             game_state, llm_client.local_model, player_id)
 
         # Send the request to the LLM client and get the response
-        response = await llm_client.generate(request)
+        response = await llm_client.generate(request, expected_format=ClueJSONFormat)
 
         # Process the response and convert it into a ClueProposal
         clue_proposal = self._build_clue_proposal(response)
@@ -87,7 +87,7 @@ class LLMService:
             game_state, llm_client.local_model, player_id)
 
         # Send the request to the LLM client and get the response.
-        response = await llm_client.generate(request)
+        response = await llm_client.generate(request, expected_format=GuessJSONFormat)
 
         # Process the response and convert it into a GuessProposal.
         guess_proposal = self._build_guess_proposal(response)
@@ -203,7 +203,7 @@ class LLMService:
             for clue_entry in game_state.clue_history if clue_entry.clue_giver != player_id
         ])
         words_remaining = "\n".join([
-            f"- {card.text}" for card in game_state.board.cards if not card.revealed and
+            f"- {card.text}" for card in game_state.board.cards if 0 not in card.revealed_by and
             player_id not in card.time_marker_by
         ])
 
@@ -267,7 +267,7 @@ class LLMService:
         :return: A list of agent words that are not revealed from the LLM's perspective.
         """
         return [f"- {card.text}" for card in game_state.board.cards if card.llm_perspective_role ==
-                CardRole.AGENT and not card.revealed]
+                CardRole.AGENT and 1 not in card.revealed_by]
 
     def _get_llm_perspective_assassin_words(self, game_state: GameState) -> list[str]:
         """
@@ -280,7 +280,7 @@ class LLMService:
             perspective.
         """
         return [f"- {card.text}" for card in game_state.board.cards if card.llm_perspective_role ==
-                CardRole.ASSASSIN and 1 not in card.time_marker_by]
+                CardRole.ASSASSIN]
 
     def _get_llm_perspective_civilian_words(self, game_state: GameState) -> list[str]:
         """
@@ -304,8 +304,8 @@ class LLMService:
         :return: A list of revealed words from the LLM's perspective.
         """
         return [
-            f"- {card.text}" for card in game_state.board.cards if card.revealed
-            and card.llm_perspective_role == CardRole.AGENT
+            f"- {card.text}" for card in game_state.board.cards if 1 in card.revealed_by and
+            card.llm_perspective_role == CardRole.AGENT
         ]
 
     def _get_human_perspective_agent_words(self, game_state: GameState) -> list[str]:
@@ -318,7 +318,7 @@ class LLMService:
         :return: A list of agent words that are not revealed from the human's perspective.
         """
         return [f"- {card.text}" for card in game_state.board.cards if card.human_perspective_role ==
-                CardRole.AGENT and not card.revealed]
+                CardRole.AGENT and 0 not in card.revealed_by]
 
     def _get_human_perspective_assassin_words(self, game_state: GameState) -> list[str]:
         """
@@ -331,7 +331,7 @@ class LLMService:
             perspective.
         """
         return [f"- {card.text}" for card in game_state.board.cards if card.human_perspective_role ==
-                CardRole.ASSASSIN and 0 not in card.time_marker_by]
+                CardRole.ASSASSIN]
 
     def _get_human_perspective_civilian_words(self, game_state: GameState) -> list[str]:
         """
@@ -355,7 +355,7 @@ class LLMService:
         :return: A list of revealed words from the human's perspective.
         """
         return [
-            f"- {card.text}" for card in game_state.board.cards if card.revealed
+            f"- {card.text}" for card in game_state.board.cards if 0 in card.revealed_by
             and card.human_perspective_role == CardRole.AGENT
         ]
 

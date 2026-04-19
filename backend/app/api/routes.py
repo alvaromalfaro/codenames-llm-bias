@@ -240,7 +240,7 @@ async def llm_make_guess(game_id: str):
     try:
         proposal = await _llm_service.propose_guess(llm_client, engine.state, player_id=0)
     except (ValueError, PermissionError) as e:
-        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
+        print(f"Error during LLM guess proposal: {str(e)}")
 
     html = ""
     for word in proposal.proposals:
@@ -265,9 +265,6 @@ async def llm_make_guess(game_id: str):
         html += templates.get_template("partials/_card.html").render({
             "card": card, "game_id": game_id, "state": engine.state, "oob": True
         })
-        html += templates.get_template("partials/_clue_banner.html").render({
-            "state": engine.state, "game_id": game_id, "oob": True
-        })
         html += templates.get_template("partials/_game_stats.html").render({
             "state": engine.state, "oob": True
         })
@@ -277,6 +274,16 @@ async def llm_make_guess(game_id: str):
             if result in ("civilian", "assassin", "victory", "victory_sd"):
                 html += _render_cards_oob(engine, game_id)
             break
+    else:
+        # All proposals were correct agents - LLM has no more guesses, pass the turn
+        try:
+            engine.pass_turn(0)
+        except (ValueError, PermissionError):
+            pass
+
+    html += templates.get_template("partials/_clue_banner.html").render({
+        "state": engine.state, "game_id": game_id, "oob": True
+    })
 
     return HTMLResponse(content=html)
 

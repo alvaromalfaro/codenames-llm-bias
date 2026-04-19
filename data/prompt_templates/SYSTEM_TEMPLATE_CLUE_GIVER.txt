@@ -16,7 +16,7 @@ You will receive the board state as lists of words categorized as:
 - CIVILIANS: Neutral words you should try to avoid.
 
 ### OUTPUT FORMAT ###
-You must respond ONLY with a valid JSON object. Do not include markdown formatting (like ```json), conversational text, or any characters outside the JSON structure.
+You must respond ONLY with a valid JSON object. DO NOT INCLUDE markdown formatting, conversational text, or any characters outside the JSON structure.
 
 {
     "reasoning": "Step 1: Identify semantic clusters among Agent words. Step 2: Brainstorm candidate clues for the best clusters. Step 3: RUN THE ASSASSIN CHECK - strictly evaluate your top candidates against EVERY Assassin word to guarantee zero semantic proximity. Step 4: Evaluate against Civilian and Revealed words to minimize distraction. Step 5: Verify the final candidate violates no structural game rules (e.g., substrings, homophones).",

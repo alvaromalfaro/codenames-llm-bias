@@ -193,3 +193,58 @@ class GuessProposal(BaseModel):
                 raise ValueError("Confidence scores must be between 0 and 1.")
 
         return self
+
+
+class ClueJSONFormat(BaseModel):
+    """
+    A model for the expected JSON format of a clue proposal from the LLM. It includes the reasoning
+    for the clue, the clue text itself, and the count of how many words are associated with the clue.
+
+    This model is used to validate the structure of the JSON response from the LLM when it is 
+    expected to return a clue proposal in JSON format.
+
+    The fields are as follows:
+        - reasoning: A string containing the LLM's reasoning for the clue proposal.
+        - clue: A string containing the clue text proposed by the LLM.
+        - count: An integer representing how many words are associated with the clue. This must be a 
+            positive integer.
+    """
+    reasoning: str
+    clue: str
+    count: int
+
+
+class ProposalFormat(BaseModel):
+    """
+    A model for the expected format of each proposal in a guess proposal from the LLM. It includes
+    the card word proposed by the LLM and the confidence score for that proposal.
+
+    This model is used to validate the structure of each proposal in the JSON response from the LLM
+    when it is expected to return a guess proposal in JSON format.
+
+    The fields are as follows:
+        - word: A string containing the card word proposed by the LLM for the guess.
+        - confidence: A float representing the confidence score for the proposed card word. This 
+            must be between 0 and 1.
+    """
+    word: str
+    confidence: float
+
+
+class GuessJSONFormat(BaseModel):
+    """
+    A model for the expected JSON format of a guess proposal from the LLM. It includes the reasoning
+    for the guess, the reason why the LLM stopped generating guesses, and a list of proposals.
+
+    This model is used to validate the structure of the JSON response from the LLM when it is 
+    expected to return a guess proposal in JSON format.
+
+    The fields are as follows:
+        - reasoning: A string containing the LLM's reasoning for the guess proposal.
+        - stop_reason: A string indicating the reason why the LLM stopped generating guesses.
+        - proposals: A list of ProposalFormat instances, each containing a proposed card word and 
+            its associated confidence score.
+    """
+    reasoning: str
+    stop_reason: str
+    proposals: list[ProposalFormat]
