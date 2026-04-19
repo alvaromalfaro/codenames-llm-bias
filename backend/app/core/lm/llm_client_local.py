@@ -7,9 +7,7 @@ from ollama import chat, RequestError, ResponseError
 
 
 class LLMClientLocal(LLMClient):
-    LLM_MODEL = "llama3.2:latest"
-
-    def __init__(self, local_model: str = LLM_MODEL, think: bool = True):
+    def __init__(self, local_model: str, think: bool = True):
         self.local_model = local_model
         self.think = think
 
@@ -21,14 +19,22 @@ class LLMClientLocal(LLMClient):
 
         try:
             # Call the Ollama client to get the response from the local LLM
-            ollama_response = chat(
-                model=self.local_model,
-                messages=messages,
-                think=self.think,
-            )
+            if self.think:
+                ollama_response = chat(
+                    model=self.local_model,
+                    messages=messages,
+                    think=self.think,
+                )
+            else:
+                ollama_response = chat(
+                    model=self.local_model,
+                    messages=messages,
+                )
 
             # Convert the Ollama response to LLMResponse format
             response_json = json.loads(ollama_response.model_dump_json())
+            # Debugging statement
+            print(f"Ollama response JSON: {response_json}")
 
             return LLMResponse(
                 text=ollama_response.message.content,

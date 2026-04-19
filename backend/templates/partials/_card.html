@@ -1,0 +1,61 @@
+{% set human_role = card.human_perspective_role %}
+{% set llm_role = card.llm_perspective_role %}
+{% set interactive = false %}
+
+<!-- Clue giver -->
+{% if state.current_phase.value == "giving_clue" and state.clue_giver == 1 %}
+<!-- agent: green, civilian: yellow, assassin: black -->
+{% if human_role == "agent" %}
+{% set card_classes = 'bg-green-100 border border-green-400' %}
+{% set text_classes = 'text-green-800' %}
+{% set label = "AGENT" %}
+{% set label_classes = "text-green-600" %}
+{% elif human_role == "civilian" %}
+{% set card_classes = "bg-amber-100 border border-amber-400" %}
+{% set text_classes = "text-amber-800" %}
+{% set label = "CIVILIAN" %}
+{% set label_classes = "text-amber-600" %}
+{% elif human_role == "assassin" %}
+{% set card_classes = 'bg-slate-800 border border-slate-900' %}
+{% set text_classes = 'text-white' %}
+{% set label = "ASSASSIN" %}
+{% set label_classes = "text-gray-400" %}
+{% endif %}
+<!-- Crossed out if revealed by LLM or marked by time token -->
+{% if 0 in card.revealed_by or 0 in card.time_marker_by %}
+{% set text_classes = text_classes + " line-through decoration-2" %}
+{% endif %}
+
+<!-- Guesser -->
+{% elif (state.current_phase.value == "guessing" and state.guesser == 1) or state.current_phase.value == "sudden_death"
+%}
+<!-- Not revealed by human: interactive and plain white -->
+{% if 1 not in card.revealed_by %}
+{% set card_classes = "bg-surface-light border border-neutral-light hover:border-primary/50 hover:bg-primary/5" %}
+{% set text_classes = "text-slate-600" %}
+{% set interactive = true %}
+{% set label = None %}
+<!-- Agent revealed by human: crossed out green -->
+{% elif llm_role == "agent" %}
+{% set card_classes = "bg-green-100 border border-green-400" %}
+{% set text_classes = "text-green-800 line-through decoration-2" %}
+{% set label = "AGENT" %}
+{% set label_classes = "text-green-600" %}
+<!-- Civilian revealed by human: crossed out yellow -->
+{% elif llm_role == "civilian" %}
+{% set card_classes = "bg-amber-100 border border-amber-400" %}
+{% set text_classes = "text-amber-800 line-through decoration-2" %}
+{% set label = "CIVILIAN" %}
+{% set label_classes = "text-amber-600" %}
+{% endif %}
+{% endif %}
+
+<div id="card-{{ card.id }}" {% if oob %}hx-swap-oob="outerHTML" {% endif %} class="group relative flex items-center justify-center {{ card_classes }} rounded-lg shadow-sm transition-all duration-200
+    {% if interactive %}cursor-pointer hover:shadow-md{% endif %}" {% if interactive %}
+    hx-post="/play/{{ game_id }}/guess" hx-vals='{"card_id": {{ card.id }}, "player_id": 1}' hx-target="#log-entries"
+    hx-swap="beforeend" {% endif %}>
+    <span class="font-bold text-sm tracking-widest {{ text_classes }}">{{ card.text }}</span>
+    {% if label %}
+    <div class="absolute bottom-1 right-2 text-[10px] font-mono {{ label_classes }} opacity-60">{{ label }}</div>
+    {% endif %}
+</div>

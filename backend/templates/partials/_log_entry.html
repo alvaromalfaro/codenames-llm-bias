@@ -1,0 +1,114 @@
+{% if result == 'pass' %}
+{# Turn passed #}
+<div class="flex gap-3">
+    <div class="flex flex-col items-center">
+        <div
+            class="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500">
+            <span class="material-symbols-outlined text-sm">skip_next</span>
+        </div>
+    </div>
+    <div class="pb-2 pt-1">
+        <div class="text-[10px] font-mono text-slate-400 mb-1">Turn {{ state.turn_number - 1 }}</div>
+        <div
+            class="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg text-sm text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-700/50">
+            <span class="font-semibold text-slate-900 dark:text-slate-200">User:</span> Passed turn.
+        </div>
+    </div>
+</div>
+{% elif result == 'clue' %}
+{# Clue given #}
+<div class="flex gap-3">
+    <div class="flex flex-col items-center">
+        <div
+            class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300">
+            <span class="material-symbols-outlined text-sm">lightbulb</span>
+        </div>
+        <div class="w-0.5 flex-1 bg-slate-200 dark:bg-slate-700 my-1"></div>
+    </div>
+    <div class="pb-2">
+        <div class="text-[10px] font-mono text-slate-400 mb-1">Turn {{ state.turn_number }}</div>
+        <div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+            <div class="font-semibold text-slate-900 dark:text-slate-200 text-sm mb-1">{{ player }} clue</div>
+            <div class="font-mono text-xs text-slate-700 dark:text-slate-300">
+                &gt; Clue: "{{ clue.clue }}"<br />
+                &gt; Count: {{ clue.count }}
+            </div>
+        </div>
+    </div>
+</div>
+{% elif result == 'agent' or result == 'victory' or result == 'victory_sd' %}
+{# Correct guess #}
+<div class="flex gap-3">
+    <div class="flex flex-col items-center">
+        <div
+            class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300">
+            <span class="material-symbols-outlined text-sm">person</span>
+        </div>
+        <div class="w-0.5 flex-1 bg-slate-200 dark:bg-slate-700 my-1"></div>
+    </div>
+    <div class="pb-2">
+        <div class="text-[10px] font-mono text-slate-400 mb-1">Turn {{ state.turn_number }}</div>
+        <div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+            <span class="font-semibold text-slate-900 dark:text-slate-200 text-sm">{{ player }} selection:</span>
+            <div class="flex items-center gap-2 mt-1">
+                <span class="px-2 py-0.5 bg-primary/10 text-primary text-xs font-bold rounded uppercase">{{ card.text
+                    }}</span>
+                <span class="text-green-600 text-xs font-medium flex items-center">
+                    <span class="material-symbols-outlined text-[14px] mr-1">check_circle</span>
+                    {% if result == 'victory' or result == 'victory_sd' %}Victory!{% else %}Correct{% endif %}
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+{% elif result == 'civilian' %}
+{# Civilian — time token lost #}
+<div class="flex gap-3">
+    <div class="flex flex-col items-center">
+        <div
+            class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300">
+            <span class="material-symbols-outlined text-sm">person</span>
+        </div>
+        <div class="w-0.5 flex-1 bg-slate-200 dark:bg-slate-700 my-1"></div>
+    </div>
+    <div class="pb-2">
+        <!-- show previous turn number since it has been updated after the failure -->
+        <div class="text-[10px] font-mono text-slate-400 mb-1">Turn {{ state.turn_number - 1 }}</div>
+        <div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
+            <span class="font-semibold text-slate-900 dark:text-slate-200 text-sm">{{ player }} selection:</span>
+            <div class="flex items-center gap-2 mt-1">
+                <span class="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs font-bold rounded uppercase">{{ card.text
+                    }}</span>
+                <span class="text-amber-600 text-xs font-medium flex items-center">
+                    <span class="material-symbols-outlined text-[14px] mr-1">timer</span>
+                    Bystander — timer token lost
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+{% elif result == 'assassin' %}
+{# Assassin — game over #}
+<div class="flex gap-3">
+    <div class="flex flex-col items-center">
+        <div
+            class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300">
+            <span class="material-symbols-outlined text-sm">person</span>
+        </div>
+    </div>
+    <div class="pb-2 pt-1">
+        <div class="text-[10px] font-mono text-slate-400 mb-1">Turn {{ state.turn_number }}</div>
+        <div class="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800 shadow-sm">
+            <span class="font-semibold text-red-700 dark:text-red-400 text-sm">{{ player }} selection:</span>
+            <div class="flex items-center gap-2 mt-1">
+                <span class="px-2 py-0.5 bg-slate-800 text-white text-xs font-bold rounded uppercase">{{ card.text
+                    }}</span>
+                <span class="text-red-600 text-xs font-medium flex items-center">
+                    <span class="material-symbols-outlined text-[14px] mr-1">dangerous</span>
+                    Assassin — game over
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}

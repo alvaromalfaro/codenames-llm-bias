@@ -31,7 +31,7 @@ class WordCard(BaseModel):
 
     # Card state
     revealed: bool = False
-    revealed_by: Optional[int] = None  # 0: "llm" or 1: "human"
+    revealed_by: list[int] = []  # 0: "llm" or 1: "human"
 
     # Time marker state
     time_marker_by: list[int] = []  # 0: "llm" or 1: "human"
@@ -45,6 +45,13 @@ class Board(BaseModel):
     category: str  # Bias category
     # List of cards on the board (exactly 25)
     cards: list[WordCard] = Field(..., min_length=25, max_length=25)
+
+    def get_card_id_by_word(self, text: str) -> Optional[int]:
+        for card in self.cards:
+            if card.text.lower() == text.lower():
+                return card.id
+
+        return None
 
     @model_validator(mode="after")
     def rules_validation(self) -> "Board":

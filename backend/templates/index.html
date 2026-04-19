@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="relative overflow-hidden pt-12 pb-16 sm:pt-20 sm:pb-24 lg:pb-32">
+    <div class="max-w-[960px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col items-center text-center">
+        <h1 class="text-4xl font-black tracking-tight text-text-main dark:text-white sm:text-6xl mb-6 max-w-3xl">
+            Codenames Duet: <br class="hidden sm:block" />
+            <span class="text-primary dark:text-primary-light">LLM Bias Analysis</span>
+        </h1>
+        <div
+            class="bg-surface-light dark:bg-surface-dark border border-border-light dark:border-border-dark rounded-xl p-6 sm:p-8 max-w-2xl shadow-sm mb-10 text-left">
+            <h3 class="text-xs font-bold text-text-muted uppercase tracking-wider mb-3" align="center">Abstract</h3>
+            <p class="text-base sm:text-lg text-text-main dark:text-slate-300 leading-relaxed">
+                This project investigates the implicit associations made by various Large Language Models (LLMs) within
+                the constraints of the Codenames Duet framework. By analyzing the clues and guesses generated during
+                gameplay, the project aims to uncover latent biases in how LLMs group concepts related to demographics,
+                professions, and social categories.
+            </p>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+            <a href="/config"
+                class="inline-flex items-center justify-center rounded-lg bg-primary px-8 py-3.5 text-base font-semibold text-white shadow-sm hover:bg-primary-dark focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all min-w-[160px]">
+                <span class="material-symbols-outlined mr-2">play_arrow</span>
+                Start Game
+            </a>
+            <button
+                class="inline-flex items-center justify-center rounded-lg bg-white dark:bg-surface-dark px-8 py-3.5 text-base font-semibold text-text-main dark:text-white shadow-sm ring-1 ring-inset ring-border-light dark:ring-border-dark hover:bg-gray-50 dark:hover:bg-gray-800 transition-all min-w-[160px]">
+                <span class="material-symbols-outlined mr-2">bar_chart</span>
+                View Statistics
+            </button>
+        </div>
+    </div>
+</section>
+
+<!-- Stats Grid -->
+<section class="border-y border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark py-12">
+    <div class="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div
+            class="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-x divide-border-light dark:divide-border-dark">
+            <div class="flex flex-col gap-1">
+                <dt class="text-sm font-medium text-text-muted dark:text-slate-400">Games Played</dt>
+                <dd class="text-3xl font-bold tracking-tight text-text-main dark:text-white">
+                    {{ games_played }} 0
+                </dd>
+            </div>
+            <div class="flex flex-col gap-1 pl-4 md:pl-0">
+                <dt class="text-sm font-medium text-text-muted dark:text-slate-400">Models Tested</dt>
+                <dd class="text-3xl font-bold tracking-tight text-text-main dark:text-white">
+                    {{ models_tested }} 0
+                </dd>
+            </div>
+            <div class="flex flex-col gap-1 pl-4 md:pl-0">
+                <dt class="text-sm font-medium text-text-muted dark:text-slate-400">Biases Identified</dt>
+                <dd class="text-3xl font-bold tracking-tight text-text-main dark:text-white">
+                    {{ biases_identified }} 0
+                </dd>
+            </div>
+            <div class="flex flex-col gap-1 pl-4 md:pl-0">
+                <dt class="text-sm font-medium text-text-muted dark:text-slate-400">Participants</dt>
+                <dd class="text-3xl font-bold tracking-tight text-text-main dark:text-white">
+                    {{ participants }} 0
+                </dd>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Methodology Section -->
+<section class="py-16 sm:py-24">
+    <div class="max-w-[960px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="text-center mb-16">
+            <h2 class="text-3xl font-bold tracking-tight text-text-main dark:text-white sm:text-4xl">Methodology
+                Highlights</h2>
+            <p class="mt-4 text-lg text-text-muted dark:text-slate-400 max-w-2xl mx-auto">
+                ...
+            </p>
+        </div>
+        <div class="grid md:grid-cols-3 gap-8">
+            <div
+                class="group relative flex flex-col gap-4 rounded-xl border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark p-6 hover:shadow-md transition-shadow">
+                <div
+                    class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary dark:text-primary-light">
+                    <span class="material-symbols-outlined">database</span>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-text-main dark:text-white mb-2">Data Collection</h3>
+                    <p class="text-sm text-text-muted dark:text-slate-400 leading-relaxed">
+                        ...
+                    </p>
+                </div>
+            </div>
+
+            <div
+                class="group relative flex flex-col gap-4 rounded-xl border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark p-6 hover:shadow-md transition-shadow">
+                <div
+                    class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary dark:text-primary-light">
+                    <span class="material-symbols-outlined">analytics</span>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-text-main dark:text-white mb-2">Bias Quantification</h3>
+                    <p class="text-sm text-text-muted dark:text-slate-400 leading-relaxed">
+                        ...
+                    </p>
+                </div>
+            </div>
+
+            <div
+                class="group relative flex flex-col gap-4 rounded-xl border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark p-6 hover:shadow-md transition-shadow">
+                <div
+                    class="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary dark:text-primary-light">
+                    <span class="material-symbols-outlined">code</span>
+                </div>
+                <div>
+                    <h3 class="text-lg font-semibold text-text-main dark:text-white mb-2">Open Source</h3>
+                    <p class="text-sm text-text-muted dark:text-slate-400 leading-relaxed">
+                        ...
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Visual Context Section -->
+<section class="py-12 bg-surface-light dark:bg-surface-dark border-y border-border-light dark:border-border-dark">
+    <div class="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex flex-col lg:flex-row items-center gap-12">
+            <div class="flex-1 space-y-6">
+                <h2 class="text-2xl font-bold tracking-tight text-text-main dark:text-white sm:text-3xl">How the
+                    Experiment Works</h2>
+                <p class="text-text-muted dark:text-slate-400 leading-relaxed">
+                    Participants engage in a series of Codenames Duet games with an LLM, providing clues and
+                    making guesses. The interactions are recorded and analyzed to identify patterns of bias in
+                    the associations made by the models.
+                </p>
+                <ul class="space-y-3">
+                    <li class="flex items-start gap-3 text-sm text-text-main dark:text-slate-200">
+                        <span class="material-symbols-outlined text-primary mt-0.5"
+                            style="font-size: 20px;">check_circle</span>
+                        <span>Real-time interaction with state-of-the-art models.</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm text-text-main dark:text-slate-200">
+                        <span class="material-symbols-outlined text-primary mt-0.5"
+                            style="font-size: 20px;">check_circle</span>
+                        <span>Completely anonymous participation process.</span>
+                    </li>
+                    <li class="flex items-start gap-3 text-sm text-text-main dark:text-slate-200">
+                        <span class="material-symbols-outlined text-primary mt-0.5"
+                            style="font-size: 20px;">check_circle</span>
+                        <span>Contribution to open scientific data.</span>
+                    </li>
+                </ul>
+            </div>
+            <div class="flex-1 w-full relative">
+                <!-- Decorative representation of a game board -->
+                <!-- TODO:
+                    Fake board that loops through a scripted game sequence using setInterval.
+                    Cards flip one by one, a clue text appears above, then two matching cards highlight,
+                    then it resets.  
+                 -->
+                <div
+                    class="aspect-video w-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 rounded-xl overflow-hidden border border-border-light dark:border-border-dark shadow-sm relative">
+                    <div class="absolute inset-0 flex items-center justify-center opacity-30">
+                        <span class="material-symbols-outlined text-9xl text-slate-300 dark:text-slate-600">hub</span>
+                    </div>
+                    <!-- Mock UI overlay -->
+                    <div
+                        class="absolute top-4 left-4 right-4 bottom-4 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg flex items-center justify-center">
+                        <p class="text-sm font-medium text-slate-400 dark:text-slate-500 uppercase tracking-widest">
+                            Game Interface Preview</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

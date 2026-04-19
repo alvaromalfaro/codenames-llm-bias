@@ -1,0 +1,14 @@
+<div id="game-stats" {% if oob %}hx-swap-oob="outerHTML" {% endif %}
+    class="flex items-center gap-6 mr-4 border-r border-neutral-light dark:border-neutral-dark pr-6">
+    <div class="flex flex-col items-end">
+        <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Turn</span>
+        <span class="text-sm font-bold">{{ state.turn_number }} / 9</span>
+    </div>
+    <div class="flex flex-col items-end">
+        <span class="text-xs uppercase tracking-wider font-semibold text-slate-400">Timer tokens</span>
+        <span
+            class="text-sm font-bold {% if state.timer_tokens <= 2 %}text-red-500{% elif state.timer_tokens <= 4 %}text-amber-500{% endif %}">
+            {{ state.timer_tokens }} / 9
+        </span>
+    </div>
+</div>

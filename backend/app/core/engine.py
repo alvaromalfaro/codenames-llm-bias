@@ -182,7 +182,7 @@ class CodenamesDuetEngine:
         """
         # Reveal the card
         card.revealed = True
-        card.revealed_by = guessed_by
+        card.revealed_by.append(guessed_by)
 
         # Update the count of remaining agents for the guessing player (or both if it's a shared agent)
         self.state.agents_remaining[guessed_by] -= 1

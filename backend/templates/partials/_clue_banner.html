@@ -1,0 +1,113 @@
+<div id="clue-banner" {% if oob %}hx-swap-oob="outerHTML" {% endif %}
+    class="w-full max-w-[800px] mb-6 flex items-center justify-between bg-surface-light dark:bg-surface-dark p-4 rounded-xl border border-neutral-light dark:border-neutral-dark shadow-sm">
+    {% if state.current_phase.value == 'game_over' %}
+    {# Game over banner #}
+    <div class="flex items-center gap-4 w-full justify-center">
+        {% if state.result == 'victory' or state.result == 'victory_sd' %}
+        <div class="bg-green-100 p-2 rounded-lg text-green-600">
+            <span class="material-symbols-outlined">emoji_events</span>
+        </div>
+        <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Game Over</p>
+            <h3 class="text-2xl font-bold text-green-600">Victory!</h3>
+        </div>
+        {% else %}
+        <div class="bg-red-100 p-2 rounded-lg text-red-600">
+            <span class="material-symbols-outlined">sentiment_dissatisfied</span>
+        </div>
+        <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Game Over</p>
+            <h3 class="text-2xl font-bold text-red-600">
+                {% if state.result == 'loss_assassin' or state.results == 'loss_assassin_sd' %}
+                Assassin hit
+                {% else %}
+                Time ran out
+                {% endif %}
+            </h3>
+        </div>
+        {% endif %}
+    </div>
+
+    {% elif state.current_phase.value == 'guessing' %}
+    {# show clue word and end guessing button (if it's the current player's turn) #}
+    <div class="flex items-center gap-4">
+        <div class="bg-primary/10 p-2 rounded-lg text-primary">
+            <span class="material-symbols-outlined">smart_toy</span>
+        </div>
+        <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Current Clue</p>
+            <div class="flex items-baseline gap-2">
+                <h3 class="text-2xl font-bold text-slate-900 dark:text-slate-100">"{{ state.current_clue.clue | upper
+                    }}"</h3>
+                <span
+                    class="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded text-sm font-semibold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
+                    {{ state.current_clue.count }} card{{ 's' if state.current_clue.count != 1 }}
+                </span>
+            </div>
+        </div>
+    </div>
+    {% if state.guesser == 1 %}
+    <div class="flex gap-3">
+        <button hx-post="/play/{{ game_id }}/pass" hx-vals='{"player_id": 1}' hx-target="#log-entries"
+            hx-swap="beforeend"
+            class="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm font-medium transition-colors">
+            End Guessing
+        </button>
+    </div>
+    {% elif state.guesser == 0 %}
+    <div hx-post="/play/{{ game_id }}/llm-guess" hx-vals="{'player_id': 0}" hx-target="#log-entries" hx-trigger="load"
+        hx-swap="beforeend" class="flex gap-3">
+        <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Current Clue</p>
+    </div>
+    {% endif %}
+
+    {% elif state.current_phase.value == 'giving_clue' and state.clue_giver == 1 %}
+    {# Human's turn to give a clue #}
+    <form hx-post="/play/{{ game_id }}/clue" hx-target="#log-entries" hx-swap="beforeend"
+        class="flex items-center gap-3 w-full">
+        <div class="bg-slate-100 dark:bg-slate-700 p-2 rounded-lg text-slate-600 dark:text-slate-300">
+            <span class="material-symbols-outlined">lightbulb</span>
+        </div>
+        <div class="flex-1">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Your turn to give a clue</p>
+            <div class="flex gap-2 items-center">
+                <input type="hidden" name="player_id" value="1" />
+                <input name="clue" type="text" required placeholder="Clue word..."
+                    class="flex-1 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none text-slate-900 dark:text-slate-100 placeholder-slate-400" />
+                <input name="count" type="number" min="1" required placeholder="N"
+                    class="w-16 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg py-1.5 px-3 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none text-slate-900 dark:text-slate-100 text-center" />
+                <button type="submit"
+                    class="px-4 py-1.5 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
+                    Give Clue
+                </button>
+            </div>
+        </div>
+    </form>
+
+    {% elif state.current_phase.value == 'sudden_death' %}
+    {# no more clues #}
+    <div class="flex items-center gap-4">
+        <div class="bg-red-100 p-2 rounded-lg text-red-600">
+            <span class="material-symbols-outlined">warning</span>
+        </div>
+        <div>
+            <p class="text-xs font-semibold text-red-400 uppercase tracking-wide">Sudden Death</p>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">No more timer tokens. Guess your agents
+                directly</h3>
+        </div>
+    </div>
+
+    {% else %}
+    {# Waiting for LLM clue (state.clue_giver == 0) #}
+    <div class="flex items-center gap-4" hx-post="/play/{{ game_id }}/llm-clue" hx-trigger="load"
+        hx-target="#log-entries" hx-swap="beforeend">
+        <div class="bg-primary/10 p-2 rounded-lg text-primary">
+            <span class="material-symbols-outlined animate-spin" style="animation-duration:2s">progress_activity</span>
+        </div>
+        <div>
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-wide">Waiting for Agent</p>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">Generating clue...</h3>
+        </div>
+    </div>
+    {% endif %}
+</div>
