@@ -28,12 +28,13 @@ async def test_llm_service_propose_clue_success(game_state_cg):
 
     # Create a mock LLMClient that returns the mock response when generate is called
     mock_client = MagicMock(spec=LLMClient)
+    mock_client.local_model = "test_model"
     mock_client.generate = AsyncMock(return_value=mock_response)
-    service = LLMService(llm_client=mock_client)
+    service = LLMService()
 
     # Call the propose_clue method, capture the result, and assert that it matches the expected
     # ClueProposal based on the mock response
-    result = await service.propose_clue(game_state_cg)
+    result = await service.propose_clue(mock_client, game_state_cg)
 
     assert isinstance(result, ClueProposal)
     assert result.clue == "battle"
@@ -53,14 +54,14 @@ async def test_llm_service_propose_clue_wrong_phase(game_state_cg):
     """
     # Create a mock LLMClient (the specific behavior of the client is not relevant for this test)
     mock_client = MagicMock(spec=LLMClient)
-    service = LLMService(llm_client=mock_client)
+    service = LLMService()
 
     # Modify the game state to be in GUESSING phase
     game_state_cg.current_phase = GamePhase.GUESSING
 
     with pytest.raises(ValueError,
                        match="Cannot propose a clue when the game is not in the GIVING_CLUE phase."):
-        await service.propose_clue(game_state_cg)
+        await service.propose_clue(mock_client, game_state_cg)
 
 
 @pytest.mark.asyncio
@@ -71,13 +72,13 @@ async def test_llm_service_propose_clue_wrong_player(game_state_cg):
     """
     # Create a mock LLMClient (the specific behavior of the client is not relevant for this test)
     mock_client = MagicMock(spec=LLMClient)
-    service = LLMService(llm_client=mock_client)
+    service = LLMService()
 
     # Modify the game state to have a different clue giver
     game_state_cg.clue_giver = 1  # Set clue giver to player 1 instead of player 0
 
     with pytest.raises(ValueError, match="The player must be the clue giver to propose a clue."):
-        await service.propose_clue(game_state_cg)
+        await service.propose_clue(mock_client, game_state_cg)
 
 
 @pytest.mark.asyncio
@@ -105,12 +106,13 @@ async def test_llm_service_propose_guess_success(game_state_guessing):
 
     # Create a mock LLMClient that returns the mock response when generate is called
     mock_client = MagicMock(spec=LLMClient)
+    mock_client.local_model = "test_model"
     mock_client.generate = AsyncMock(return_value=mock_response)
-    service = LLMService(llm_client=mock_client)
+    service = LLMService()
 
     # Call the propose_guess method, capture the result, and assert that it matches the expected
     # GuessProposal based on the mock response
-    result = await service.propose_guess(game_state_guessing)
+    result = await service.propose_guess(mock_client, game_state_guessing)
 
     assert isinstance(result, GuessProposal)
     assert result.proposals == ["NAPOLEON", "RIFLE"]
@@ -130,14 +132,14 @@ async def test_llm_service_propose_guess_wrong_phase(game_state_guessing):
     """
     # Create a mock LLMClient (the specific behavior of the client is not relevant for this test)
     mock_client = MagicMock(spec=LLMClient)
-    service = LLMService(llm_client=mock_client)
+    service = LLMService()
 
     # Modify the game state to be in GIVING_CLUE phase
     game_state_guessing.current_phase = GamePhase.GIVING_CLUE
 
     with pytest.raises(ValueError,
                        match="Cannot propose a guess when the game is not in the GUESSING phase."):
-        await service.propose_guess(game_state_guessing)
+        await service.propose_guess(mock_client, game_state_guessing)
 
 
 @pytest.mark.asyncio
@@ -148,13 +150,13 @@ async def test_llm_service_propose_guess_wrong_player(game_state_guessing):
     """
     # Create a mock LLMClient (the specific behavior of the client is not relevant for this test)
     mock_client = MagicMock(spec=LLMClient)
-    service = LLMService(llm_client=mock_client)
+    service = LLMService()
 
     # Modify the game state to have a different guesser
     game_state_guessing.guesser = 1
 
     with pytest.raises(ValueError, match="The player must be the guesser to propose a guess."):
-        await service.propose_guess(game_state_guessing)
+        await service.propose_guess(mock_client, game_state_guessing)
 
 
 @pytest.mark.asyncio
@@ -165,13 +167,13 @@ async def test_llm_service_propose_guess_no_clue(game_state_guessing):
     """
     # Create a mock LLMClient (the specific behavior of the client is not relevant for this test)
     mock_client = MagicMock(spec=LLMClient)
-    service = LLMService(llm_client=mock_client)
+    service = LLMService()
 
     # Ensure there is no current clue in the game state
     game_state_guessing.current_clue.turn_number = game_state_guessing.current_clue.turn_number - 1
 
     with pytest.raises(ValueError, match="Cannot propose a guess when there is no clue available."):
-        await service.propose_guess(game_state_guessing)
+        await service.propose_guess(mock_client, game_state_guessing)
 
 
 def test_llm_service_build_clue_request_player1(game_state_cg):
@@ -180,9 +182,10 @@ def test_llm_service_build_clue_request_player1(game_state_cg):
     player is Player 1 (human [an LLM in fact, to automate future games]).
     """
     mock_client = MagicMock(spec=LLMClient)
-    service = LLMService(llm_client=mock_client)
+    service = LLMService()
 
-    request = service._build_clue_request(game_state_cg, player_id=1)
+    request = service._build_clue_request(
+        game_state_cg, 'test_client', player_id=1)
 
     agent_words = [
         card.text for card in game_state_cg.board.cards if card.human_perspective_role == "agent"]
@@ -190,11 +193,79 @@ def test_llm_service_build_clue_request_player1(game_state_cg):
         card.text for card in game_state_cg.board.cards if card.human_perspective_role != "agent"]
 
     assert request is not None
-    assert len(request.messages) == 2
+    assert len(request.messages) == 4
     assert request.messages[0].role == "system"
     assert request.messages[1].role == "user"
     assert f"agent_words={{", ".join(agent_words)}}" in request.messages[1].content
     assert f"danger_words={{", ".join(danger_words)}}" in request.messages[1].content
+
+
+def test_llm_service_build_clue_request_player0(game_state_cg):
+    """
+    Tests that _build_clue_request for player 0 uses the LLM perspective words, not the human
+    perspective. RIFLE is an LLM agent but a human civilian, so it should appear in the agent
+    section. CAESAR is a human agent but an LLM civilian, so it must not appear there.
+    """
+    service = LLMService()
+
+    request = service._build_clue_request(game_state_cg, "test_model", player_id=0)
+
+    llm_agent_words = [
+        card.text for card in game_state_cg.board.cards
+        if card.llm_perspective_role == "agent"
+    ]
+    human_only_agent_words = [
+        card.text for card in game_state_cg.board.cards
+        if card.human_perspective_role == "agent" and card.llm_perspective_role != "agent"
+    ]
+
+    user_prompt = request.messages[-1].content
+    assert request.messages[0].role == "system"
+    assert request.messages[1].role == "user"
+    assert request.messages[2].role == "assistant"
+    assert request.messages[3].role == "user"
+    for word in llm_agent_words:
+        assert word in user_prompt
+    for word in human_only_agent_words:
+        # Human-only agents must not appear in the LLM's agent section
+        assert f"AGENTS" not in user_prompt or word not in user_prompt.split("ASSASSINS")[0]
+
+
+def test_llm_service_build_guess_request(game_state_guessing):
+    """
+    Tests that _build_guess_request correctly formats the clue, count, and unrevealed board
+    words into the user prompt.
+    """
+    service = LLMService()
+
+    request = service._build_guess_request(game_state_guessing, "test_model", player_id=0)
+
+    user_prompt = request.messages[-1].content
+    assert len(request.messages) == 4
+    assert request.messages[0].role == "system"
+    assert request.messages[1].role == "user"
+    assert request.messages[2].role == "assistant"
+    assert request.messages[3].role == "user"
+    assert game_state_guessing.current_clue.clue in user_prompt
+    assert str(game_state_guessing.current_clue.count) in user_prompt
+    for card in game_state_guessing.board.cards:
+        assert card.text in user_prompt
+
+
+def test_llm_service_build_clue_request_no_one_shot(game_state_cg):
+    """
+    Tests that when the one-shot examples are disabled (empty strings), _build_clue_request
+    falls back to only 2 messages: system and user.
+    """
+    service = LLMService()
+    service._one_shot_user_cg = ""
+    service._one_shot_assistant_cg = ""
+
+    request = service._build_clue_request(game_state_cg, "test_model", player_id=0)
+
+    assert len(request.messages) == 2
+    assert request.messages[0].role == "system"
+    assert request.messages[1].role == "user"
 
 
 def test_llm_service_build_clue_proposal_json_error(llm_response):
@@ -202,7 +273,7 @@ def test_llm_service_build_clue_proposal_json_error(llm_response):
     Tests that the LLMService raises a ValueError when the LLMResponse text cannot be parsed as JSON
     when building a clue proposal.
     """
-    service = LLMService(llm_client=MagicMock(spec=LLMClient))
+    service = LLMService()
 
     # Modify the LLMResponse text to be invalid JSON
     llm_response.text = "This is not valid JSON"
@@ -217,7 +288,7 @@ def test_llm_service_build_guess_proposal_json_error(llm_response):
     Tests that the LLMService raises a ValueError when the LLMResponse text cannot be parsed as JSON
     when building a guess proposal.
     """
-    service = LLMService(llm_client=MagicMock(spec=LLMClient))
+    service = LLMService()
 
     # Modify the LLMResponse text to be invalid JSON
     llm_response.text = "This is not valid JSON"
