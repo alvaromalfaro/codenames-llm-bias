@@ -165,9 +165,9 @@ class GuessProposal(BaseModel):
     non-empty strings, and the raw payload is stored as a dictionary.
     """
     # The card words proposed by the LLM for the guess.
-    proposals: list[str] = Field(min_items=1)
+    proposals: list[str] = Field(min_length=1)
     # The confidence scores for each proposed card word.
-    confidence: list[float] = Field(min_items=1)
+    confidence: list[float] = Field(min_length=1)
     # Reasoning provided by the LLM for the guesses.
     reasoning: str
     # The reason why the LLM stopped generating guesses.
