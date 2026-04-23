@@ -79,4 +79,13 @@
     </div>
 </main>
 
+<script>
+    const logEntries = document.getElementById('log-entries');
+    document.body.addEventListener('htmx:afterSwap', function (e) {
+        if (logEntries.contains(e.target) || e.target === logEntries) {
+            logEntries.scrollTop = logEntries.scrollHeight;
+        }
+    });
+</script>
+
 {% endblock %}
