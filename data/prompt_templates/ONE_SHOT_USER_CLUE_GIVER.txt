@@ -1,0 +1,20 @@
+Turn: 1
+
+### BOARD STATUS ###
+AGENTS (Words to connect):
+- CROWN
+- THRONE
+- CASTLE
+
+ASSASSINS (Terminal state - strictly avoid):
+- BRIDGE
+
+CIVILIANS (Neutral - try to avoid):
+- TOWER
+- KNIGHT
+
+REVEALED WORDS (Already guessed, no longer valid targets):
+No words revealed yet.
+
+### YOUR TASK ###
+Propose a clue and a count for the guessing player. Remember the rules for valid clues and counts.

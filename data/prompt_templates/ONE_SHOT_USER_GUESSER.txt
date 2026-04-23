@@ -1,0 +1,22 @@
+Turn: 2
+
+### CURRENT CLUE ###
+- Clue: cold
+- Target Count: 2
+
+### PREVIOUS CLUES (Optional context for backtracking) ###
+- Turn: 1, Clue: ocean, Count: 2
+
+### UNREVEALED BOARD WORDS ###
+- ICE
+- FIRE
+- WIND
+- WAVE
+- DESERT
+- FROST
+- SHIP
+
+### YOUR TASK ###
+Propose your optimal sequence of guesses.
+Remember: You may stop early if the risk is high, or guess MORE than the target count if you find strong matches for previous clues.
+Follow the required JSON format exactly.

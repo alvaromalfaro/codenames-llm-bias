@@ -9,13 +9,15 @@ class LLMService:
     USER_TEMP_CG_PATH = "data/prompt_templates/USER_TEMPLATE_CLUE_GIVER.txt"
     SYSTEM_TEMP_GG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_GUESSER.txt"
     USER_TEMP_GG_PATH = "data/prompt_templates/USER_TEMPLATE_GUESSER.txt"
+    ONE_SHOT_USER_CG_PATH = "data/prompt_templates/ONE_SHOT_USER_CLUE_GIVER.txt"
+    ONE_SHOT_ASSISTANT_CG_PATH = "data/prompt_templates/ONE_SHOT_ASSISTANT_CLUE_GIVER.txt"
+    ONE_SHOT_USER_GG_PATH = "data/prompt_templates/ONE_SHOT_USER_GUESSER.txt"
+    ONE_SHOT_ASSISTANT_GG_PATH = "data/prompt_templates/ONE_SHOT_ASSISTANT_GUESSER.txt"
 
     def __init__(self, temperature: float = 0.7, max_tokens: int = 1000, timeout_s: int = 30):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_s = timeout_s
-        # Load prompt templates for both clue giver and guesser roles, with fallbacks to default
-        # prompts if the template files are not found.
         self._system_prompt_cg = self._load_prompt_template(
             self.SYSTEM_TEMP_CG_PATH, 0)
         self._user_prompt_cg = self._load_prompt_template(
@@ -24,6 +26,14 @@ class LLMService:
             self.SYSTEM_TEMP_GG_PATH, 2)
         self._user_prompt_gg = self._load_prompt_template(
             self.USER_TEMP_GG_PATH, 3)
+        self._one_shot_user_cg = self._load_one_shot(
+            self.ONE_SHOT_USER_CG_PATH, 0)
+        self._one_shot_assistant_cg = self._load_one_shot(
+            self.ONE_SHOT_ASSISTANT_CG_PATH, 1)
+        self._one_shot_user_gg = self._load_one_shot(
+            self.ONE_SHOT_USER_GG_PATH, 2)
+        self._one_shot_assistant_gg = self._load_one_shot(
+            self.ONE_SHOT_ASSISTANT_GG_PATH, 3)
 
     async def propose_clue(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> ClueProposal:
         """
@@ -142,10 +152,14 @@ class LLMService:
               user_prompt)  # Debug print for the user prompt
 
         # Build the list of messages for the LLM request
-        messages = [
-            LLMMessage(role="system", content=self._system_prompt_cg),
-            LLMMessage(role="user", content=user_prompt)
-        ]
+        messages = [LLMMessage(role="system", content=self._system_prompt_cg)]
+        if self._one_shot_user_cg and self._one_shot_assistant_cg:
+            messages += [
+                LLMMessage(role="user", content=self._one_shot_user_cg),
+                LLMMessage(role="assistant",
+                           content=self._one_shot_assistant_cg),
+            ]
+        messages.append(LLMMessage(role="user", content=user_prompt))
 
         return LLMRequest(messages=messages, model=model, temperature=self.temperature,
                           max_tokens=self.max_tokens, timeout_s=self.timeout_s)
@@ -220,10 +234,14 @@ class LLMService:
               user_prompt)  # Debug print for the user prompt
 
         # Build the list of messages for the LLM request
-        messages = [
-            LLMMessage(role="system", content=self._system_prompt_gg),
-            LLMMessage(role="user", content=user_prompt)
-        ]
+        messages = [LLMMessage(role="system", content=self._system_prompt_gg)]
+        if self._one_shot_user_gg and self._one_shot_assistant_gg:
+            messages += [
+                LLMMessage(role="user", content=self._one_shot_user_gg),
+                LLMMessage(role="assistant",
+                           content=self._one_shot_assistant_gg),
+            ]
+        messages.append(LLMMessage(role="user", content=user_prompt))
 
         return LLMRequest(messages=messages, model=model, temperature=self.temperature,
                           max_tokens=self.max_tokens, timeout_s=self.timeout_s)
@@ -387,6 +405,25 @@ class LLMService:
                         "Invalid prompt type specified. Must be 0 (system clue giver),"
                         "1 (user clue giver), 2 (system guesser), or 3 (user guesser).")
 
+    def _load_one_shot(self, path: str, prompt_type: int) -> str:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+        except FileNotFoundError:
+            match prompt_type:
+                case 0:
+                    return self._default_os_user_cg()
+                case 1:
+                    return self._default_os_assistant_cg()
+                case 2:
+                    return self._default_os_user_gg()
+                case 3:
+                    return self._default_os_assistant_gg()
+                case _:
+                    raise ValueError("Invalid prompt type specified. Must be 0 (one-shot user clue "
+                                     "giver), 1 (one-shot assistant clue giver), 2 (one-shot user "
+                                     "guesser), or 3 (one-shot assistant guesser).")
+
     def _default_system_prompt_cg(self) -> str:
         """
         Provides a default system prompt for the clue giver role in case the prompt template file is
@@ -527,4 +564,99 @@ class LLMService:
             "Remember: You may stop early if the risk is high, or guess MORE than the target count "
             "if you find strong matches for previous clues.\n"
             "Follow the required JSON format exactly.\n"
+        )
+
+    def _default_os_user_cg(self) -> str:
+        """
+        Provides a default one-shot example for the user in the clue giver role in case the one-shot
+        example file is not found.
+        """
+        return (
+            "Turn: 1\n\n"
+            "### BOARD STATUS ###\n"
+            "AGENTS (Words to connect):\n"
+            "- CROWN\n"
+            "- THRONE\n"
+            "- CASTLE\n\n"
+            "ASSASSINS (Terminal state - strictly avoid):\n"
+            "- BRIDGE\n\n"
+            "CIVILIANS (Neutral - try to avoid):\n"
+            "- TOWER\n"
+            "- KNIGHT\n"
+            "REVEALED WORDS (Already guessed, no longer valid targets):\n"
+            "No words revealed yet.\n\n"
+            "### YOUR TASK ###\n"
+            "Propose a clue and a count for the guessing player. Remember the rules for valid clues "
+            "and counts."
+        )
+
+    def _default_os_assistant_cg(self) -> str:
+        """
+        Provides a default one-shot example for the assistant in the clue giver role in case the 
+        one-shot example file is not found.
+
+        This example should demonstrate the reasoning process and the final clue and count output in 
+        the correct JSON format.
+        """
+        return (
+            "{\"reasoning\": \"Step 1: CROWN, THRONE, CASTLE all relate to monarchy and royalty. "
+            "TOWER and KNIGHT are civilians with medieval connotations — a clue like 'medieval' or "
+            "'fortress' risks pulling them in. Step 2: Best candidate cluster is CROWN + THRONE + "
+            "CASTLE → clue 'royal'. Step 3: ASSASSIN CHECK — BRIDGE has no meaningful semantic link "
+            "to 'royal'. Safe to proceed. Step 4: TOWER could weakly associate with 'royal' (Tower "
+            "of London), so I reduce count to 2 targeting CROWN and THRONE, the strongest matches, "
+            "to avoid the civilian TOWER. Step 5: 'royal' is not a board word, not a derivative of "
+            "any board word, and not a homophone. Valid.\", \"clue\": \"royal\", \"count\": 2}"
+        )
+
+    def _default_os_user_gg(self) -> str:
+        """
+        Provides a default one-shot example for the user in the guessing role in case the one-shot
+        example file is not found.
+        """
+        return (
+            "Turn: 2\n\n"
+            "### CURRENT CLUE ###\n"
+            "- Clue: cold\n"
+            "- Target Count: 2\n\n"
+            "### PREVIOUS CLUES (Optional context for backtracking) ###\n"
+            "- Turn: 1, Clue: ocean, Count: 2\n\n"
+            "### UNREVEALED BOARD WORDS ###\n"
+            "- ICE\n"
+            "- FIRE\n"
+            "- WIND\n"
+            "- WAVE\n"
+            "- DESERT\n"
+            "- FROST\n"
+            "- SHIP\n"
+            "### YOUR TASK ###\n"
+            "Propose your optimal sequence of guesses.\n"
+            "Remember: You may stop early if the risk is high, or guess MORE than the target count "
+            "if you find strong matches for previous clues.\n"
+            "Follow the required JSON format exactly."
+        )
+
+    def _default_os_assistant_gg(self) -> str:
+        """
+        Provides a default one-shot example for the assistant in the guessing role in case the 
+        one-shot example file is not found.
+
+        This example should demonstrate the reasoning process for selecting guesses based on the
+        current clue and previous clues, the confidence scores for each proposed guess, and the stop
+        reason, all formatted in the correct JSON structure.
+        """
+        return (
+            "{\"reasoning\": \"Current clue is 'cold' (count 2). Ranking board words by semantic "
+            "proximity to 'cold': ICE (0.97) — direct synonym, highest confidence. FROST (0.93) — "
+            "near-synonym for cold/frozen, very strong match. WIND (0.55) — cold wind is common but "
+            "'wind' alone is ambiguous, below my threshold. FIRE (0.02) — antonym, ignore. DESERT "
+            "(0.10) — can be cold but strong association with heat, too risky. WAVE and SHIP have "
+            "no meaningful connection to 'cold'. Previous clue was 'ocean' (count 2) — WAVE (0.91) "
+            "and SHIP (0.72) are strong matches and still unrevealed. WAVE exceeds my threshold so "
+            "I add it as a third guess for the previous clue. SHIP is below threshold (0.72 < 0.80), "
+            "stopping there.\", \"stop_reason\": \"Proposed ICE and FROST for current clue 'cold' "
+            "(both above 0.90 threshold). Added WAVE as backtrack guess for previous clue 'ocean'. "
+            "Stopped before SHIP as 0.72 confidence is below the 0.80 safety threshold.\", "
+            "\"proposals\": [{\"word\": \"ICE\", \"confidence\": 0.97}, {\"word\": \"FROST\", "
+            "\"confidence\": 0.93}, {\"word\": \"WAVE\", \"confidence\": 0.91}]}"
         )
