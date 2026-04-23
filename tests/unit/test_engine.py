@@ -114,7 +114,7 @@ def test_engine_resolve_guess_normal_agent(valid_board_data: dict):
 
     assert result == "agent"
     assert engine.state.board.cards[4].revealed is True
-    assert engine.state.board.cards[4].revealed_by == 1
+    assert 1 in engine.state.board.cards[4].revealed_by
     # Agent count for player 1 should decrease by 1
     assert engine.state.agents_remaining[1] == 8
     assert engine.state.agents_remaining[0] == 9
@@ -141,7 +141,7 @@ def test_engine_resolve_guess_shared_agent(valid_board_data: dict):
 
     assert result == "agent"
     assert engine.state.board.cards[1].revealed is True
-    assert engine.state.board.cards[1].revealed_by == 1
+    assert 1 in engine.state.board.cards[1].revealed_by
     # Agent count for both players should decrease by 1 since it's a shared agent
     assert engine.state.agents_remaining[0] == 8
     assert engine.state.agents_remaining[1] == 8
@@ -168,11 +168,11 @@ def test_engine_resolve_guess_victory(valid_board_data: dict):
     for card in board.cards:
         if CardRole.AGENT in [card.llm_perspective_role, card.human_perspective_role]:
             card.revealed = True
-            card.revealed_by = 1
+            card.revealed_by.append(1)
 
     # Ensure the last agent card is not revealed
     engine.state.board.cards[1].revealed = False
-    engine.state.board.cards[1].revealed_by = None
+    engine.state.board.cards[1].revealed_by = []
 
     # Set remaining agents to 1 for testing victory condition
     engine.state.agents_remaining[1] = 1
@@ -228,7 +228,7 @@ def test_engine_resolve_guess_civilian(valid_board_data: dict):
 
     assert result == "civilian"
     assert engine.state.board.cards[5].revealed is False
-    assert engine.state.board.cards[5].revealed_by is None
+    assert engine.state.board.cards[5].revealed_by == []
     assert 1 in engine.state.board.cards[5].time_marker_by
     assert engine.state.timer_tokens == 8
     # Should switch roles after guessing a civilian
@@ -301,6 +301,7 @@ def test_engine_resolve_guess_invalid_inputs(valid_board_data: dict, modificatio
             engine.resolve_guess(card_id=0, player_id=0)
     elif modification == "already_revealed":
         engine.state.board.cards[0].revealed = True
+        engine.state.board.cards[0].revealed_by.append(1)
         with pytest.raises(ValueError, match=expected_error):
             engine.resolve_guess(card_id=0, player_id=1)
     elif modification == "time_token":
