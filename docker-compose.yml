@@ -33,7 +33,7 @@ services:
     volumes:
       - ollama_data:/root/.ollama # Persists downloaded models and configurations across restarts
       - ./ollama_entrypoint.sh:/ollama_entrypoint.sh:ro
-      - ./backend/app/config/llm_models.py:/llm_models.py:ro
+      - ./backend/app/config.py:/llm_models.py:ro
     deploy:
       resources:
         reservations:

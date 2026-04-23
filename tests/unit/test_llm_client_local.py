@@ -2,7 +2,7 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 from ollama import RequestError, ResponseError
-from backend.app.core.lm.llm_client_local import LLMClientLocal
+from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.models.llm_errors import LLMModelNotProvidedError, LLMRefusalError, LLMParseError
 from backend.app.models.llm_schemas import LLMResponse, ClueJSONFormat
 
@@ -34,7 +34,7 @@ async def test_llm_client_local_generate_success(llm_request_cg):
     # then create an instance of LLMClientLocal and call the generate method with the valid
     # LLMRequest fixture, and assert that the returned LLMResponse has the expected values based on
     # the mock response
-    with patch("backend.app.core.lm.llm_client_local.chat", return_value=mock_response):
+    with patch("backend.app.core.llm.client_local.chat", return_value=mock_response):
         client = LLMClientLocal('ollama3.2:latest')
 
         result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
@@ -58,7 +58,7 @@ async def test_llm_client_local_raises_model_not_provided_error(llm_request_cg):
     Tests that the LLMClientLocal raises an LLMModelNotProvidedError when the Ollama client raises a
     RequestError indicating that the model was not provided.
     """
-    with patch("backend.app.core.lm.llm_client_local.chat",
+    with patch("backend.app.core.llm.client_local.chat",
                side_effect=RequestError("Model not provided")):
         client = LLMClientLocal(None)
 
@@ -72,7 +72,7 @@ async def test_llm_client_local_raises_llm_refusal_error(llm_request_cg):
     Tests that the LLMClientLocal raises an LLMRefusalError when the Ollama client raises a 
     ResponseError indicating that the LLM refused to generate a response.
     """
-    with patch("backend.app.core.lm.llm_client_local.chat",
+    with patch("backend.app.core.llm.client_local.chat",
                side_effect=ResponseError("LLM refused to generate a response")):
         client = LLMClientLocal('ollama3.2:latest')
 
@@ -90,7 +90,7 @@ async def test_llm_client_local_raises_llm_parse_error(llm_request_cg):
     mock_response.message.content = "This is not a valid JSON response"
     mock_response.model_dump_json.return_value = mock_response.message.content
 
-    with patch("backend.app.core.lm.llm_client_local.chat", return_value=mock_response):
+    with patch("backend.app.core.llm.client_local.chat", return_value=mock_response):
         client = LLMClientLocal('ollama3.2:latest')
 
         with pytest.raises(LLMParseError):
@@ -111,7 +111,7 @@ async def test_llm_client_local_generate_think_false(llm_request_cg):
     mock_response.done_reason = "stop"
     mock_response.model_dump_json.return_value = json.dumps({"message": {"content": mock_content}})
 
-    with patch("backend.app.core.lm.llm_client_local.chat", return_value=mock_response) as mock_chat:
+    with patch("backend.app.core.llm.client_local.chat", return_value=mock_response) as mock_chat:
         client = LLMClientLocal('ollama3.2:latest', think=False)
 
         result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
@@ -132,7 +132,7 @@ async def test_llm_client_local_raises_parse_error_on_schema_mismatch(llm_reques
     mock_response.message.content = mock_content
     mock_response.model_dump_json.return_value = json.dumps({"message": {"content": mock_content}})
 
-    with patch("backend.app.core.lm.llm_client_local.chat", return_value=mock_response):
+    with patch("backend.app.core.llm.client_local.chat", return_value=mock_response):
         client = LLMClientLocal('ollama3.2:latest')
 
         with pytest.raises(LLMParseError):
@@ -154,7 +154,7 @@ async def test_llm_client_local_generate_without_expected_format(llm_request_cg)
     mock_response.done_reason = "stop"
     mock_response.model_dump_json.return_value = json.dumps({"message": {"content": mock_content}})
 
-    with patch("backend.app.core.lm.llm_client_local.chat", return_value=mock_response) as mock_chat:
+    with patch("backend.app.core.llm.client_local.chat", return_value=mock_response) as mock_chat:
         client = LLMClientLocal('ollama3.2:latest')
 
         result = await client.generate(llm_request_cg)

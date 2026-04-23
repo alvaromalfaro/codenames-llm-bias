@@ -2,7 +2,7 @@ import pytest
 import json
 from unittest.mock import MagicMock, AsyncMock
 from backend.app.core.llm_service import LLMService
-from backend.app.core.lm.llm_client import LLMClient
+from backend.app.core.llm.client import LLMClient
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal
 from backend.app.models.game_schemas import GamePhase
 

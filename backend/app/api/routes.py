@@ -7,14 +7,13 @@ from fastapi.responses import HTMLResponse
 from backend.app.core.loader import BoardLoader
 from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.core.llm_service import LLMService
-from backend.app.core.lm.llm_client import LLMClient
-from backend.app.core.lm.llm_client_local import LLMClientLocal
-from backend.app.config.llm_models import llm_models
+from backend.app.core.llm.client import LLMClient
+from backend.app.core.llm.client_local import LLMClientLocal
+from backend.app.config import llm_models
 
 
-_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
 _DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / "data"
-_TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 router = APIRouter()
