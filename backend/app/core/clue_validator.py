@@ -67,6 +67,17 @@ class ClueValidator:
 
         return True, ""
 
+    def remove_word(self, word: str) -> None:
+        """
+        Removes a word from the set of visible words, typically after it has been revealed.
+        Also removes its precomputed lemmas. If the word is not present, does nothing.
+
+        :param word: The word to remove (case-insensitive).
+        """
+        normalized = word.strip().lower()
+        self.visible_words.pop(normalized, None)
+        self.visible_lemmas.pop(normalized, None)
+
     def _word_lemmas(self, word: str) -> set[str]:
         """
         Returns a set of lemmas for the given word across different parts of speech (noun, verb,
