@@ -44,7 +44,9 @@ services:
 
   # Backend with FastAPI
   app:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: codenames-backend
     working_dir: /workspace
     command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -53,6 +55,8 @@ services:
       - ./data:/workspace/data # External files for words and biases
     ports:
       - "8000:8000"
+    environment:
+      PYTHONPATH: /workspace
     env_file:
       - .env # Include environment variables from .env file
     depends_on:
