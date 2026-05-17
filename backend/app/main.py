@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from backend.app.api.routes import router
 
@@ -20,3 +21,4 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Codenames Duet LLM Bias", lifespan=lifespan)
 app.include_router(router)
+app.mount("/static", StaticFiles(directory="backend/app/static"), name="static")

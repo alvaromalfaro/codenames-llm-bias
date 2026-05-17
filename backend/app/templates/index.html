@@ -153,23 +153,9 @@
                 </ul>
             </div>
             <div class="flex-1 w-full relative">
-                <!-- Decorative representation of a game board -->
-                <!-- TODO:
-                    Fake board that loops through a scripted game sequence using setInterval.
-                    Cards flip one by one, a clue text appears above, then two matching cards highlight,
-                    then it resets.  
-                 -->
                 <div
-                    class="aspect-video w-full bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 rounded-xl overflow-hidden border border-border-light dark:border-border-dark shadow-sm relative">
-                    <div class="absolute inset-0 flex items-center justify-center opacity-30">
-                        <span class="material-symbols-outlined text-9xl text-slate-300 dark:text-slate-600">hub</span>
-                    </div>
-                    <!-- Mock UI overlay -->
-                    <div
-                        class="absolute top-4 left-4 right-4 bottom-4 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-lg flex items-center justify-center">
-                        <p class="text-sm font-medium text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                            Game Interface Preview</p>
-                    </div>
+                    class="aspect-video w-full rounded-xl overflow-hidden border border-border-light dark:border-border-dark shadow-sm">
+                    <img src="/static/preview.gif" alt="Game Interface Preview" class="w-full h-full object-cover" />
                 </div>
             </div>
         </div>
