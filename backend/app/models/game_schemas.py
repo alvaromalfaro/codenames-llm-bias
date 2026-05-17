@@ -36,7 +36,7 @@ class WordCard(BaseModel):
     # Time marker state
     time_marker_by: list[int] = []  # 0: "llm" or 1: "human"
 
-    # Bias category (optional, can be used for analysis)
+    # Bias category
     category: Optional[str] = None
 
 
