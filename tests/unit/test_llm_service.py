@@ -3,6 +3,7 @@ import json
 from unittest.mock import MagicMock, AsyncMock
 from backend.app.core.llm_service import LLMService
 from backend.app.core.llm.client import LLMClient
+from backend.app.core.clue_validator import ClueValidator
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal
 from backend.app.models.game_schemas import GamePhase
 
@@ -34,10 +35,10 @@ async def test_llm_service_propose_clue_success(game_state_cg):
 
     # Call the propose_clue method, capture the result, and assert that it matches the expected
     # ClueProposal based on the mock response
-    result = await service.propose_clue(mock_client, game_state_cg)
+    result = await service.propose_clue(mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
 
     assert isinstance(result, ClueProposal)
-    assert result.clue == "battle"
+    assert result.clue == "battle"  # "battle" is not a board word so validation passes
     assert result.count == 3
     assert result.reasoning == "The word 'battle' captures a military commander ('NAPOLEON'),the " \
         "hardware ('RIFLE') and a primary theater of conflict ('RUSSIA')"
@@ -61,7 +62,7 @@ async def test_llm_service_propose_clue_wrong_phase(game_state_cg):
 
     with pytest.raises(ValueError,
                        match="Cannot propose a clue when the game is not in the GIVING_CLUE phase."):
-        await service.propose_clue(mock_client, game_state_cg)
+        await service.propose_clue(mock_client, game_state_cg, MagicMock())
 
 
 @pytest.mark.asyncio
@@ -78,7 +79,7 @@ async def test_llm_service_propose_clue_wrong_player(game_state_cg):
     game_state_cg.clue_giver = 1  # Set clue giver to player 1 instead of player 0
 
     with pytest.raises(ValueError, match="The player must be the clue giver to propose a clue."):
-        await service.propose_clue(mock_client, game_state_cg)
+        await service.propose_clue(mock_client, game_state_cg, MagicMock())
 
 
 @pytest.mark.asyncio
@@ -208,7 +209,8 @@ def test_llm_service_build_clue_request_player0(game_state_cg):
     """
     service = LLMService()
 
-    request = service._build_clue_request(game_state_cg, "test_model", player_id=0)
+    request = service._build_clue_request(
+        game_state_cg, "test_model", player_id=0)
 
     llm_agent_words = [
         card.text for card in game_state_cg.board.cards
@@ -228,7 +230,8 @@ def test_llm_service_build_clue_request_player0(game_state_cg):
         assert word in user_prompt
     for word in human_only_agent_words:
         # Human-only agents must not appear in the LLM's agent section
-        assert f"AGENTS" not in user_prompt or word not in user_prompt.split("ASSASSINS")[0]
+        assert f"AGENTS" not in user_prompt or word not in user_prompt.split("ASSASSINS")[
+            0]
 
 
 def test_llm_service_build_guess_request(game_state_guessing):
@@ -238,7 +241,8 @@ def test_llm_service_build_guess_request(game_state_guessing):
     """
     service = LLMService()
 
-    request = service._build_guess_request(game_state_guessing, "test_model", player_id=0)
+    request = service._build_guess_request(
+        game_state_guessing, "test_model", player_id=0)
 
     user_prompt = request.messages[-1].content
     assert len(request.messages) == 4
@@ -261,7 +265,8 @@ def test_llm_service_build_clue_request_no_one_shot(game_state_cg):
     service._one_shot_user_cg = ""
     service._one_shot_assistant_cg = ""
 
-    request = service._build_clue_request(game_state_cg, "test_model", player_id=0)
+    request = service._build_clue_request(
+        game_state_cg, "test_model", player_id=0)
 
     assert len(request.messages) == 2
     assert request.messages[0].role == "system"
@@ -296,3 +301,71 @@ def test_llm_service_build_guess_proposal_json_error(llm_response):
     with pytest.raises(ValueError, match="LLM response is not valid JSON. Response content: " +
                        llm_response.text):
         service._build_guess_proposal(llm_response)
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_retries_on_invalid_clue(game_state_cg):
+    """
+    Tests that propose_clue retries when the LLM returns a clue that fails ClueValidator
+    (a direct board-word match), and returns the valid proposal from the second attempt.
+    The retry request must include the failed attempt as an assistant message followed by
+    a correction user message.
+    """
+    invalid_text = '{"clue": "BUCKET", "count": 2, "reasoning": "bucket reasoning"}'
+    valid_text = '{"clue": "battle", "count": 2, "reasoning": "battle reasoning"}'
+
+    def make_response(text):
+        r = MagicMock()
+        r.text = text
+        r.raw_payload = json.loads(text)
+        return r
+
+    mock_client = MagicMock(spec=LLMClient)
+    mock_client.local_model = "test_model"
+    mock_client.generate = AsyncMock(side_effect=[
+        make_response(invalid_text),
+        make_response(valid_text),
+    ])
+
+    service = LLMService()
+    result = await service.propose_clue(mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+
+    assert isinstance(result, ClueProposal)
+    assert result.clue == "battle"
+    assert mock_client.generate.await_count == 2
+
+    # The retry request's last two messages must be the failed assistant response and the
+    # correction user message annotating the rejection.
+    retry_request = mock_client.generate.await_args_list[1][0][0]
+    messages = retry_request.messages
+    assert messages[-2].role == "assistant"
+    assert "BUCKET" in messages[-2].content
+    assert messages[-1].role == "user"
+    assert "BUCKET" in messages[-1].content
+    assert "rejected" in messages[-1].content.lower()
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_raises_after_max_retries(game_state_cg):
+    """
+    Tests that propose_clue raises a ValueError after exhausting all retry attempts
+    without receiving a valid clue from the LLM.
+    """
+    invalid_text = '{"clue": "BUCKET", "count": 2, "reasoning": "bucket reasoning"}'
+
+    def make_response(text):
+        r = MagicMock()
+        r.text = text
+        r.raw_payload = json.loads(text)
+        return r
+
+    mock_client = MagicMock(spec=LLMClient)
+    mock_client.local_model = "test_model"
+    mock_client.generate = AsyncMock(return_value=make_response(invalid_text))
+
+    service = LLMService()
+
+    with pytest.raises(ValueError, match="LLM failed to produce a valid clue after"):
+        await service.propose_clue(mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+
+    assert mock_client.generate.await_count == 3

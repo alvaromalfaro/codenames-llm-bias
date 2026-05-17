@@ -2,6 +2,7 @@ from typing import Optional
 import uuid
 import random
 from backend.app.models.game_schemas import Board, GamePhase, GameState, CardRole, ClueEntry, WordCard
+from backend.app.core.clue_validator import ClueValidator
 
 
 class CodenamesDuetEngine:
@@ -26,6 +27,7 @@ class CodenamesDuetEngine:
             clue_giver=start_player,
             guesser=1 - start_player
         )
+        self.clue_validator = ClueValidator(board.cards)
 
     def receive_clue(self, clue: str, count: int, player_id: int, raw_payload: Optional[dict] = None):
         """
@@ -149,6 +151,8 @@ class CodenamesDuetEngine:
             return "assassin"
         else:
             card.time_marker_by.append(self.state.guesser)
+            if len(card.time_marker_by) == 2:
+                self.clue_validator.remove_word(card.text)
             self.state.timer_tokens -= 1
             self._switch_roles()
 
@@ -183,6 +187,7 @@ class CodenamesDuetEngine:
         # Reveal the card
         card.revealed = True
         card.revealed_by.append(guessed_by)
+        self.clue_validator.remove_word(card.text)
 
         # Update the count of remaining agents for the guessing player (or both if it's a shared agent)
         self.state.agents_remaining[guessed_by] -= 1

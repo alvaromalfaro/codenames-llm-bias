@@ -203,7 +203,7 @@ async def llm_give_clue(game_id: str):
 
     engine, llm_client = game
 
-    proposal = await _llm_service.propose_clue(llm_client, engine.state)
+    proposal = await _llm_service.propose_clue(llm_client, engine.state, engine.clue_validator)
 
     engine.receive_clue(proposal.clue, proposal.count,
                         player_id=0, raw_payload=proposal.raw_payload)

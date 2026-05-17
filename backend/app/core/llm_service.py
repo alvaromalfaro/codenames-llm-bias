@@ -1,7 +1,10 @@
 import json
 from backend.app.core.llm.client import LLMClient
+from backend.app.core.clue_validator import ClueValidator
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage, ClueJSONFormat, GuessJSONFormat
-from backend.app.models.game_schemas import GameState, GamePhase, CardRole
+from backend.app.models.game_schemas import GameState, GamePhase, CardRole, ClueEntry
+
+MAX_CLUE_RETRIES = 3
 
 
 class LLMService:
@@ -35,7 +38,7 @@ class LLMService:
         self._one_shot_assistant_gg = self._load_one_shot(
             self.ONE_SHOT_ASSISTANT_GG_PATH, 3)
 
-    async def propose_clue(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> ClueProposal:
+    async def propose_clue(self, llm_client: LLMClient, game_state: GameState, validator: ClueValidator, player_id: int = 0) -> ClueProposal:
         """
         Proposes a clue for the current game state. This method checks that the game is in the 
         correct phase and that the LLM is the clue giver before building the request, sending it to
@@ -55,17 +58,38 @@ class LLMService:
             raise ValueError(
                 "The player must be the clue giver to propose a clue.")
 
-        # Build the LLM request for proposing a clue
         request = self._build_clue_request(
             game_state, llm_client.local_model, player_id)
 
-        # Send the request to the LLM client and get the response
-        response = await llm_client.generate(request, expected_format=ClueJSONFormat)
+        reason = ""
 
-        # Process the response and convert it into a ClueProposal
-        clue_proposal = self._build_clue_proposal(response)
+        for _ in range(MAX_CLUE_RETRIES):
+            response = await llm_client.generate(request, expected_format=ClueJSONFormat)
+            proposal = self._build_clue_proposal(response)
 
-        return clue_proposal
+            clue_entry = ClueEntry(
+                clue=proposal.clue,
+                count=proposal.count,
+                clue_giver=player_id,
+                turn_number=game_state.turn_number,
+            )
+            valid, reason = validator.is_valid(clue_entry)
+            if valid:
+                return proposal
+
+            print(
+                f"LLM proposed invalid clue '{proposal.clue}': {reason}. Retrying...")
+            request = self._build_clue_retry_request(
+                original_request=request,
+                invalid_response_text=response.text,
+                invalid_clue=proposal.clue,
+                reason=reason,
+            )
+
+        raise ValueError(
+            f"LLM failed to produce a valid clue after {MAX_CLUE_RETRIES} attempts. "
+            f"Last rejection: {reason}"
+        )
 
     async def propose_guess(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> GuessProposal:
         """
@@ -194,6 +218,39 @@ class LLMService:
 
         return ClueProposal(clue=clue.strip(), count=count, reasoning=reasoning.strip(),
                             raw_payload=response.raw_payload)
+
+    def _build_clue_retry_request(
+        self,
+        original_request: LLMRequest,
+        invalid_response_text: str,
+        invalid_clue: str,
+        reason: str,
+    ) -> LLMRequest:
+        """
+        Builds a retry LLMRequest after the LLM proposed an invalid clue. The conversation is
+        extended with the failed attempt (as a user→assistant pair) followed by a new user message
+        that explains why the clue was rejected and asks for a fresh one.
+
+        The resulting message list is:
+            [system, (one-shot user), (one-shot assistant), original user, invalid assistant, correction user]
+        """
+        correction = (
+            f"Your previous clue was rejected.\n\n"
+            f"Rejected clue: \"{invalid_clue}\"\n"
+            f"Reason: {reason}\n\n"
+            f"Please provide a new valid clue using the same JSON format."
+        )
+        messages = list(original_request.messages) + [
+            LLMMessage(role="assistant", content=invalid_response_text),
+            LLMMessage(role="user", content=correction),
+        ]
+        return LLMRequest(
+            messages=messages,
+            model=original_request.model,
+            temperature=original_request.temperature,
+            max_tokens=original_request.max_tokens,
+            timeout_s=original_request.timeout_s,
+        )
 
     def _build_guess_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
         """
