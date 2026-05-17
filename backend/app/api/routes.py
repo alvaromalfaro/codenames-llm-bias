@@ -31,6 +31,11 @@ async def home(request: Request):
     return templates.TemplateResponse(request, "index.html")
 
 
+@router.get("/about")
+async def about(request: Request):
+    return templates.TemplateResponse(request, "about.html")
+
+
 @router.get("/config")
 async def game_configuration(request: Request):
     return templates.TemplateResponse(
