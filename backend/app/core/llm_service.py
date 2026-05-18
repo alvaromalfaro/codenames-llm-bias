@@ -208,13 +208,8 @@ class LLMService:
             raise ValueError(
                 "LLM response is not valid JSON. Response content: " + response_content)
 
-        # TODO: Implement validation logic for the clue and count based on the game rules.
-        # For now, we will assume the clue and count are valid if they are present and of the
-        # correct types
-        if not isinstance(clue, str) or not clue.strip():
-            raise ValueError("Clue must be a non-empty string.")
-        if not isinstance(count, int) or count <= 0:
-            raise ValueError("Count must be a positive integer.")
+        print(
+            f"DEBUG: Extracted clue proposal - Clue: '{clue}', Count: {count}, Reasoning: '{reasoning}'")
 
         return ClueProposal(clue=clue.strip(), count=count, reasoning=reasoning.strip(),
                             raw_payload=response.raw_payload)
@@ -327,6 +322,9 @@ class LLMService:
         confidence = [proposal.get("confidence", 0) for proposal in proposals]
         proposals = [proposal.get("word", "").strip()
                      for proposal in proposals]
+
+        print(
+            f"DEBUG: Extracted guess proposals - {proposals} with confidence scores {confidence}. Reasoning: '{reasoning}'. Stop reason: '{stop_reason}'")
 
         return GuessProposal(
             proposals=proposals, confidence=confidence, reasoning=reasoning.strip(),

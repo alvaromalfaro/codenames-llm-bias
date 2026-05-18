@@ -1,20 +1,22 @@
 import json
+import os
 from json import JSONDecodeError
 import re
 from pydantic import BaseModel
 from backend.app.core.llm.client import LLMClient
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import LLMModelNotProvidedError, LLMRefusalError, LLMParseError
-from ollama import chat, RequestError, ResponseError
+from ollama import Client, RequestError, ResponseError
 
 
 class LLMClientLocal(LLMClient):
     def __init__(self, local_model: str, think: bool = True):
         self.local_model = local_model
         self.think = think
+        host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        self._client = Client(host=host)
 
     async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
-        # Convert LLMRequest to the format expected by the Ollama client
         messages = [
             {"role": message.role, "content": message.content} for message in request.messages
         ]
@@ -22,16 +24,15 @@ class LLMClientLocal(LLMClient):
         format = expected_format.model_json_schema() if expected_format else "json"
 
         try:
-            # Call the Ollama client to get the response from the local LLM
             if self.think:
-                ollama_response = chat(
+                ollama_response = self._client.chat(
                     model=self.local_model,
                     messages=messages,
                     think=self.think,
                     format=format
                 )
             else:
-                ollama_response = chat(
+                ollama_response = self._client.chat(
                     model=self.local_model,
                     messages=messages,
                     format=format
