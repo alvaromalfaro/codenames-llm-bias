@@ -56,9 +56,7 @@ def test_engine_receive_clue(valid_board_data: dict):
 @pytest.mark.parametrize("modification, expected_error", [
     ("invalid_phase", "Clues can only be given during the GIVING_CLUE phase."),
     ("invalid_player", "Only the clue giver can provide a clue."),
-    ("empty_clue", "Clue cannot be empty."),
-    ("invalid_count", "Clue count must be at least 1."),
-    ("exact_match", "Clue cannot be the same as any word on the board.")
+    ("exact_match", "Invalid clue:")
 ])
 def test_engine_receive_clue_invalid_inputs(valid_board_data: dict, modification: str, expected_error: str):
     """
@@ -71,7 +69,6 @@ def test_engine_receive_clue_invalid_inputs(valid_board_data: dict, modification
     board = Board(**valid_board_data)
     engine = CodenamesDuetEngine(board=board)
 
-    # Force the clue giver to be player 0 for testing
     engine.state.clue_giver = 0
     engine.state.guesser = 1
     engine.state.current_phase = GamePhase.GIVING_CLUE
@@ -83,16 +80,29 @@ def test_engine_receive_clue_invalid_inputs(valid_board_data: dict, modification
     elif modification == "invalid_player":
         with pytest.raises(PermissionError, match=expected_error):
             engine.receive_clue(clue="TestClue", count=2, player_id=1)
-    elif modification == "empty_clue":
-        with pytest.raises(ValueError, match=expected_error):
-            engine.receive_clue(clue="", count=2, player_id=0)
-    elif modification == "invalid_count":
-        with pytest.raises(ValueError, match=expected_error):
-            engine.receive_clue(clue="TestClue", count=0, player_id=0)
     elif modification == "exact_match":
         with pytest.raises(ValueError, match=expected_error):
             engine.receive_clue(
                 clue=valid_board_data["cards"][0]["text"], count=2, player_id=0)
+
+
+@pytest.mark.parametrize("clue, count", [
+    ("", 2),
+    ("TestClue", 0),
+])
+def test_engine_receive_clue_pydantic_validation(valid_board_data: dict, clue: str, count: int):
+    """
+    Validates that receive_clue raises ValueError (wrapping Pydantic ValidationError) for
+    structurally invalid clue entries — empty clue or non-positive count.
+    """
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = 0
+    engine.state.guesser = 1
+    engine.state.current_phase = GamePhase.GIVING_CLUE
+
+    with pytest.raises(ValueError):
+        engine.receive_clue(clue=clue, count=count, player_id=0)
 
 
 def test_engine_resolve_guess_normal_agent(valid_board_data: dict):

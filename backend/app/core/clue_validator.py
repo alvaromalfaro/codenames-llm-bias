@@ -55,7 +55,7 @@ class ClueValidator:
                 return False, f"'{clue.clue}' is a morphological form of the board word '{word}'."
 
         # Clue is a component of a board compound or vice versa.
-        # We check all lemma forms of the clue so that inflected forms like "quaking" (→ "quake")
+        # We check all lemma forms of the clue so that inflected forms like "quaking" ("quake")
         # are also caught as components of compounds like "earthquake".
         clue_forms = clue_lemmas | {normalized_clue}
         for word in self.visible_words:
