@@ -21,8 +21,8 @@
 {% set label = "ASSASSIN" %}
 {% set label_classes = "text-gray-400" %}
 {% endif %}
-<!-- Crossed out if revealed by LLM or marked by time token -->
-{% if 0 in card.revealed_by or 0 in card.time_marker_by %}
+<!-- Crossed out if revealed by LLM, marked by time token, or revealed by human and is a shared agent -->
+{% if 0 in card.revealed_by or 0 in card.time_marker_by or (1 in card.revealed_by and human_role == llm_role) %}
 {% set text_classes = text_classes + " line-through decoration-2" %}
 {% endif %}
 

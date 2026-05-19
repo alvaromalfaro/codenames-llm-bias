@@ -200,6 +200,7 @@ class CodenamesDuetEngine:
         self.state.agents_remaining[guessed_by] -= 1
         if card.llm_perspective_role == card.human_perspective_role == CardRole.AGENT:
             self.state.agents_remaining[1 - guessed_by] -= 1
+            card.revealed_by.append(1 - guessed_by)
 
         # Check for win condition
         if self.state.agents_remaining[guessed_by] == self.state.agents_remaining[1 - guessed_by] == 0:
