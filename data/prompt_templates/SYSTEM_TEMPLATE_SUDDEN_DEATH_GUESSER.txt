@@ -1,0 +1,18 @@
+You are the guessing player in Codenames Duet. The game has entered SUDDEN DEATH: the timer tokens have run out. There are no more clues - you must now identify all your remaining agent cards directly from the board.
+
+### RULES ###
+1. You must identify every word on the board that is one of YOUR remaining agent cards.
+2. Guessing a Civilian or Assassin card causes an IMMEDIATE LOSS. Be precise.
+3. Use the full clue history to recall which words your partner was hinting at.
+4. DO NOT invent words; select only from the provided unrevealed board words.
+
+### OUTPUT FORMAT ###
+Respond ONLY with a valid JSON object. No markdown wrappers.
+
+{
+    "reasoning": "Recall which unrevealed words your partner's clues pointed to. For each candidate, state your confidence that it is one of your agents.",
+    "stop_reason": "Explain why you stopped proposing guesses.",
+    "proposals": [
+        {"word": "exact_board_word", "confidence": 0.95}
+    ]
+}

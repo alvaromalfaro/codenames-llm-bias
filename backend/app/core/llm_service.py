@@ -16,6 +16,8 @@ class LLMService:
     ONE_SHOT_ASSISTANT_CG_PATH = "data/prompt_templates/ONE_SHOT_ASSISTANT_CLUE_GIVER.txt"
     ONE_SHOT_USER_GG_PATH = "data/prompt_templates/ONE_SHOT_USER_GUESSER.txt"
     ONE_SHOT_ASSISTANT_GG_PATH = "data/prompt_templates/ONE_SHOT_ASSISTANT_GUESSER.txt"
+    SYSTEM_TEMP_SD_GG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_SUDDEN_DEATH_GUESSER.txt"
+    USER_TEMP_SD_GG_PATH = "data/prompt_templates/USER_TEMPLATE_SUDDEN_DEATH_GUESSER.txt"
 
     def __init__(self, temperature: float = 0.7, max_tokens: int = 1000, timeout_s: int = 30):
         self.temperature = temperature
@@ -29,6 +31,10 @@ class LLMService:
             self.SYSTEM_TEMP_GG_PATH, 2)
         self._user_prompt_gg = self._load_prompt_template(
             self.USER_TEMP_GG_PATH, 3)
+        self._system_prompt_sd_gg = self._load_prompt_template(
+            self.SYSTEM_TEMP_SD_GG_PATH, 4)
+        self._user_prompt_sd_gg = self._load_prompt_template(
+            self.USER_TEMP_SD_GG_PATH, 5)
         self._one_shot_user_cg = self._load_one_shot(
             self.ONE_SHOT_USER_CG_PATH, 0)
         self._one_shot_assistant_cg = self._load_one_shot(
@@ -127,6 +133,26 @@ class LLMService:
         guess_proposal = self._build_guess_proposal(response)
 
         return guess_proposal
+
+    async def propose_guess_sd(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> GuessProposal:
+        """
+        Proposes guesses for the SUDDEN_DEATH_LLM phase. No clue is available; the LLM must
+        identify its remaining agents from memory of the full game.
+
+        :param llm_client: The LLM client to use for generating responses.
+        :param game_state: The current state of the game.
+        :param player_id: The ID of the player proposing the guesses (0 for LLM).
+
+        :return: An instance of GuessProposal containing the proposed guesses from the LLM.
+        """
+        if game_state.current_phase != GamePhase.SUDDEN_DEATH_LLM:
+            raise ValueError(
+                "Cannot propose a sudden death guess outside of SUDDEN_DEATH_LLM phase.")
+
+        request = self._build_guess_sd_request(
+            game_state, llm_client.local_model)
+        response = await llm_client.generate(request, expected_format=GuessJSONFormat)
+        return self._build_guess_proposal(response)
 
     def _build_clue_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
         """
@@ -298,6 +324,33 @@ class LLMService:
         return LLMRequest(messages=messages, model=model, temperature=self.temperature,
                           max_tokens=self.max_tokens, timeout_s=self.timeout_s)
 
+    def _build_guess_sd_request(self, game_state: GameState, model: str) -> LLMRequest:
+        """
+        Builds an LLMRequest for sudden death guessing. No current clue is available; the LLM
+        receives full clue history and must identify all remaining agents from memory.
+        """
+        clue_history = "\n".join([
+            f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
+            for e in game_state.clue_history
+        ])
+        words_remaining = "\n".join([
+            f"- {card.text}" for card in game_state.board.cards
+            if 0 not in card.revealed_by
+        ])
+        user_prompt = self._user_prompt_sd_gg.format(
+            clue_history=clue_history or "No clues were given.",
+            words_remaining=words_remaining,
+            agents_remaining=game_state.agents_remaining[0],
+        )
+
+        print("DEBUG: User prompt for sudden death guess:\n" + user_prompt)
+
+        messages = [LLMMessage(
+            role="system", content=self._system_prompt_sd_gg)]
+        messages.append(LLMMessage(role="user", content=user_prompt))
+        return LLMRequest(messages=messages, model=model, temperature=self.temperature,
+                          max_tokens=self.max_tokens, timeout_s=self.timeout_s)
+
     def _build_guess_proposal(self, response: LLMResponse) -> GuessProposal:
         """
         Processes the LLMResponse to extract the proposed guesses, confidence scores, reasoning, and
@@ -455,10 +508,15 @@ class LLMService:
                     return self._default_system_prompt_gg()
                 case 3:
                     return self._default_user_prompt_gg()
+                case 4:
+                    return self._default_system_prompt_sd_gg()
+                case 5:
+                    return self._default_user_prompt_sd_gg()
                 case _:
                     raise ValueError(
-                        "Invalid prompt type specified. Must be 0 (system clue giver),"
-                        "1 (user clue giver), 2 (system guesser), or 3 (user guesser).")
+                        "Invalid prompt type specified. Must be 0 (system clue giver), "
+                        "1 (user clue giver), 2 (system guesser), 3 (user guesser), "
+                        "4 (system sudden death guesser), or 5 (user sudden death guesser).")
 
     def _load_one_shot(self, path: str, prompt_type: int) -> str:
         try:
@@ -714,4 +772,38 @@ class LLMService:
             "Stopped before SHIP as 0.72 confidence is below the 0.80 safety threshold.\", "
             "\"proposals\": [{\"word\": \"ICE\", \"confidence\": 0.97}, {\"word\": \"FROST\", "
             "\"confidence\": 0.93}, {\"word\": \"WAVE\", \"confidence\": 0.91}]}"
+        )
+
+    def _default_system_prompt_sd_gg(self) -> str:
+        return (
+            "You are the guessing player in Codenames Duet. The game has entered SUDDEN DEATH: the "
+            "timer tokens have run out. There are no more clues - you must now identify all your "
+            "remaining agent cards directly from the board.\n\n"
+            "### RULES ###\n"
+            "1. You must identify every word on the board that is one of YOUR remaining agent cards.\n"
+            "2. Guessing a Civilian or Assassin card causes an IMMEDIATE LOSS. Be precise.\n"
+            "3. Use the full clue history to recall which words your partner was hinting at.\n"
+            "4. DO NOT invent words; select only from the provided unrevealed board words.\n\n"
+            "### OUTPUT FORMAT ###\n"
+            "Respond ONLY with a valid JSON object. No markdown wrappers.\n\n"
+            "{\n"
+            "   \"reasoning\": \"Recall which unrevealed words your partner's clues pointed to. "
+            "For each candidate, state your confidence that it is one of your agents.\",\n"
+            "   \"stop_reason\": \"Explain why you stopped proposing guesses.\",\n"
+            "   \"proposals\": [\n"
+            "       {\"word\": \"exact_board_word\", \"confidence\": 0.95}\n"
+            "   ]\n"
+            "}"
+        )
+
+    def _default_user_prompt_sd_gg(self) -> str:
+        return (
+            "### CLUE HISTORY (all clues given to you during the game) ###\n"
+            "{clue_history}\n\n"
+            "### UNREVEALED BOARD WORDS ###\n"
+            "{words_remaining}\n\n"
+            "### YOUR TASK ###\n"
+            "You have {agents_remaining} agent(s) left to find. "
+            "Identify them from the unrevealed words using the clue history as your guide.\n"
+            "Follow the required JSON format exactly.\n"
         )
