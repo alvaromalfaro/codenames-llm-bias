@@ -85,16 +85,25 @@ class CodenamesDuetEngine:
             game is not in the GUESSING or SUDDEN_DEATH phase, or if the guesser has already
             revealed all of their agents in the SUDDEN_DEATH phase.
         """
-        if self.state.current_phase not in [GamePhase.GUESSING, GamePhase.SUDDEN_DEATH]:
+        _sd_phases = [GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]
+        if self.state.current_phase not in [GamePhase.GUESSING] + _sd_phases:
             raise PermissionError(
-                "Guesses can only be made during the GUESSING or SUDDEN_DEATH phase.")
+                "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or SUDDEN_DEATH_LLM phase.")
 
         if self.state.current_phase == GamePhase.GUESSING and player_id != self.state.guesser:
             raise PermissionError("Only the guesser can make guesses.")
 
-        if self.state.current_phase == GamePhase.SUDDEN_DEATH and self.state.agents_remaining[player_id] == 0:
+        if self.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN and player_id != 1:
             raise PermissionError(
-                "The guesser has already revealed all of their agents and cannot make more guesses.")
+                "Only the human can guess during SUDDEN_DEATH_HUMAN phase.")
+
+        if self.state.current_phase == GamePhase.SUDDEN_DEATH_LLM and player_id != 0:
+            raise PermissionError(
+                "Only the LLM can guess during SUDDEN_DEATH_LLM phase.")
+
+        if self.state.current_phase in _sd_phases and self.state.agents_remaining[player_id] == 0:
+            raise PermissionError(
+                "The player has already revealed all of their agents and cannot make more guesses.")
 
         card = self.state.board.cards[card_id]
         if player_id in card.revealed_by:
@@ -109,7 +118,7 @@ class CodenamesDuetEngine:
         self.state.guesses_made_this_turn += 1
 
         # Resolve the guess based on the current game phase and return result
-        if self.state.current_phase == GamePhase.SUDDEN_DEATH:
+        if self.state.current_phase in [GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]:
             return self._resolve_guess_sudden_death(card, card_role, player_id)
 
         return self._resolve_guess_normal(card, card_role)
@@ -203,10 +212,17 @@ class CodenamesDuetEngine:
             card.revealed_by.append(1 - guessed_by)
 
         # Check for win condition
-        if self.state.agents_remaining[guessed_by] == self.state.agents_remaining[1 - guessed_by] == 0:
-            res = "victory" if self.state.current_phase != GamePhase.SUDDEN_DEATH else "victory_sd"
+        if self.state.agents_remaining[0] == 0 and self.state.agents_remaining[1] == 0:
+            in_sd = self.state.current_phase in [
+                GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]
+            res = "victory_sd" if in_sd else "victory"
             self._finish_game(result=res)
             return res
+
+        # Human just found their last agent in SUDDEN_DEATH_HUMAN -> hand off to LLM
+        if (self.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
+                and self.state.agents_remaining[1] == 0):
+            self.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
 
         return "agent"
 
@@ -238,9 +254,12 @@ class CodenamesDuetEngine:
         self.state.current_clue = None
 
         # If the timer tokens have run out and there are still agents remaining, transition to the
-        # sudden death phase
+        # sudden death phase - human goes first unless they have no agents left
         if self.state.timer_tokens <= 0 and self._any_agents_remaining():
-            self.state.current_phase = GamePhase.SUDDEN_DEATH
+            if self.state.agents_remaining[1] == 0:
+                self.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
+            else:
+                self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
 
     def _any_agents_remaining(self) -> bool:
         """

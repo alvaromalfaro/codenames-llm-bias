@@ -109,9 +109,10 @@ class GamePhase(str, Enum):
     GUESSING = "guessing"
     # The phase when the game has ended, either by win, loss, or other termination conditions.
     GAME_OVER = "game_over"
-    # Endgame phase when the timer tokens have run out and the game enters a mode where the players
-    # can only win by guessing their remaining agents without any more clues.
-    SUDDEN_DEATH = "sudden_death"
+    # Endgame phase when the timer tokens have run out: human guesses their remaining agents first.
+    SUDDEN_DEATH_HUMAN = "sudden_death_human"
+    # After the human finishes, the LLM guesses its remaining agents.
+    SUDDEN_DEATH_LLM = "sudden_death_llm"
 
 
 class ClueEntry(BaseModel):
