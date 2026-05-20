@@ -10,6 +10,7 @@ from backend.app.core.llm_service import LLMService
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.config import llm_models
+from backend.app.models.game_schemas import GamePhase
 
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -289,6 +290,62 @@ async def llm_make_guess(game_id: str):
         "state": engine.state, "game_id": game_id, "oob": True
     })
 
+    return HTMLResponse(content=html)
+
+
+@router.post("/play/{game_id}/llm-sd-guess")
+async def llm_make_guess_sd(game_id: str):
+    """
+    Handle the LLM's sudden death guessing phase. The LLM proposes guesses without a clue,
+    relying on the full clue history to identify its remaining agents.
+    """
+    game = _games.get(game_id)
+    if not game:
+        return HTMLResponse("Game not found.", status_code=404)
+
+    engine, llm_client = game
+
+    if engine.state.current_phase != GamePhase.SUDDEN_DEATH_LLM:
+        return HTMLResponse("Not in LLM sudden death phase.", status_code=400)
+
+    try:
+        proposal = await _llm_service.propose_guess_sd(llm_client, engine.state, player_id=0)
+    except (ValueError, PermissionError) as e:
+        print(f"Error during LLM sudden death guess proposal: {str(e)}")
+        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
+
+    html = ""
+    for word in proposal.proposals:
+        card_id = engine.state.board.get_card_id_by_word(word)
+        if card_id is None:
+            continue
+
+        try:
+            result = engine.resolve_guess(card_id, player_id=0)
+        except (ValueError, PermissionError):
+            break
+
+        print(f"LLM sudden death guess: {word}")
+
+        card = engine.state.board.cards[card_id]
+        html += templates.get_template("partials/_log_entry.html").render({
+            "card": card, "result": result, "state": engine.state, "player": "LLM"
+        })
+        html += templates.get_template("partials/_card.html").render({
+            "card": card, "game_id": game_id, "state": engine.state, "oob": True
+        })
+        html += templates.get_template("partials/_game_stats.html").render({
+            "state": engine.state, "oob": True
+        })
+
+        if result != "agent":
+            if result in ("victory_sd", "victory"):
+                html += _render_cards_oob(engine, game_id)
+            break
+
+    html += templates.get_template("partials/_clue_banner.html").render({
+        "state": engine.state, "game_id": game_id, "oob": True
+    })
     return HTMLResponse(content=html)
 
 

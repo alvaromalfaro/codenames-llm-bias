@@ -27,7 +27,7 @@
 {% endif %}
 
 <!-- Guesser -->
-{% elif (state.current_phase.value == "guessing" and state.guesser == 1) or state.current_phase.value == "sudden_death"
+{% elif (state.current_phase.value == "guessing" and state.guesser == 1) or state.current_phase.value == "sudden_death_human"
 %}
 <!-- By default, all cards are plain white interactive -->
 {% set card_classes = "bg-surface-light border border-neutral-light hover:border-primary/50 hover:bg-primary/5" %}

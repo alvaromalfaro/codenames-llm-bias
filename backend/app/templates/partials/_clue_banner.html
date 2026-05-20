@@ -84,16 +84,29 @@
         </div>
     </form>
 
-    {% elif state.current_phase.value == 'sudden_death' %}
-    {# no more clues #}
+    {% elif state.current_phase.value == 'sudden_death_human' %}
+    {# Human's sudden death turn: cards are interactive, no button needed #}
     <div class="flex items-center gap-4">
         <div class="bg-red-100 p-2 rounded-lg text-red-600">
             <span class="material-symbols-outlined">warning</span>
         </div>
         <div>
-            <p class="text-xs font-semibold text-red-400 uppercase tracking-wide">Sudden Death</p>
-            <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">No more timer tokens. Guess your agents
-                directly</h3>
+            <p class="text-xs font-semibold text-red-400 uppercase tracking-wide">Sudden Death - Your Turn</p>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">Guess your {{ state.agents_remaining[1] }}
+                remaining agent{{ 's' if state.agents_remaining[1] != 1 }} directly</h3>
+        </div>
+    </div>
+
+    {% elif state.current_phase.value == 'sudden_death_llm' %}
+    {# LLM's sudden death turn: auto-trigger the endpoint on banner load #}
+    <div class="flex items-center gap-4" hx-post="/play/{{ game_id }}/llm-sd-guess" hx-trigger="load"
+        hx-target="#log-entries" hx-swap="beforeend">
+        <div class="bg-red-100 p-2 rounded-lg text-red-600">
+            <span class="material-symbols-outlined animate-spin" style="animation-duration:2s">progress_activity</span>
+        </div>
+        <div>
+            <p class="text-xs font-semibold text-red-400 uppercase tracking-wide">Sudden Death - Agent Turn</p>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">Agent is revealing their agents...</h3>
         </div>
     </div>
 
