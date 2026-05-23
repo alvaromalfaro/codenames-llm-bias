@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
+from pydantic import BaseModel
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse
 
 
 class LLMClient(ABC):
     @abstractmethod
-    async def generate(self, request: LLMRequest) -> LLMResponse:
+    async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
         """
         Abstract method to generate a response from the LLM based on the given request. This method
         must be implemented by any concrete subclass of LLMClient.

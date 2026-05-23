@@ -10,8 +10,8 @@ from ollama import Client, RequestError, ResponseError
 
 
 class LLMClientLocal(LLMClient):
-    def __init__(self, local_model: str, think: bool = True):
-        self.local_model = local_model
+    def __init__(self, model_name: str, think: bool = True):
+        self.model_name = model_name
         self.think = think
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
         self._client = Client(host=host)
@@ -26,14 +26,14 @@ class LLMClientLocal(LLMClient):
         try:
             if self.think:
                 ollama_response = self._client.chat(
-                    model=self.local_model,
+                    model=self.model_name,
                     messages=messages,
                     think=self.think,
                     format=format
                 )
             else:
                 ollama_response = self._client.chat(
-                    model=self.local_model,
+                    model=self.model_name,
                     messages=messages,
                     format=format
                 )

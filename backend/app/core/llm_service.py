@@ -65,7 +65,7 @@ class LLMService:
                 "The player must be the clue giver to propose a clue.")
 
         request = self._build_clue_request(
-            game_state, llm_client.local_model, player_id)
+            game_state, llm_client.model_name, player_id)
 
         reason = ""
 
@@ -124,7 +124,7 @@ class LLMService:
 
         # Build the LLM request for proposing a guess
         request = self._build_guess_request(
-            game_state, llm_client.local_model, player_id)
+            game_state, llm_client.model_name, player_id)
 
         # Send the request to the LLM client and get the response.
         response = await llm_client.generate(request, expected_format=GuessJSONFormat)
@@ -150,7 +150,7 @@ class LLMService:
                 "Cannot propose a sudden death guess outside of SUDDEN_DEATH_LLM phase.")
 
         request = self._build_guess_sd_request(
-            game_state, llm_client.local_model)
+            game_state, llm_client.model_name)
         response = await llm_client.generate(request, expected_format=GuessJSONFormat)
         return self._build_guess_proposal(response)
 
