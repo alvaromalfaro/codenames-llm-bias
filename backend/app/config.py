@@ -30,5 +30,11 @@ llm_models = {
         "magistral:latest": {
             "think": False
         },
-    }
+    },
+    "OpenRouter": {
+        "meta-llama/llama-3.3-70b-instruct:free": {},
+        "openai/gpt-oss-120b:free": {},
+        "minimax/minimax-m2.5:free": {},
+        "deepseek/deepseek-v4-flash:free": {},
+    },
 }
