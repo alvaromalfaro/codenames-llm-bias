@@ -9,6 +9,7 @@ from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.core.llm_service import LLMService
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm.client_local import LLMClientLocal
+from backend.app.core.llm.client_openrouter import LLMClientOpenRouter
 from backend.app.config import llm_models
 from backend.app.models.game_schemas import GamePhase
 
@@ -73,8 +74,11 @@ async def play(request: Request, model_provider: str, bias_category: str, model_
         model_name = random.choice(_model_names.get(model_provider, []))
 
     model_config = llm_models.get(model_provider, {}).get(model_name, {})
-    llm_client = LLMClientLocal(
-        local_model=model_name, think=model_config.get("think", False))
+    if model_provider == "OpenRouter":
+        llm_client = LLMClientOpenRouter(model_name=model_name)
+    else:
+        llm_client = LLMClientLocal(
+            model_name=model_name, think=model_config.get("think", False))
 
     _games[engine.state.game_id] = (engine, llm_client)
 
