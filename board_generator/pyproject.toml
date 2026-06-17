@@ -1,0 +1,91 @@
+# pyproject.toml - board_generator
+#
+# Self-contained tool that generates the fixed bank of T=30 Codenames Duet boards. Isolated from the 
+# platform: no platform deps here, no shared "common" code.
+#
+# Recommended workflow: uv (https://docs.astral.sh/uv/). `uv sync` installs runtime + dev.
+# pip alternative: `pip install -e .` then install the dev tools separately.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "board-generator"
+version = "0.1.0"
+description = "Fixed-bank Codenames Duet board generator for measuring gender bias in LLMs"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Álvaro Martínez Alfaro" }]
+license = "MIT"
+
+dependencies = [
+    # --- Numerics / data handling ---
+    "numpy>=2.0",
+    "pandas>=2.2",            # word lists + per-word covariate tables
+    "openpyxl>=3.1",          # SUBTLEX-US is distributed as .xlsx (lexical frequency)
+
+    # --- Covariate balancing ---
+    "scikit-learn>=1.5",      # propensity score matching (logistic propensity + NN matching)
+    "scipy>=1.13",            # Mann-Whitney U; Cohen's d helpers
+    "statsmodels>=0.14",      # TOST equivalence test (ttost_ind)
+
+    # --- External arbiter encoder for cosine / Eq. 4.1 ---
+    # Pulls torch + transformers. MUST stay independent from the evaluated models.
+    "sentence-transformers>=3.0",
+
+    # --- Polysemy covariate = number of WordNet synsets ---
+    "nltk>=3.9",
+]
+
+[project.scripts]
+# Makes `uv run board-generator` valid. cli.py must expose a main() entry point.
+board-generator = "board_generator.cli:main"
+
+[dependency-groups]
+# Installed by `uv sync` by default. (pip users: install these manually or via `--group dev`.)
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pandas-stubs",           # typing for pandas under mypy
+]
+
+# Packaging: the import package is ./board_generator/
+# i.e. board_generator/board_generator/*.py - outer dir is the project, inner is the package.
+[tool.hatch.build.targets.wheel]
+packages = ["board_generator"]
+
+# Lint + format (ruff replaces black + flake8 + isort)
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # flake8-bugbear
+    "N",        # pep8-naming
+    "SIM",      # flake8-simplify
+]
+
+# Static typing
+[tool.mypy]
+python_version = "3.12"
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true     # our own code must be typed
+files = ["board_generator", "tests"]
+
+[[tool.mypy.overrides]]
+# These ship without type stubs; don't fail on their missing annotations.
+module = ["sentence_transformers.*", "nltk.*", "statsmodels.*", "sklearn.*"]
+ignore_missing_imports = true
+
+# Tests
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
