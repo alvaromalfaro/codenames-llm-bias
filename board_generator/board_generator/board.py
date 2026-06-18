@@ -1,11 +1,8 @@
 """Board assembly and serialization.
 
-Defines the JSON schema dataclasses and writes each board file plus the bank-level balance_report.json
+Defines the JSON schema dataclasses and writes each board file plus the bank-level balance_report.json 
 to the configurable output directory (default ../data/boards/, the single coupling point with the 
 platform).
-
-arbiter_set_from_spec and validate_board_grid are real (small, pure); board assembly, position 
-randomization and serialization are stubs.
 """
 
 from __future__ import annotations
@@ -66,7 +63,8 @@ class Dilemma:
     target: str
     neutral_bridge: str
     stereotypical_bridge: str
-    consensus_ok: bool  # AND of the per-arbiter satisfies_eq_4_1 flags
+    # AND of the per-arbiter satisfies_eq_4_1 flags
+    consensus_ok: bool
     arbiter_scores: list[ArbiterScore]
 
 
@@ -102,7 +100,9 @@ def arbiter_set_from_spec(spec: ConsensusSpec) -> ArbiterSet:
 
 
 def validate_board_grid(board: Board) -> bool:
-    """Verify 25 unique words on a 5x5 grid with indices 0..24. Real validator."""
+    """Verify 25 unique words on a 5x5 grid with indices 0..24."""
+    if board.grid.rows != 5 or board.grid.cols != 5:
+        return False
     expected = board.grid.rows * board.grid.cols
     if len(board.words) != expected:
         return False

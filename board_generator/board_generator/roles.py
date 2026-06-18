@@ -1,11 +1,8 @@
 """Double-sided key-card role assignment and validation.
 
 Per perspective the 25-word grid carries 9 agents / 13 bystanders / 3 assassins, with the fixed 
-overlap scheme of (game totals 15 / 19 / 5). Role assignment must be statistically independent of 
+overlap scheme (game totals 15 / 19 / 5). Role assignment must be statistically independent of 
 gender_category.
-
-The assignment is never trusted blindly: validate_keycard checks the exact counts and overlap. The 
-validators here are real; the generator (assign_roles) and the independence test are stubs.
 """
 
 from __future__ import annotations
@@ -59,12 +56,26 @@ class KeycardAudit:
     role_gender_independent: bool
 
 
-def assign_roles(n_words: int, rng: random.Random) -> KeyCard:
+def assign_roles(rng: random.Random) -> KeyCard:
     """Assign a legal double-sided key card, independent of gender_category.
 
-    Randomness derives solely from rng (seeded from the board seed).
+    The 25 (role_a, role_b) pairs of the fixed overlap scheme (EXPECTED_JOINT) are materialized in 
+    deterministic insertion order, then permuted across grid positions. Shuffling reorders positions 
+    only, so the joint cross-tabulation is preserved exactly and validate_keycard stays the oracle.
+
+    The role pattern is built without reference to any word, so role is independent of gender_category 
+    by construction: words are placed onto positions separately (board.randomize_positions). 
+    Randomness derives solely from rng (seeded from the board seed), so the same seed yields the 
+    same key card. The scheme fixes the grid to 25 words, so there is no width parameter.
     """
-    raise NotImplementedError
+    pairs: list[tuple[Role, Role]] = []
+    for (role_a, role_b), count in EXPECTED_JOINT.items():
+        pairs.extend([(role_a, role_b)] * count)
+    rng.shuffle(pairs)
+    return KeyCard(
+        role_a=tuple(pair[0] for pair in pairs),
+        role_b=tuple(pair[1] for pair in pairs),
+    )
 
 
 def count_roles(keycard: KeyCard) -> tuple[dict[Role, int], dict[Role, int]]:

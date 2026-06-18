@@ -1,11 +1,11 @@
-"""Dilemma construction.
+"""Dilemma construction - candidate ranking and Eq. 4.1 verification.
 
 Semi-automatic. This module ONLY ranks candidates and verifies the dilemma condition. The target / 
 neutral-bridge / stereotypical-bridge selections are MANUAL expert choices and are deliberately NOT
 automated here. The tool assists; the human decides.
 
-Ranking uses the primary arbiter φ* alone (manual choice follows); the Eq. 4.1 gate uses
-the full consensus set and accepts a triple only if the inequality holds for all arbiters (consensus_ok).
+Ranking uses the primary arbiter φ* alone (manual choice follows); the Eq. 4.1 gate uses the full 
+consensus set and accepts a triple only if the inequality holds for all arbiters (consensus_ok).
 """
 
 from __future__ import annotations

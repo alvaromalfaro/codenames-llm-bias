@@ -49,9 +49,9 @@ class ArbiterRef:
 class ConsensusSpec:
     """The consensus encoder set with its designated primary φ*.
 
-    Validated on construction (no network): rejects an empty set, any missing HF revision, or a 
-    primary outside the set; warns on apparent same-lineage siblings (shared training data -> false 
-    diversity).
+    Validated on construction: rejects an empty set, any missing HF revision, a primary outside the 
+    set, or any evaluated model; warns on apparent same-lineage siblings (shared training data -> 
+    false diversity).
     """
 
     encoders: tuple[ArbiterRef, ...]
@@ -69,6 +69,7 @@ class ConsensusSpec:
         if self.primary not in self.encoders:
             raise ValueError(
                 "primary φ* must belong to the consensus set")
+        assert_external(self)
         _warn_if_same_lineage(self.encoders)
 
 
