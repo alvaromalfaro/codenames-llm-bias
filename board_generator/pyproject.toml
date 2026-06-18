@@ -82,7 +82,7 @@ files = ["board_generator", "tests"]
 
 [[tool.mypy.overrides]]
 # These ship without type stubs; don't fail on their missing annotations.
-module = ["sentence_transformers.*", "nltk.*", "statsmodels.*", "sklearn.*"]
+module = ["sentence_transformers.*", "nltk.*", "statsmodels.*", "sklearn.*", "scipy.*"]
 ignore_missing_imports = true
 
 # Tests
