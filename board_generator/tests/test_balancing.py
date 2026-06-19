@@ -31,15 +31,9 @@ REAL_WORDS = RESOURCES / "words"
 REAL_SUBTLEX = RESOURCES / "frequencies" / "subtlex_us.csv"
 
 
-def make_word(
-    text: str,
-    gender: str,
-    freq: float | None,
-    *,
-    length: int | None = None,
-    polysemy: int = 1,
-    weat: tuple[str, ...] = ("weat-6",),
-) -> Word:
+def make_word(text: str, gender: str, freq: float | None, *, length: int | None = None,
+              polysemy: int = 1, weat: tuple[str, ...] = ("weat-6",), specification: str = "gender-career",
+              ) -> Word:
     """Build a board-eligible Word directly, bypassing CSV/WordNet loading."""
     return Word(
         text=text,
@@ -54,6 +48,7 @@ def make_word(
             "length": float(length if length is not None else len(text)),
             "wordnet_polysemy": float(polysemy),
         },
+        specification=specification
     )
 
 
@@ -70,22 +65,42 @@ def _spec(
     return next(s for s in result_report.specifications if s.specification == specification)
 
 
-# Integration: real-pool counts (16-vs-9 science, 8-vs-8 career).
+# Integration: real-pool counts. Expectations are derived from the selected pool, never
+# hardcoded - the pools grow as expansions land.
+def _pool(words: list[Word], specification: str) -> list[Word]:
+    return [w for w in words if w.specification == specification]
+
+
 def test_real_pool_counts(real_load: LoadResult) -> None:
     result = run_balancing(real_load.words, seed=1234567)
     report = result.report
 
+    sci_pool = _pool(real_load.words, "gender-science")
+    career_pool = _pool(real_load.words, "gender-career")
+
     science = _spec(report, "gender-science")
-    # 16 male (STEM) vs 9 female (Arts) -> 7 majority-pole words can never be matched 1:1.
-    assert science.counts.dropped_by_group_excess == 7
-    assert science.counts.pairs_kept <= 9
-    # All real pool words are present in SUBTLEX-US (proper nouns included) -> zero imputation.
-    assert science.counts.imputed_count == 0
+    n_male = sum(1 for w in sci_pool if w.gender_category == "male")
+    n_female = len(sci_pool) - n_male
+    # The majority-pole surplus can never be matched 1:1, derived from the actual pole sizes.
+    assert science.counts.dropped_by_group_excess == abs(n_male - n_female)
+    assert science.counts.pairs_kept <= min(n_male, n_female)
+    # Imputation count is derived from the OOV words in the pool, not assumed zero.
+    assert science.counts.imputed_count == sum(
+        1 for w in sci_pool if w.covariates["subtlex_freq"] is None
+    )
 
     career = _spec(report, "gender-career")
-    # 8 male (Career) vs 8 female (Family) -> no structural surplus.
-    assert career.counts.dropped_by_group_excess == 0
-    assert career.counts.imputed_count == 0
+    n_male_c = sum(1 for w in career_pool if w.gender_category == "male")
+    n_female_c = len(career_pool) - n_male_c
+    assert career.counts.dropped_by_group_excess == abs(n_male_c - n_female_c)
+
+    # Routing is by specification: a She Figures expansion word lands in science, not career, and
+    # a known career word lands in career - behaviour the weat_set derivation could not give.
+    sci_texts = {w.text for w in sci_pool}
+    career_texts = {w.text for w in career_pool}
+    assert "engineering" in sci_texts
+    assert "engineering" not in career_texts
+    assert "salary" in career_texts
 
     # The matched subsets are returned alongside the report, paired one-to-one.
     sci_subset = next(

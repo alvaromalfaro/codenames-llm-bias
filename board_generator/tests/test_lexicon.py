@@ -35,9 +35,8 @@ def _write_csv(path: Path, header: list[str], rows: list[list[str]]) -> None:
         writer.writerows(rows)
 
 
-def _make_dirs(
-    tmp_path: Path, word_rows: list[list[str]], freq_rows: list[list[str]]
-) -> tuple[Path, Path]:
+def _make_dirs(tmp_path: Path, word_rows: list[list[str]], freq_rows: list[list[str]]
+               ) -> tuple[Path, Path]:
     """Write a one-file words dir and a frequency table; return (words_dir, subtlex_path)."""
     words_dir = tmp_path / "words"
     words_dir.mkdir()
@@ -59,18 +58,26 @@ def _by_text(words: list[Word]) -> dict[str, Word]:
 
 
 def test_loads_real_career_and_science(real_load: LoadResult) -> None:
-    # Career (16 unique) + science (16 male + 8 weat-7 female + SHAKESPEARE = 25 unique) = 41.
-    assert len(real_load.words) == 41
+    # Career (16 unique) + science (24 WEAT-core unique + 16 She Figures expansion) = 57.
+    assert len(real_load.words) == 57
     assert real_load.excluded == []  # no phrases in these two cores
     assert all(w.text == w.text.lower() for w in real_load.words)
 
     by_text = _by_text(real_load.words)
-    # The 7 duplicated arts words collapse to one Word each with merged weat_set {weat-7, weat-8}.
+    # The 7 duplicated arts words collapse to one Word each with merged weat_set {weat-7, weat-8};
+    # both rows carry the same gender-science specification, so they merge cleanly.
     for arts in ARTS_DUPLICATED:
         assert by_text[arts].weat_set == ("weat-7", "weat-8"), arts
+        assert by_text[arts].specification == "gender-science", arts
     # Words appearing in only one set keep a singleton provenance.
     assert by_text["sculpture"].weat_set == ("weat-7",)
     assert by_text["shakespeare"].weat_set == ("weat-8",)
+    # A She Figures expansion word carries the gender-science specification but NO weat_set.
+    engineering = by_text["engineering"]
+    assert engineering.specification == "gender-science"
+    assert engineering.weat_set == ()
+    # Career words carry the gender-career specification.
+    assert by_text["salary"].specification == "gender-career"
 
 
 def test_dedup_conflict_on_gender_raises(tmp_path: Path) -> None:
@@ -89,10 +96,57 @@ def test_dedup_conflict_on_gender_raises(tmp_path: Path) -> None:
 def test_unknown_word_kind_raises(tmp_path: Path) -> None:
     words_dir, subtlex = _make_dirs(
         tmp_path,
-        [["NURSE", "female", "wibble", "weat", "weat-6"]],
+        [["NURSE", "female", "wibble", "weat", "weat-6", "gender-career"]],
         [["nurse", "4.6526", "Noun"]],
     )
     with pytest.raises(ValueError, match="unknown word_kind"):
+        load_words(words_dir, subtlex)
+
+
+def test_she_figures_row_loads_with_specification_and_no_weat_set(tmp_path: Path) -> None:
+    # A non-WEAT expansion row: a specification but an EMPTY weat_set (She Figures style).
+    words_dir, subtlex = _make_dirs(
+        tmp_path,
+        [["ENGINEERING", "male", "common", "she-figures", "", "gender-science"]],
+        [["engineering", "4.5", "Noun"]],
+    )
+    word = _by_text(load_words(words_dir, subtlex).words)["engineering"]
+    assert word.specification == "gender-science"
+    assert word.weat_set == ()
+
+
+def test_empty_specification_loads_as_none(tmp_path: Path) -> None:
+    # Neutral words carry no intrinsic axis: an empty specification maps to None (no error).
+    words_dir, subtlex = _make_dirs(
+        tmp_path,
+        [["RIVER", "neutral", "common", "duet", "", ""]],
+        [["river", "4.8", "Noun"]],
+    )
+    word = _by_text(load_words(words_dir, subtlex).words)["river"]
+    assert word.specification is None
+
+
+def test_unknown_specification_raises(tmp_path: Path) -> None:
+    words_dir, subtlex = _make_dirs(
+        tmp_path,
+        [["NURSE", "female", "common", "weat", "weat-6", "gender-wibble"]],
+        [["nurse", "4.6526", "Noun"]],
+    )
+    with pytest.raises(ValueError, match="unknown specification"):
+        load_words(words_dir, subtlex)
+
+
+def test_dedup_conflict_on_specification_raises(tmp_path: Path) -> None:
+    # Same word, two different specifications -> a hard conflict (only source/weat_set may differ).
+    words_dir, subtlex = _make_dirs(
+        tmp_path,
+        [
+            ["NURSE", "female", "common", "weat", "weat-6", "gender-career"],
+            ["NURSE", "female", "common", "other", "", "gender-science"],
+        ],
+        [["nurse", "4.6526", "Noun"]],
+    )
+    with pytest.raises(ValueError, match="conflicting specification"):
         load_words(words_dir, subtlex)
 
 
