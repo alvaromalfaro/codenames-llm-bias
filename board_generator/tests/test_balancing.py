@@ -9,6 +9,7 @@ important negative case asserts the report correctly reports NON-equivalence.
 from __future__ import annotations
 
 import dataclasses
+import importlib.util
 import inspect
 import json
 import warnings
@@ -20,6 +21,8 @@ from board_generator import balancing
 from board_generator.balancing import (
     COHEN_D_THRESHOLD,
     PSM_CALIPER_LOGIT_SD,
+    SMD_BALANCE_THRESHOLD,
+    SMD_WELL_BALANCED_THRESHOLD,
     TOST_MARGIN_SMD,
     check_balance,
     run_balancing,
@@ -59,9 +62,8 @@ def real_load() -> LoadResult:
         return load_words(REAL_WORDS, REAL_SUBTLEX)
 
 
-def _spec(
-    result_report: balancing.BalanceReport, specification: str
-) -> balancing.SpecificationBalance:
+def _spec(result_report: balancing.BalanceReport, specification: str
+          ) -> balancing.SpecificationBalance:
     return next(s for s in result_report.specifications if s.specification == specification)
 
 
@@ -222,24 +224,131 @@ def test_degenerate_pool_serializes_without_nan() -> None:
     # allow_nan=False raises if any NaN/Infinity slipped into a statistic field.
     text = json.dumps(payload, allow_nan=False)
     assert "NaN" not in text and "Infinity" not in text
-    assert json.loads(text)["criterion"] == "tost"
+    loaded = json.loads(text)
+    assert loaded["criterion"] == "smd"
+    # The new advisory threshold fields serialize alongside the existing ones.
+    assert loaded["smd_threshold"] == SMD_BALANCE_THRESHOLD
+    assert loaded["smd_well_threshold"] == SMD_WELL_BALANCED_THRESHOLD
 
     # Undefined statistics (zero pooled SD) are None and treated as non-equivalent.
     career = _spec(result.report, "gender-career")
+    assert career.well_balanced is False
     for cov in career.covariates:
         assert cov.smd is None
         assert cov.passed is False
+        assert cov.well_balanced is False
 
 
-# The three distinct 0.2 constants exist and are referenced by name; TOST is the default criterion.
+# GOVERNING SMD on the real pool: science balances (all |SMD| < 0.2) -> passes; career's `length`
+# stays above the threshold -> fails. Direction is derived from the pool, not hardcoded numbers.
+def test_real_pool_smd_verdict(real_load: LoadResult) -> None:
+    # default criterion == "smd"
+    result = run_balancing(real_load.words, seed=1234567)
+    report = result.report
+    assert report.criterion == "smd"
+
+    science = _spec(report, "gender-science")
+    for cov in science.covariates:
+        assert cov.smd is not None and abs(
+            cov.smd) < SMD_BALANCE_THRESHOLD, cov
+    assert science.passed is True
+
+    career = _spec(report, "gender-career")
+    length = next(c for c in career.covariates if c.covariate == "length")
+    assert length.smd is not None and abs(length.smd) > SMD_BALANCE_THRESHOLD
+    assert length.passed is False
+    assert career.passed is False
+
+
+# The diagnostic script must inherit the governing SMD default, never override it back to TOST.
+# (`scripts/` is not a package, so load the module from its path.)
+def test_script_cli_default_is_smd() -> None:
+    script_path = Path(__file__).resolve(
+    ).parents[1] / "scripts" / "balance_report.py"
+    spec = importlib.util.spec_from_file_location(
+        "balance_report", script_path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    args = module.build_parser().parse_args([])
+    assert args.criterion == "smd"
+    criterion_action = next(
+        a for a in module.build_parser()._actions if a.dest == "criterion")
+    assert "smd" in (criterion_action.choices or ())
+
+
+# Graduated advisory flag: |SMD| in (0.1, 0.2) passes but is not well-balanced; < 0.1 is both;
+# > 0.2 fails. SMDs are placed relative to the pool SD, never as hardcoded magic numbers.
+def test_smd_graduated_flag() -> None:
+    ctrl = [float(x) for x in range(10)]
+    # treat shares ctrl's spread, so SMD = delta / pooled
+    pooled = balancing._pooled_sd(ctrl, ctrl)
+    assert pooled is not None and pooled > 0.0
+
+    def verdict(target_smd: float) -> balancing.CovariateBalance:
+        treat = [v + target_smd * pooled for v in ctrl]
+        return balancing._covariate_balance(
+            "length", treat, ctrl, "smd", balancing.DEFAULT_ALPHA, TOST_MARGIN_SMD
+        )
+
+    mid = verdict(0.15)  # 0.1 < |SMD| < 0.2
+    assert mid.smd is not None and 0.1 < abs(mid.smd) < 0.2
+    assert mid.passed is True and mid.well_balanced is False
+
+    low = verdict(0.05)  # |SMD| < 0.1
+    assert low.smd is not None and abs(low.smd) < 0.1
+    assert low.passed is True and low.well_balanced is True
+
+    high = verdict(0.35)  # |SMD| > 0.2
+    assert high.smd is not None and abs(high.smd) > 0.2
+    assert high.passed is False
+
+
+# Undefined SMD (degenerate constant covariate) -> conservatively non-equivalent, not well-balanced.
+def test_undefined_smd_fails() -> None:
+    const = [5.0] * 6
+    cov = balancing._covariate_balance(
+        "length", const, const, "smd", balancing.DEFAULT_ALPHA, TOST_MARGIN_SMD
+    )
+    assert cov.smd is None
+    assert cov.passed is False
+    assert cov.well_balanced is False
+
+
+# Regression: "tost" stays selectable and governs; secondary diagnostics remain present/populated.
+def test_tost_still_selectable_and_governs(real_load: LoadResult) -> None:
+    report = run_balancing(real_load.words, seed=1234567,
+                           criterion="tost").report
+    assert report.criterion == "tost"
+    for spec in report.specifications:
+        for cov in spec.covariates:
+            # TOST and Mann–Whitney fields are still reported as secondary diagnostics.
+            assert isinstance(cov.tost_equivalent, bool)
+            assert isinstance(cov.spec_original_equivalent, bool)
+            assert hasattr(cov, "tost_p") and hasattr(cov, "mann_whitney_p")
+            # Under "tost" the governing verdict equals the (underpowered) TOST verdict.
+            assert cov.passed == cov.tost_equivalent
+
+
+# The distinct "small effect" constants exist and are referenced by name; SMD is the default.
 def test_constants_and_defaults() -> None:
+    assert SMD_BALANCE_THRESHOLD == 0.2
+    assert SMD_WELL_BALANCED_THRESHOLD == 0.1
     assert COHEN_D_THRESHOLD == 0.2
     assert TOST_MARGIN_SMD == 0.2
     assert PSM_CALIPER_LOGIT_SD == 0.2
-    # Three separately named constants (not one shared literal reused everywhere).
-    names = {"COHEN_D_THRESHOLD", "TOST_MARGIN_SMD", "PSM_CALIPER_LOGIT_SD"}
+    # Each operationalization of "small effect" is separately named (not one shared literal).
+    names = {
+        "SMD_BALANCE_THRESHOLD",
+        "SMD_WELL_BALANCED_THRESHOLD",
+        "COHEN_D_THRESHOLD",
+        "TOST_MARGIN_SMD",
+        "PSM_CALIPER_LOGIT_SD",
+    }
     assert names <= set(vars(balancing))
+    # SMD governs by default; the significance-based criteria stay selectable.
     assert inspect.signature(
-        run_balancing).parameters["criterion"].default == "tost"
+        run_balancing).parameters["criterion"].default == "smd"
     assert inspect.signature(
-        check_balance).parameters["criterion"].default == "tost"
+        check_balance).parameters["criterion"].default == "smd"
