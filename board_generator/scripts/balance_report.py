@@ -42,7 +42,9 @@ def balance_report(
     return json.dumps(payload, indent=2, allow_nan=False)
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser. The --criterion default matches the governing SMD default of 
+    run_balancing; tost/spec_original stay selectable but are underpowered."""
     parser = argparse.ArgumentParser(
         description="Pretty-print the balance report for the real word pool as JSON."
     )
@@ -63,11 +65,15 @@ def main() -> None:
     )
     parser.add_argument(
         "--criterion",
-        choices=("tost", "mann_whitney_cohen"),
-        default="tost",
-        help="governing equivalence criterion (default: tost)",
+        choices=("smd", "tost", "spec_original"),
+        default="smd",
+        help="governing equivalence criterion (default: smd)",
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
     if not args.words.is_dir():
         sys.exit(f"words directory not found: {args.words}")
     if not args.subtlex.exists():

@@ -1,21 +1,28 @@
 """Covariate balancing of contrastable subsets.
 
-Two independent balancing exercises, one per gender specification, are derived from Word.weat_set: 
-gender-career = words tagged weat-6; gender-science = words tagged weat-7 or weat-8. Neutral words 
-(empty weat_set) are used in both boards contextually and are not balanced here. Within an exercise 
-the binary PSM treatment is pole membership - 1 iff gender_category == "male" (career: 
-Career=1/Family=0; science: STEM=1/Arts=0).
+Two independent balancing exercises, one per gender specification, are routed by Word.specification:
+gender-career = words whose specification is gender-career; gender-science = words whose 
+specification is gender-science (this includes the non-WEAT She Figures expansion, which carries a 
+specification but no weat_set). Neutral words (specification is None) are used in both boards 
+contextually and are not balanced here. Within an exercise the binary PSM treatment is pole 
+membership - 1 iff gender_category == "male" (career: Career=1/Family=0; science: STEM=1/Arts=0).
 
 Pipeline per specification: low-anchor OOV imputation -> propensity-score matching -> per-covariate
 equivalence check. The matching is deliberately greedy (1:1 nearest-neighbour on the propensity logit, 
 no replacement, within a caliper), not optimal: greedy is deterministic and reproducible, which 
 matters more here than squeezing out the last pair.
 
-Equivalence is reported under both criteria: the SPEC-original criterion (Mann-Whitney 
-non-significant and |d| < COHEN_D_THRESHOLD) and the a-priori TOST criterion (tost_p < alpha with a 
-±TOST_MARGIN_SMD SMD-unit margin). The governing criterion is configurable and defaults to TOST. 
-Nothing is tuned to pass: with small n TOST often fails to establish equivalence, and that is a 
-valid, honest result that the report surfaces as-is.
+The governing criterion is a descriptive standardized mean difference (SMD) threshold 
+(|SMD| < SMD_BALANCE_THRESHOLD -> balanced; |SMD| < SMD_WELL_BALANCED_THRESHOLD -> flagged 
+well_balanced), per the matching literature (Austin): post-matching balance is judged by SMD, not 
+significance tests, precisely because tests conflate effect size with sample size. SMD needs no 
+power, so it is meaningful even at the available n (~5-13 pairs). The criterion is configurable and 
+defaults to SMD.
+
+Two significance-based criteria stay selectable but are RETAINED only as reported, underpowered
+secondary diagnostics: the SPEC-original criterion "spec_original" (Mann-Whitney non-significant and 
+|d| < COHEN_D_THRESHOLD) and the a-priori TOST criterion "tost" (tost_p < alpha with a 
+±TOST_MARGIN_SMD SMD-unit margin). Nothing is tuned.
 
 All reported statistics are JSON-safe: any non-finite or undefined statistic is sanitized to None 
 (never NaN/Inf), and an undefined equivalence statistic is treated as non-equivalent (conservative).
@@ -37,21 +44,28 @@ from statsmodels.stats.weightstats import ttost_ind
 
 from board_generator.lexicon import COVARIATE_KEYS, Specification, Word
 
-# --- The three DISTINCT 0.2 thresholds. ---
-# SPEC-original criterion: an effect this small on the mean difference is "negligible" (Cohen).
+# Several distinctly-named 0.2-valued thresholds (each is a different operationalization of the
+# "small effect" convention and must stay independently named).
+# GOVERNING threshold: |SMD| < this -> balanced (Cohen "small"). Descriptive, needs no power.
+SMD_BALANCE_THRESHOLD = 0.2
+# ADVISORY: |SMD| < this -> well-balanced (ideal). Purely informational, never gates the verdict.
+SMD_WELL_BALANCED_THRESHOLD = 0.1
+# Original criterion: an effect this small on the mean difference is "negligible" (Cohen).
 COHEN_D_THRESHOLD = 0.2
 # A-priori TOST equivalence margin, expressed in SMD (standardized mean difference) units.
 TOST_MARGIN_SMD = 0.2
 # PSM caliper width = this fraction of the SD of the propensity logit (Austin 2011).
 PSM_CALIPER_LOGIT_SD = 0.2
 
-# Default significance level for Mann-Whitney, the |d| gate and TOST.
+# Default significance level for Mann–Whitney, the |d| gate and TOST.
 DEFAULT_ALPHA = 0.05
 # Below this many matched pairs the balance still runs, but the report carries a warning.
 DEFAULT_MIN_PAIRS = 8
 
-# Equivalence criterion. Default is TOST.
-BalanceCriterion = Literal["mann_whitney_cohen", "tost"]
+# Governing equivalence criterion. Default is descriptive SMD. "tost" and "spec_original"
+# (Mann-Whitney non-significant AND |d| < threshold) stay selectable but are underpowered at the
+# available n, so they are reported, not governing.
+BalanceCriterion = Literal["smd", "tost", "spec_original"]
 
 # Human-readable label for the contrastable poles of each specification.
 ContrastablePair = Literal["career-family", "science-arts"]
@@ -81,6 +95,8 @@ class CovariateBalance:
     tost_equivalent: bool  # TOST verdict (tost_p < alpha)
     spec_original_equivalent: bool  # MW non-significant AND |d| < COHEN_D_THRESHOLD
     passed: bool  # verdict under the governing criterion
+    # advisory: |SMD| < SMD_WELL_BALANCED_THRESHOLD (computed regardless)
+    well_balanced: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -113,6 +129,8 @@ class SpecificationBalance:
     # set when pairs_kept < min_pairs (balance ran on little data)
     warning: str | None
     passed: bool  # all covariates pass under the governing criterion
+    # advisory: all covariates well-balanced (|SMD| < well threshold)
+    well_balanced: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,6 +143,9 @@ class BalanceReport:
     alpha: float
     tost_margin: float
     caliper_sd: float
+    smd_threshold: float  # governing |SMD| threshold (balanced if below)
+    # advisory |SMD| threshold (well-balanced if below)
+    smd_well_threshold: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +213,8 @@ def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion =
                 imputed_words=imputed_words,
                 warning=warning,
                 passed=bool(covariates) and all(c.passed for c in covariates),
+                well_balanced=bool(covariates) and all(
+                    c.well_balanced for c in covariates),
             )
         )
         matched.append(
@@ -207,6 +230,8 @@ def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion =
         alpha=alpha,
         tost_margin=tost_margin,
         caliper_sd=caliper_sd,
+        smd_threshold=SMD_BALANCE_THRESHOLD,
+        smd_well_threshold=SMD_WELL_BALANCED_THRESHOLD,
     )
     return BalanceResult(report=report, matched=matched)
 
@@ -299,7 +324,17 @@ def _covariate_balance(covariate: str, treat: list[float], ctrl: list[float], cr
         and cohen_d is not None
         and abs(cohen_d) < COHEN_D_THRESHOLD
     )
-    passed = tost_equivalent if criterion == "tost" else spec_original_equivalent
+    # Governing SMD verdict + advisory well-balanced flag. Undefined SMD -> non-equivalent
+    # (conservative): both False.
+    smd_balanced = smd is not None and abs(smd) < SMD_BALANCE_THRESHOLD
+    well_balanced = smd is not None and abs(smd) < SMD_WELL_BALANCED_THRESHOLD
+
+    if criterion == "smd":
+        passed = smd_balanced
+    elif criterion == "tost":
+        passed = tost_equivalent
+    else:  # "spec_original"
+        passed = spec_original_equivalent
     return CovariateBalance(
         covariate=covariate,
         smd=smd,
@@ -309,6 +344,7 @@ def _covariate_balance(covariate: str, treat: list[float], ctrl: list[float], cr
         tost_equivalent=tost_equivalent,
         spec_original_equivalent=spec_original_equivalent,
         passed=passed,
+        well_balanced=well_balanced,
     )
 
 
