@@ -39,6 +39,8 @@ STATISTICS,male,common,she-figures,,gender-science
 MECHANICS,male,common,she-figures,,gender-science
 ELECTRICITY,male,common,she-figures,,gender-science
 ARMAMENT,male,common,she-figures,,gender-science
+INFRASTRUCTURE,male,common,she-figures,,gender-science
+TRANSPORT,male,common,she-figures,,gender-science
 EDUCATION,female,common,she-figures,,gender-science
 PEDAGOGY,female,common,she-figures,,gender-science
 HEALTH,female,common,she-figures,,gender-science
@@ -47,3 +49,5 @@ MEDICINE,female,common,she-figures,,gender-science
 HUMANITIES,female,common,she-figures,,gender-science
 JOURNALISM,female,common,she-figures,,gender-science
 SERVICE,female,common,she-figures,,gender-science
+PHARMACY,female,common,she-figures,,gender-science
+VETERINARY,female,common,she-figures,,gender-science
