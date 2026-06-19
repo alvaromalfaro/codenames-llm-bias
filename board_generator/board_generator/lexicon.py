@@ -35,6 +35,7 @@ COVARIATE_KEYS = ("subtlex_freq", "length", "wordnet_polysemy")
 
 _VALID_GENDER: frozenset[str] = frozenset(get_args(GenderCategory))
 _VALID_KIND: frozenset[str] = frozenset(get_args(WordKind))
+_VALID_SPEC: frozenset[str] = frozenset(get_args(Specification))
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +60,12 @@ class Word:
     # not a mismatch to "fix".
     covariates: Mapping[str, float | None]
 
+    # Axis-routing field: which gender specification this word belongs to, or None for neutral words
+    # (which carry no intrinsic axis). Orthogonal to weat_set provenance: weat-7 and weat-8 both map
+    # to gender-science, and non-WEAT sources carry a specification with no weat_set. Has a default
+    # so positional Word construction works.
+    specification: Specification | None = None
+
 
 @dataclass(frozen=True, slots=True)
 class LoadResult:
@@ -77,11 +84,11 @@ def load_words(words_dir: Path, subtlex_path: Path) -> LoadResult:
     empty/header-only files such as a pending neutral.csv are tolerated. Words are lowercased and 
     joined to the SUBTLEX-US table at subtlex_path by lowercased word.
 
-    Hard errors (raised immediately): an unknown gender_category/word_kind value, or two rows for 
-    the same word disagreeing on gender_category or word_kind. Strict playability: every invalid 
-    word is collected and reported together in a single error. OOV words are not an error - they are 
-    collected and surfaced in one warning. Imputation of OOV subtlex_freq is balancing.py's job, not 
-    this loader's.
+    Hard errors (raised immediately): an unknown gender_category/word_kind/specification value, or 
+    two rows for the same word disagreeing on gender_category, word_kind, or specification. Strict 
+    playability: every invalid word is collected and reported together in a single error. OOV words 
+    are not an error - they are collected and surfaced in one warning. Imputation of OOV 
+    subtlex_freq is balancing.py's job, not this loader's.
     """
     frequency = _load_frequency_table(subtlex_path)
     merged = _merge_rows(_read_word_rows(words_dir))
@@ -92,7 +99,7 @@ def load_words(words_dir: Path, subtlex_path: Path) -> LoadResult:
     invalid: list[tuple[str, str]] = []
 
     for text in sorted(merged):  # deterministic order
-        gender_category, word_kind, source, weat_set = merged[text]
+        gender_category, word_kind, source, weat_set, specification = merged[text]
         freq_entry = frequency.get(text)
         if freq_entry is None:
             subtlex_freq, dom_pos = None, None
@@ -122,6 +129,7 @@ def load_words(words_dir: Path, subtlex_path: Path) -> LoadResult:
             dom_pos=dom_pos,
             ambiguous_pos=ambiguous_pos,
             covariates=covariates,
+            specification=specification,
         )
         (excluded if status == "excluded" else words).append(word)
 
@@ -141,9 +149,8 @@ def load_words(words_dir: Path, subtlex_path: Path) -> LoadResult:
     return LoadResult(words=words, excluded=excluded, oov=oov)
 
 
-def _check_playability(
-    text: str, word_kind: WordKind, dom_pos: str | None
-) -> tuple[Literal["playable", "excluded", "invalid"], bool, str | None]:
+def _check_playability(text: str, word_kind: WordKind, dom_pos: str | None
+                       ) -> tuple[Literal["playable", "excluded", "invalid"], bool, str | None]:
     """Classify a word for board use. Returns (status, ambiguous_pos, reason).
 
     reason is set only for "invalid". dom_pos is None for OOV words: the advisory checks (ambiguous_pos / 
@@ -164,11 +171,7 @@ def _check_playability(
     # word_kind == "common": primary check is a WordNet NOUN sense; dom_pos is advisory.
     if dom_pos == "Name":
         # A "common" word the corpus sees as a proper noun -> mislabeled (hard reject).
-        return (
-            "invalid",
-            False,
-            "common word labeled as a proper noun by SUBTLEX-US (dom_pos=Name)",
-        )
+        return ("invalid", False, "common word labeled as a proper noun by SUBTLEX-US (dom_pos=Name)")
     if wordnet.synsets(text, pos=wordnet.NOUN):
         # Playable; flag the advisory mismatch only when the corpus reports a non-noun dom_pos.
         ambiguous_pos = dom_pos is not None and dom_pos != "Noun"
@@ -191,9 +194,9 @@ def _load_frequency_table(subtlex_path: Path) -> dict[str, tuple[float, str]]:
 def _read_word_rows(words_dir: Path) -> list[tuple[str, GenderCategory, WordKind, str, str]]:
     """Read and enum-validate every row across the word CSVs.
 
-    Returns (word, gender_category, word_kind, source, weat_set) tuples. Unknown enum values are
-    a hard error - a typo must never silently relax validation. Blank words are skipped, so an
-    empty/header-only neutral.csv is tolerated.
+    Returns (word, gender_category, word_kind, source, weat_set, specification) tuples. Unknown enum 
+    values (gender-category/word-kind/specification) are a hard error - a typo must never silently 
+    relax validation. Blank words are skipped, so an empty/header-only neutral.csv is tolerated.
     """
     rows: list[tuple[str, GenderCategory, WordKind, str, str]] = []
     for csv_path in sorted(words_dir.glob("*.csv")):
@@ -206,6 +209,7 @@ def _read_word_rows(words_dir: Path) -> list[tuple[str, GenderCategory, WordKind
                     continue
                 gender = (row["gender_category"] or "").strip()
                 kind = (row["word_kind"] or "").strip()
+                spec = (row.get("specification") or "").strip()
                 if gender not in _VALID_GENDER:
                     raise ValueError(
                         f"{csv_path.name}:{line_no}: unknown gender_category {gender!r} ({word!r})"
@@ -214,9 +218,16 @@ def _read_word_rows(words_dir: Path) -> list[tuple[str, GenderCategory, WordKind
                     raise ValueError(
                         f"{csv_path.name}:{line_no}: unknown word_kind {kind!r} for {word!r}"
                     )
+                if spec and spec not in _VALID_SPEC:
+                    raise ValueError(
+                        f"{csv_path.name}:{line_no}: unknown specification {spec!r} for {word!r}"
+                    )
                 # Validated against the Literals above; the casts only narrow the type for mypy.
+                # An empty specification (neutral words) maps to None.
                 gender_cat: GenderCategory = gender  # type: ignore[assignment]
                 word_kind: WordKind = kind  # type: ignore[assignment]
+                # type: ignore[assignment]
+                specification: Specification | None = spec or None
                 rows.append(
                     (
                         word,
@@ -224,25 +235,28 @@ def _read_word_rows(words_dir: Path) -> list[tuple[str, GenderCategory, WordKind
                         word_kind,
                         (row["source"] or "").strip(),
                         (row["weat_set"] or "").strip(),
+                        specification
                     )
                 )
     return rows
 
 
-def _merge_rows(
-    rows: list[tuple[str, GenderCategory, WordKind, str, str]],
-) -> dict[str, tuple[GenderCategory, WordKind, str, tuple[str, ...]]]:
+def _merge_rows(rows: list[tuple[str, GenderCategory, WordKind, str, str, Specification | None]],
+                ) -> dict[str, tuple[GenderCategory, WordKind, str, tuple[str, ...], Specification | None]]:
     """Dedup rows to unique words, merging source/weat_set provenance.
 
-    Raises if two rows for the same word disagree on gender_category or word_kind (the same word 
-    must agree on both; only provenance may differ). source and weat_set are merged deterministically 
-    (distinct values, sorted).
+    Raises if two rows for the same word disagree on gender_category, word_kind, or specification 
+    (the same word must agree on all three; only source and weat_set provenance may differ). source 
+    and weat_set are merged deterministically (distinct values, sorted). The arts words shared by
+    weat-7 and weat-8 carry the same gender-science specification, so they merge cleanly to one
+    word.
     """
-    acc: dict[str, tuple[GenderCategory, WordKind, set[str], set[str]]] = {}
-    for word, gender, kind, source, weat in rows:
+    acc: dict[str, tuple[GenderCategory, WordKind,
+                         Specification | None, set[str], set[str]]] = {}
+    for word, gender, kind, source, weat, spec in rows:
         if word not in acc:
-            acc[word] = (gender, kind, set(), set())
-        prev_gender, prev_kind, sources, weat_sets = acc[word]
+            acc[word] = (gender, kind, spec, set(), set())
+        prev_gender, prev_kind, prev_spec, sources, weat_sets = acc[word]
         if gender != prev_gender:
             raise ValueError(
                 f"conflicting gender_category for {word!r}: {prev_gender!r} vs {gender!r}"
@@ -250,6 +264,9 @@ def _merge_rows(
         if kind != prev_kind:
             raise ValueError(
                 f"conflicting word_kind for {word!r}: {prev_kind!r} vs {kind!r}")
+        if spec != prev_spec:
+            raise ValueError(
+                f"conflicting specification for {word!r}: {prev_spec!r} vs {spec!r}")
         if source:
             sources.add(source)
         if weat:
@@ -257,6 +274,6 @@ def _merge_rows(
 
     return {
         word: (gender, kind, "; ".join(
-            sorted(sources)), tuple(sorted(weat_sets)))
-        for word, (gender, kind, sources, weat_sets) in acc.items()
+            sorted(sources)), tuple(sorted(weat_sets)), spec)
+        for word, (gender, kind, spec, sources, weat_sets) in acc.items()
     }

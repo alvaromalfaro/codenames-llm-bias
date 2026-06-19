@@ -59,11 +59,6 @@ ContrastablePair = Literal["career-family", "science-arts"]
 # The treatment pole (PSM treatment = 1) in every exercise.
 TREATMENT_POLE = "male"
 
-# WEAT tags selecting each specification's pool from Word.weat_set.
-_SPEC_WEAT_TAGS: dict[Specification, frozenset[str]] = {
-    "gender-career": frozenset({"weat-6"}),
-    "gender-science": frozenset({"weat-7", "weat-8"}),
-}
 _SPEC_PAIR: dict[Specification, ContrastablePair] = {
     "gender-career": "career-family",
     "gender-science": "science-arts",
@@ -149,16 +144,9 @@ class BalanceResult:
     matched: list[MatchedSubset]
 
 
-def run_balancing(
-    words: list[Word],
-    seed: int,
-    *,
-    criterion: BalanceCriterion = "tost",
-    alpha: float = DEFAULT_ALPHA,
-    tost_margin: float = TOST_MARGIN_SMD,
-    caliper_sd: float = PSM_CALIPER_LOGIT_SD,
-    min_pairs: int = DEFAULT_MIN_PAIRS,
-) -> BalanceResult:
+def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion = "tost",
+                  alpha: float = DEFAULT_ALPHA, tost_margin: float = TOST_MARGIN_SMD,
+                  caliper_sd: float = PSM_CALIPER_LOGIT_SD, min_pairs: int = DEFAULT_MIN_PAIRS) -> BalanceResult:
     """Balance both specifications independently and assemble the report."""
     specs: list[SpecificationBalance] = []
     matched: list[MatchedSubset] = []
@@ -223,13 +211,8 @@ def run_balancing(
     return BalanceResult(report=report, matched=matched)
 
 
-def propensity_score_match(
-    treatment: list[Word],
-    control: list[Word],
-    *,
-    caliper_sd: float = PSM_CALIPER_LOGIT_SD,
-    seed: int = 0,
-) -> tuple[list[Word], list[Word], int, int]:
+def propensity_score_match(treatment: list[Word], control: list[Word], *, caliper_sd: float = PSM_CALIPER_LOGIT_SD,
+                           seed: int = 0) -> tuple[list[Word], list[Word], int, int]:
     """Greedy 1:1 caliper PSM on the propensity logit.
 
     Standardizes the three covariates, fits an L2 logistic propensity model (tolerant of separation 
@@ -286,14 +269,8 @@ def propensity_score_match(
     return matched_treat, matched_ctrl, dropped_by_caliper, dropped_by_group_excess
 
 
-def check_balance(
-    treatment: list[Word],
-    control: list[Word],
-    *,
-    criterion: BalanceCriterion = "tost",
-    alpha: float = DEFAULT_ALPHA,
-    tost_margin: float = TOST_MARGIN_SMD,
-) -> list[CovariateBalance]:
+def check_balance(treatment: list[Word], control: list[Word], *, criterion: BalanceCriterion = "tost",
+                  alpha: float = DEFAULT_ALPHA, tost_margin: float = TOST_MARGIN_SMD) -> list[CovariateBalance]:
     """Per-covariate equivalence check on an already-matched sample."""
     floor = _freq_floor(list(treatment) + list(control))
     results: list[CovariateBalance] = []
@@ -307,14 +284,8 @@ def check_balance(
     return results
 
 
-def _covariate_balance(
-    covariate: str,
-    treat: list[float],
-    ctrl: list[float],
-    criterion: BalanceCriterion,
-    alpha: float,
-    tost_margin: float,
-) -> CovariateBalance:
+def _covariate_balance(covariate: str, treat: list[float], ctrl: list[float], criterion: BalanceCriterion,
+                       alpha: float, tost_margin: float) -> CovariateBalance:
     """Compute the per-covariate statistics and the two equivalence verdicts."""
     smd = _standardized_mean_difference(treat, ctrl)
     cohen_d = _cohens_d(treat, ctrl)
@@ -395,9 +366,12 @@ def _tost_p(a: list[float], b: list[float], tost_margin: float) -> float | None:
 
 
 def _select_specification_pool(words: list[Word], specification: Specification) -> list[Word]:
-    """Words tagged for specification (neutral words have no tag -> excluded), text-sorted."""
-    tags = _SPEC_WEAT_TAGS[specification]
-    pool = [w for w in words if set(w.weat_set) & tags]
+    """Words routed to specification (neutral words, specification is None -> excluded).
+
+    Routes by Word.specification rather than deriving from weat_set, so non-WEAT sources (She 
+    Figures) that carry a specification but no weat_set are included. Text-sorted for a deterministic 
+    order."""
+    pool = [w for w in words if w.specification == specification]
     # deterministic order
     return sorted(pool, key=lambda w: w.text)
 
