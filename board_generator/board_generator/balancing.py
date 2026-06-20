@@ -165,7 +165,7 @@ class BalanceResult:
     matched: list[MatchedSubset]
 
 
-def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion = "tost",
+def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion = "smd",
                   alpha: float = DEFAULT_ALPHA, tost_margin: float = TOST_MARGIN_SMD,
                   caliper_sd: float = PSM_CALIPER_LOGIT_SD, min_pairs: int = DEFAULT_MIN_PAIRS) -> BalanceResult:
     """Balance both specifications independently and assemble the report."""
@@ -294,7 +294,7 @@ def propensity_score_match(treatment: list[Word], control: list[Word], *, calipe
     return matched_treat, matched_ctrl, dropped_by_caliper, dropped_by_group_excess
 
 
-def check_balance(treatment: list[Word], control: list[Word], *, criterion: BalanceCriterion = "tost",
+def check_balance(treatment: list[Word], control: list[Word], *, criterion: BalanceCriterion = "smd",
                   alpha: float = DEFAULT_ALPHA, tost_margin: float = TOST_MARGIN_SMD) -> list[CovariateBalance]:
     """Per-covariate equivalence check on an already-matched sample."""
     floor = _freq_floor(list(treatment) + list(control))
