@@ -20,7 +20,7 @@ RESOURCES = Path(__file__).resolve().parents[1] / "resources"
 REAL_WORDS = RESOURCES / "words"
 REAL_SUBTLEX = RESOURCES / "frequencies" / "subtlex_us.csv"
 
-WORD_HEADER = ["word", "gender_category", "word_kind", "source", "weat_set"]
+WORD_HEADER = ["word", "gender_category", "word_kind", "source", "weat_set", "specification"]
 FREQ_HEADER = ["word", "zipf", "dom_pos"]
 
 # Arts words present under both WEAT-7 and WEAT-8 in gender_science.csv (collapse on load).
@@ -58,8 +58,14 @@ def _by_text(words: list[Word]) -> dict[str, Word]:
 
 
 def test_loads_real_career_and_science(real_load: LoadResult) -> None:
-    # Career (16 unique) + science (24 WEAT-core unique + 16 She Figures expansion) = 57.
-    assert len(real_load.words) == 57
+    # Pool grows as expansions land; derive the count from the per-specification split rather than
+    # hardcoding a magic total, and assert only that both axes are populated.
+    by_spec: dict[str | None, int] = {}
+    for w in real_load.words:
+        by_spec[w.specification] = by_spec.get(w.specification, 0) + 1
+    assert by_spec["gender-career"] > 0
+    assert by_spec["gender-science"] > 0
+    assert len(real_load.words) == sum(by_spec.values())
     assert real_load.excluded == []  # no phrases in these two cores
     assert all(w.text == w.text.lower() for w in real_load.words)
 

@@ -239,25 +239,23 @@ def test_degenerate_pool_serializes_without_nan() -> None:
         assert cov.well_balanced is False
 
 
-# GOVERNING SMD on the real pool: science balances (all |SMD| < 0.2) -> passes; career's `length`
-# stays above the threshold -> fails. Direction is derived from the pool, not hardcoded numbers.
+# GOVERNING SMD on the real pool: the curated pool is matched so that BOTH specifications balance
+# (every |SMD| < 0.2) and pass. The fail path is exercised separately on a controlled fixture
+# (test_systematic_shift_reports_non_equivalence); here we assert the real pool stays balanced.
 def test_real_pool_smd_verdict(real_load: LoadResult) -> None:
     # default criterion == "smd"
     result = run_balancing(real_load.words, seed=1234567)
     report = result.report
     assert report.criterion == "smd"
 
-    science = _spec(report, "gender-science")
-    for cov in science.covariates:
-        assert cov.smd is not None and abs(
-            cov.smd) < SMD_BALANCE_THRESHOLD, cov
-    assert science.passed is True
-
-    career = _spec(report, "gender-career")
-    length = next(c for c in career.covariates if c.covariate == "length")
-    assert length.smd is not None and abs(length.smd) > SMD_BALANCE_THRESHOLD
-    assert length.passed is False
-    assert career.passed is False
+    for specification in ("gender-science", "gender-career"):
+        spec = _spec(report, specification)
+        for cov in spec.covariates:
+            assert cov.smd is not None and abs(cov.smd) < SMD_BALANCE_THRESHOLD, (
+                specification,
+                cov,
+            )
+        assert spec.passed is True
 
 
 # The diagnostic script must inherit the governing SMD default, never override it back to TOST.
