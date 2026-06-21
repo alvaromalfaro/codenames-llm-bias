@@ -1,8 +1,8 @@
 """Tests for covariate balancing.
 
-Positive structural cases (counts) run against the real resources/words/ + SUBTLEX-US pool; the 
-statistical verdicts and edge cases use small, hand-built Word pools so behaviour does not depend on 
-the 41-word corpus or on WordNet/CSV loading. Both happy and unhappy paths are exercised: the 
+Positive structural cases (counts) run against the real resources/words/ + SUBTLEX-US pool; the
+statistical verdicts and edge cases use small, hand-built Word pools so behaviour does not depend on
+the 41-word corpus or on WordNet/CSV loading. Both happy and unhappy paths are exercised: the
 important negative case asserts the report correctly reports NON-equivalence.
 """
 
@@ -27,7 +27,7 @@ from board_generator.balancing import (
     check_balance,
     run_balancing,
 )
-from board_generator.lexicon import LoadResult, Word, load_words
+from board_generator.lexicon import LoadResult, Specification, Word, load_words
 
 RESOURCES = Path(__file__).resolve().parents[1] / "resources"
 REAL_WORDS = RESOURCES / "words"
@@ -35,7 +35,8 @@ REAL_SUBTLEX = RESOURCES / "frequencies" / "subtlex_us.csv"
 
 
 def make_word(text: str, gender: str, freq: float | None, *, length: int | None = None,
-              polysemy: int = 1, weat: tuple[str, ...] = ("weat-6",), specification: str = "gender-career",
+              polysemy: int = 1, weat: tuple[str, ...] = ("weat-6",),
+              specification: Specification = "gender-career",
               ) -> Word:
     """Build a board-eligible Word directly, bypassing CSV/WordNet loading."""
     return Word(

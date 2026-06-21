@@ -1,7 +1,7 @@
 """Tests for the word loader, covariate annotation and playability checks.
 
-Positive cases run against the real resources/words/ + SUBTLEX-US table; negative and edge cases use 
-small, controlled temp CSVs so behaviour does not depend on the 74k-row corpus. Requires the WordNet 
+Positive cases run against the real resources/words/ + SUBTLEX-US table; negative and edge cases use
+small, controlled temp CSVs so behaviour does not depend on the 74k-row corpus. Requires the WordNet
 corpus (``uv run python -m nltk.downloader wordnet``).
 """
 
@@ -20,7 +20,8 @@ RESOURCES = Path(__file__).resolve().parents[1] / "resources"
 REAL_WORDS = RESOURCES / "words"
 REAL_SUBTLEX = RESOURCES / "frequencies" / "subtlex_us.csv"
 
-WORD_HEADER = ["word", "gender_category", "word_kind", "source", "weat_set", "specification"]
+WORD_HEADER = ["word", "gender_category", "word_kind",
+               "source", "weat_set", "specification"]
 FREQ_HEADER = ["word", "zipf", "dom_pos"]
 
 # Arts words present under both WEAT-7 and WEAT-8 in gender_science.csv (collapse on load).

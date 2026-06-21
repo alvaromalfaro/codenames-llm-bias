@@ -63,10 +63,11 @@ def assign_roles(rng: random.Random) -> KeyCard:
     deterministic insertion order, then permuted across grid positions. Shuffling reorders positions
     only, so the joint cross-tabulation is preserved exactly and validate_keycard stays the oracle.
 
-    The role pattern is built without reference to any word, so role is independent of gender_category
-    by construction: words are placed onto positions separately (board.randomize_positions).
-    Randomness derives solely from rng (seeded from the board seed), so the same seed yields the
-    same key card. The scheme fixes the grid to 25 words, so there is no width parameter.
+    The role pattern is built without reference to any word, so role is independent of
+    gender_category by construction: words are placed onto positions separately
+    (board.randomize_positions). Randomness derives solely from rng (seeded from the board seed), so
+    the same seed yields the same key card. The scheme fixes the grid to 25 words, so there is no
+    width parameter.
     """
     pairs: list[tuple[Role, Role]] = []
     for (role_a, role_b), count in EXPECTED_JOINT.items():

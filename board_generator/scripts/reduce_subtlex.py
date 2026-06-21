@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
 """Reduce the raw SUBTLEX-US workbook to the project's frequency reference CSV.
 
-One-time data-prep step - run manually; NOT part of the generator runtime. Reads the raw SUBTLEX-US 
-PoS/Zipf workbook (the 10 MB xlsx) and emits a small word,zipf,dom_pos CSV that lexicon.py consumes 
+One-time data-prep step - run manually; NOT part of the generator runtime. Reads the raw SUBTLEX-US
+PoS/Zipf workbook (the 10 MB xlsx) and emits a small word,zipf,dom_pos CSV that lexicon.py consumes
 as a lookup table.
 
-This keeps the heavy, source-specific xlsx parsing out of the runtime: lexicon.py only ever sees the 
-reduced CSV. ALL rows are kept (it is a general frequency reference for the whole project - the WEAT 
+This keeps the heavy, source-specific xlsx parsing out of the runtime: lexicon.py only ever sees the
+reduced CSV. ALL rows are kept (it is a general frequency reference for the whole project - the WEAT
 cores, the neutral pool, and later expansions all look up against it); only columns are reduced.
 
 Decisions:
   * frequency = SUBTLEX-US Zipf-value (the log-normalised scale, suited to a PSM covariate).
   * words are case-folded to lowercase (lexicon.py joins on lowercase).
-  * case-fold collisions (e.g. US vs us) are resolved by keeping the entry with the MAX Zipf (the 
+  * case-fold collisions (e.g. US vs us) are resolved by keeping the entry with the MAX Zipf (the
   more frequent surface form dominates); the count is reported.
-  * dom_pos is the SUBTLEX dominant part of speech (e.g. Noun, Verb, Name for proper nouns); kept 
+  * dom_pos is the SUBTLEX dominant part of speech (e.g. Noun, Verb, Name for proper nouns); kept
   verbatim for lexicon.py's playability check.
 
 Usage:
-    uv run python scripts/reduce_subtlex.py path/to/SUBTLEX-US-raw.xlsx -o resources/frequencies/subtlex_us.csv
+    uv run python scripts/reduce_subtlex.py path/to/SUBTLEX-US-raw.xlsx -o
+        resources/frequencies/subtlex_us.csv
 """
 
 from __future__ import annotations

@@ -8,9 +8,9 @@ contextually and are not balanced here. Within an exercise the binary PSM treatm
 membership - 1 iff gender_category == "male" (career: Career=1/Family=0; science: STEM=1/Arts=0).
 
 Pipeline per specification: low-anchor OOV imputation -> propensity-score matching -> per-covariate
-equivalence check. The matching is deliberately greedy (1:1 nearest-neighbour on the propensity logit,
-no replacement, within a caliper), not optimal: greedy is deterministic and reproducible, which
-matters more here than squeezing out the last pair.
+equivalence check. The matching is deliberately greedy (1:1 nearest-neighbour on the propensity
+logit, no replacement, within a caliper), not optimal: greedy is deterministic and reproducible,
+which matters more here than squeezing out the last pair.
 
 The governing criterion is a descriptive standardized mean difference (SMD) threshold
 (|SMD| < SMD_BALANCE_THRESHOLD -> balanced; |SMD| < SMD_WELL_BALANCED_THRESHOLD -> flagged
@@ -104,9 +104,9 @@ class MatchCounts:
     """Matching tallies.
 
     The two dropped_* counts measure different things and do not sum to "total unmatched majority
-    words": dropped_by_group_excess is the structural surplus of the larger pole (|n_treat - n_ctrl|,
-    never matchable 1:1), while dropped_by_caliper counts minority-pole units with no opposite-pole
-    partner inside the caliper. pairs_kept is the usable count.
+    words": dropped_by_group_excess is the structural surplus of the larger pole
+    (|n_treat - n_ctrl|, never matchable 1:1), while dropped_by_caliper counts minority-pole units
+    with no opposite-pole partner inside the caliper. pairs_kept is the usable count.
     """
 
     pairs_kept: int
@@ -167,7 +167,8 @@ class BalanceResult:
 
 def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion = "smd",
                   alpha: float = DEFAULT_ALPHA, tost_margin: float = TOST_MARGIN_SMD,
-                  caliper_sd: float = PSM_CALIPER_LOGIT_SD, min_pairs: int = DEFAULT_MIN_PAIRS) -> BalanceResult:
+                  caliper_sd: float = PSM_CALIPER_LOGIT_SD, min_pairs: int = DEFAULT_MIN_PAIRS
+                  ) -> BalanceResult:
     """Balance both specifications independently and assemble the report."""
     specs: list[SpecificationBalance] = []
     matched: list[MatchedSubset] = []
@@ -236,8 +237,9 @@ def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion =
     return BalanceResult(report=report, matched=matched)
 
 
-def propensity_score_match(treatment: list[Word], control: list[Word], *, caliper_sd: float = PSM_CALIPER_LOGIT_SD,
-                           seed: int = 0) -> tuple[list[Word], list[Word], int, int]:
+def propensity_score_match(treatment: list[Word], control: list[Word], *,
+                           caliper_sd: float = PSM_CALIPER_LOGIT_SD, seed: int = 0
+                           ) -> tuple[list[Word], list[Word], int, int]:
     """Greedy 1:1 caliper PSM on the propensity logit.
 
     Standardizes the three covariates, fits an L2 logistic propensity model (tolerant of separation
@@ -294,8 +296,9 @@ def propensity_score_match(treatment: list[Word], control: list[Word], *, calipe
     return matched_treat, matched_ctrl, dropped_by_caliper, dropped_by_group_excess
 
 
-def check_balance(treatment: list[Word], control: list[Word], *, criterion: BalanceCriterion = "smd",
-                  alpha: float = DEFAULT_ALPHA, tost_margin: float = TOST_MARGIN_SMD) -> list[CovariateBalance]:
+def check_balance(treatment: list[Word], control: list[Word], *,
+                  criterion: BalanceCriterion = "smd", alpha: float = DEFAULT_ALPHA,
+                  tost_margin: float = TOST_MARGIN_SMD) -> list[CovariateBalance]:
     """Per-covariate equivalence check on an already-matched sample."""
     floor = _freq_floor(list(treatment) + list(control))
     results: list[CovariateBalance] = []
@@ -309,8 +312,9 @@ def check_balance(treatment: list[Word], control: list[Word], *, criterion: Bala
     return results
 
 
-def _covariate_balance(covariate: str, treat: list[float], ctrl: list[float], criterion: BalanceCriterion,
-                       alpha: float, tost_margin: float) -> CovariateBalance:
+def _covariate_balance(covariate: str, treat: list[float], ctrl: list[float],
+                       criterion: BalanceCriterion, alpha: float,
+                       tost_margin: float) -> CovariateBalance:
     """Compute the per-covariate statistics and the two equivalence verdicts."""
     smd = _standardized_mean_difference(treat, ctrl)
     cohen_d = _cohens_d(treat, ctrl)
@@ -405,8 +409,8 @@ def _select_specification_pool(words: list[Word], specification: Specification) 
     """Words routed to specification (neutral words, specification is None -> excluded).
 
     Routes by Word.specification rather than deriving from weat_set, so non-WEAT sources (She
-    Figures) that carry a specification but no weat_set are included. Text-sorted for a deterministic
-    order."""
+    Figures) that carry a specification but no weat_set are included. Text-sorted for a
+    deterministic order."""
     pool = [w for w in words if w.specification == specification]
     # deterministic order
     return sorted(pool, key=lambda w: w.text)

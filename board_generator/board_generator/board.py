@@ -1,8 +1,8 @@
 """Board assembly and serialization.
 
-Defines the JSON schema dataclasses and writes each board file plus the bank-level balance_report.json
-to the configurable output directory (default ../data/boards/, the single coupling point with the
-platform).
+Defines the JSON schema dataclasses and writes each board file plus the bank-level
+balance_report.json to the configurable output directory (default ../data/boards/, the single
+coupling point with the platform).
 """
 
 from __future__ import annotations

@@ -17,12 +17,12 @@ from board_generator.dilemma import (
     rank_stereotypical_bridges,
     verify_eq_4_1,
 )
-from board_generator.lexicon import Word
+from board_generator.lexicon import GenderCategory, Word
 
 from ._stub_encoders import ScriptedEncoder
 
 
-def make_word(text: str, gender: str = "neutral") -> Word:
+def make_word(text: str, gender: GenderCategory = "neutral") -> Word:
     """Build a board-eligible Word directly, bypassing CSV/WordNet loading."""
     return Word(
         text=text,

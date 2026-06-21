@@ -153,9 +153,9 @@ def _check_playability(text: str, word_kind: WordKind, dom_pos: str | None
                        ) -> tuple[Literal["playable", "excluded", "invalid"], bool, str | None]:
     """Classify a word for board use. Returns (status, ambiguous_pos, reason).
 
-    reason is set only for "invalid". dom_pos is None for OOV words: the advisory checks (ambiguous_pos /
-    Name reject) apply only when dom_pos is known, so an OOV common word is never rejected, nor
-    flagged ambiguous, merely for being OOV.
+    reason is set only for "invalid". dom_pos is None for OOV words: the advisory checks
+    (ambiguous_pos / Name reject) apply only when dom_pos is known, so an OOV common word is never
+    rejected, nor flagged ambiguous, merely for being OOV.
     """
     if word_kind == "phrase":
         # Multi-token breaks the single-word embedding unit - excluded by design, not an error.
@@ -171,7 +171,8 @@ def _check_playability(text: str, word_kind: WordKind, dom_pos: str | None
     # word_kind == "common": primary check is a WordNet NOUN sense; dom_pos is advisory.
     if dom_pos == "Name":
         # A "common" word the corpus sees as a proper noun -> mislabeled (hard reject).
-        return ("invalid", False, "common word labeled as a proper noun by SUBTLEX-US (dom_pos=Name)")
+        return ("invalid", False,
+                "common word labeled as a proper noun by SUBTLEX-US (dom_pos=Name)")
     if wordnet.synsets(text, pos=wordnet.NOUN):
         # Playable; flag the advisory mismatch only when the corpus reports a non-noun dom_pos.
         ambiguous_pos = dom_pos is not None and dom_pos != "Noun"
@@ -191,14 +192,17 @@ def _load_frequency_table(subtlex_path: Path) -> dict[str, tuple[float, str]]:
     return table
 
 
-def _read_word_rows(words_dir: Path) -> list[tuple[str, GenderCategory, WordKind, str, str]]:
+def _read_word_rows(
+        words_dir: Path
+) -> list[tuple[str, GenderCategory, WordKind, str, str, Specification | None]]:
     """Read and enum-validate every row across the word CSVs.
 
     Returns (word, gender_category, word_kind, source, weat_set, specification) tuples. Unknown enum
     values (gender-category/word-kind/specification) are a hard error - a typo must never silently
     relax validation. Blank words are skipped, so an empty/header-only neutral.csv is tolerated.
     """
-    rows: list[tuple[str, GenderCategory, WordKind, str, str]] = []
+    rows: list[tuple[str, GenderCategory, WordKind,
+                     str, str, Specification | None]] = []
     for csv_path in sorted(words_dir.glob("*.csv")):
         with csv_path.open(newline="", encoding="utf-8") as handle:
             for line_no, row in enumerate(
@@ -226,8 +230,8 @@ def _read_word_rows(words_dir: Path) -> list[tuple[str, GenderCategory, WordKind
                 # An empty specification (neutral words) maps to None.
                 gender_cat: GenderCategory = gender  # type: ignore[assignment]
                 word_kind: WordKind = kind  # type: ignore[assignment]
-                # type: ignore[assignment]
-                specification: Specification | None = spec or None
+                specification: Specification | None = \
+                    spec or None  # type: ignore[assignment]
                 rows.append(
                     (
                         word,
@@ -241,8 +245,9 @@ def _read_word_rows(words_dir: Path) -> list[tuple[str, GenderCategory, WordKind
     return rows
 
 
-def _merge_rows(rows: list[tuple[str, GenderCategory, WordKind, str, str, Specification | None]],
-                ) -> dict[str, tuple[GenderCategory, WordKind, str, tuple[str, ...], Specification | None]]:
+def _merge_rows(
+    rows: list[tuple[str, GenderCategory, WordKind, str, str, Specification | None]],
+) -> dict[str, tuple[GenderCategory, WordKind, str, tuple[str, ...], Specification | None]]:
     """Dedup rows to unique words, merging source/weat_set provenance.
 
     Raises if two rows for the same word disagree on gender_category, word_kind, or specification

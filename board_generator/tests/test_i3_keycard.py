@@ -46,9 +46,9 @@ def test_i3_rejects_illegal_keycard(illegal_keycard: KeyCard) -> None:
 
 
 def test_i3_rejects_wrong_overlap() -> None:
-    # Correct 9/13/3 marginals on BOTH sides but a wrong joint: a +1/-1 rotation on the agent/bystander
-    # 2x2 submatrix gives 4 shared agents. Marginals are preserved, so  only the overlap branch
-    # (joint == EXPECTED_JOINT) can reject it.
+    # Correct 9/13/3 marginals on BOTH sides but a wrong joint: a +1/-1 rotation on the
+    # agent/bystander 2x2 submatrix gives 4 shared agents. Marginals are preserved, so  only the
+    # overlap branch (joint == EXPECTED_JOINT) can reject it.
     joint = dict(EXPECTED_JOINT)
     joint[("agent", "agent")] = 4
     joint[("agent", "bystander")] = 4
@@ -73,8 +73,8 @@ def test_i3_assign_roles_generates_valid() -> None:
 
 
 def test_i3_assign_roles_deterministic() -> None:
-    # Same seed => same key card; different seeds => different key cards (guards against assign_roles
-    # ignoring rng and always returning one permutation).
+    # Same seed => same key card; different seeds => different key cards (guards against
+    # assign_roles ignoring rng and always returning one permutation).
     same_a = assign_roles(random.Random(42))
     same_b = assign_roles(random.Random(42))
     assert same_a == same_b

@@ -2,13 +2,13 @@
 """Pretty-print the balance report for the real word pool.
 
 One-time diagnostic step - run manually; NOT part of the generator runtime. Loads the annotated
-word pool with lexicon.load_words and runs balancing.run_balancing over it, then dumps the resulting 
-BalanceReport as indented JSON to stdout. Use it to eyeball balance / equivalence verdicts and 
-matching counts without booting the full generator.
+word pool with lexicon.load_words and runs balancing.run_balancing over it, then dumps the
+resulting BalanceReport as indented JSON to stdout. Use it to eyeball balance / equivalence verdicts
+and matching counts without booting the full generator.
 
-This keeps inspection out of the runtime: it only reads the resources and reuses the public balancing 
-API; it writes nothing. JSON goes to stdout, any loader warnings (e.g. OOV words) to stderr, so the 
-output is a clean, parseable document.
+This keeps inspection out of the runtime: it only reads the resources and reuses the public
+balancing API; it writes nothing. JSON goes to stdout, any loader warnings (e.g. OOV words) to
+stderr, so the output is a clean, parseable document.
 
 Decisions:
   * the report is emitted with allow_nan=False - the balancing layer sanitizes every non-finite
@@ -43,7 +43,7 @@ def balance_report(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the CLI parser. The --criterion default matches the governing SMD default of 
+    """Build the CLI parser. The --criterion default matches the governing SMD default of
     run_balancing; tost/spec_original stay selectable but are underpowered."""
     parser = argparse.ArgumentParser(
         description="Pretty-print the balance report for the real word pool as JSON."

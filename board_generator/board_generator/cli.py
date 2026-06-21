@@ -2,7 +2,8 @@
 
 Orchestrates pool loading, covariate balancing, lexical composition, role assignment, the
 semi-automatic dilemma loop (the manual target/bridge selections stay manual), position
-randomization and serialization. Determinism: every random draw derives from the recorded board seed.
+randomization and serialization. Determinism: every random draw derives from the recorded board
+seed.
 """
 
 from __future__ import annotations
