@@ -88,4 +88,5 @@ ignore_missing_imports = true
 # Tests
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not integration' --strict-markers"
+markers = ["integration: requires a real HF model; offline by default"]
