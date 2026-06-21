@@ -1,12 +1,12 @@
 """Word-list loading, covariate annotation and playability validation.
 
-Loads every word CSV under resources/words/ (the WEAT cores plus the gender-disparity expansion 
-share one schema), deduplicates rows into unique board Words, and annotates each with the three 
-confound-control covariates (subtlex_freq, length, wordnet_polysemy) plus its gender_category, 
+Loads every word CSV under resources/words/ (the WEAT cores plus the gender-disparity expansion
+share one schema), deduplicates rows into unique board Words, and annotates each with the three
+confound-control covariates (subtlex_freq, length, wordnet_polysemy) plus its gender_category,
 source and provenance weat_set.
 
-Playability validation keeps multi-token, mislabeled or non-board entries out of the board-eligible 
-pool before anything is embedded or placed on a grid. Validation is strict: every offending word 
+Playability validation keeps multi-token, mislabeled or non-board entries out of the board-eligible
+pool before anything is embedded or placed on a grid. Validation is strict: every offending word
 across the whole load is collected and reported in a single error.
 """
 
@@ -80,14 +80,14 @@ class LoadResult:
 def load_words(words_dir: Path, subtlex_path: Path) -> LoadResult:
     """Load, dedup, annotate and validate every board word under words_dir.
 
-    Reads every *.csv in words_dir (schema word,gender_category,word_kind,source,weat_set); 
-    empty/header-only files such as a pending neutral.csv are tolerated. Words are lowercased and 
+    Reads every *.csv in words_dir (schema word,gender_category,word_kind,source,weat_set);
+    empty/header-only files such as a pending neutral.csv are tolerated. Words are lowercased and
     joined to the SUBTLEX-US table at subtlex_path by lowercased word.
 
-    Hard errors (raised immediately): an unknown gender_category/word_kind/specification value, or 
-    two rows for the same word disagreeing on gender_category, word_kind, or specification. Strict 
-    playability: every invalid word is collected and reported together in a single error. OOV words 
-    are not an error - they are collected and surfaced in one warning. Imputation of OOV 
+    Hard errors (raised immediately): an unknown gender_category/word_kind/specification value, or
+    two rows for the same word disagreeing on gender_category, word_kind, or specification. Strict
+    playability: every invalid word is collected and reported together in a single error. OOV words
+    are not an error - they are collected and surfaced in one warning. Imputation of OOV
     subtlex_freq is balancing.py's job, not this loader's.
     """
     frequency = _load_frequency_table(subtlex_path)
@@ -153,8 +153,8 @@ def _check_playability(text: str, word_kind: WordKind, dom_pos: str | None
                        ) -> tuple[Literal["playable", "excluded", "invalid"], bool, str | None]:
     """Classify a word for board use. Returns (status, ambiguous_pos, reason).
 
-    reason is set only for "invalid". dom_pos is None for OOV words: the advisory checks (ambiguous_pos / 
-    Name reject) apply only when dom_pos is known, so an OOV common word is never rejected, nor 
+    reason is set only for "invalid". dom_pos is None for OOV words: the advisory checks (ambiguous_pos /
+    Name reject) apply only when dom_pos is known, so an OOV common word is never rejected, nor
     flagged ambiguous, merely for being OOV.
     """
     if word_kind == "phrase":
@@ -194,8 +194,8 @@ def _load_frequency_table(subtlex_path: Path) -> dict[str, tuple[float, str]]:
 def _read_word_rows(words_dir: Path) -> list[tuple[str, GenderCategory, WordKind, str, str]]:
     """Read and enum-validate every row across the word CSVs.
 
-    Returns (word, gender_category, word_kind, source, weat_set, specification) tuples. Unknown enum 
-    values (gender-category/word-kind/specification) are a hard error - a typo must never silently 
+    Returns (word, gender_category, word_kind, source, weat_set, specification) tuples. Unknown enum
+    values (gender-category/word-kind/specification) are a hard error - a typo must never silently
     relax validation. Blank words are skipped, so an empty/header-only neutral.csv is tolerated.
     """
     rows: list[tuple[str, GenderCategory, WordKind, str, str]] = []
@@ -245,8 +245,8 @@ def _merge_rows(rows: list[tuple[str, GenderCategory, WordKind, str, str, Specif
                 ) -> dict[str, tuple[GenderCategory, WordKind, str, tuple[str, ...], Specification | None]]:
     """Dedup rows to unique words, merging source/weat_set provenance.
 
-    Raises if two rows for the same word disagree on gender_category, word_kind, or specification 
-    (the same word must agree on all three; only source and weat_set provenance may differ). source 
+    Raises if two rows for the same word disagree on gender_category, word_kind, or specification
+    (the same word must agree on all three; only source and weat_set provenance may differ). source
     and weat_set are merged deterministically (distinct values, sorted). The arts words shared by
     weat-7 and weat-8 carry the same gender-science specification, so they merge cleanly to one
     word.

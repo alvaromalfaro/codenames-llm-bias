@@ -1,7 +1,7 @@
 """Double-sided key-card role assignment and validation.
 
-Per perspective the 25-word grid carries 9 agents / 13 bystanders / 3 assassins, with the fixed 
-overlap scheme (game totals 15 / 19 / 5). Role assignment must be statistically independent of 
+Per perspective the 25-word grid carries 9 agents / 13 bystanders / 3 assassins, with the fixed
+overlap scheme (game totals 15 / 19 / 5). Role assignment must be statistically independent of
 gender_category.
 """
 
@@ -59,13 +59,13 @@ class KeycardAudit:
 def assign_roles(rng: random.Random) -> KeyCard:
     """Assign a legal double-sided key card, independent of gender_category.
 
-    The 25 (role_a, role_b) pairs of the fixed overlap scheme (EXPECTED_JOINT) are materialized in 
-    deterministic insertion order, then permuted across grid positions. Shuffling reorders positions 
+    The 25 (role_a, role_b) pairs of the fixed overlap scheme (EXPECTED_JOINT) are materialized in
+    deterministic insertion order, then permuted across grid positions. Shuffling reorders positions
     only, so the joint cross-tabulation is preserved exactly and validate_keycard stays the oracle.
 
-    The role pattern is built without reference to any word, so role is independent of gender_category 
-    by construction: words are placed onto positions separately (board.randomize_positions). 
-    Randomness derives solely from rng (seeded from the board seed), so the same seed yields the 
+    The role pattern is built without reference to any word, so role is independent of gender_category
+    by construction: words are placed onto positions separately (board.randomize_positions).
+    Randomness derives solely from rng (seeded from the board seed), so the same seed yields the
     same key card. The scheme fixes the grid to 25 words, so there is no width parameter.
     """
     pairs: list[tuple[Role, Role]] = []

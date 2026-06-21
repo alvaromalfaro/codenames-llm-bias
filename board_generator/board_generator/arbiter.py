@@ -1,8 +1,8 @@
 """External arbiter encoders - construction consensus and primary φ*.
 
-Bare-word, prefix-free symmetric similarity: a single embed(word) primitive is used identically 
-everywhere - candidate ranking, the consensus gate, and the downstream metrics. There are no 
-prefix/carrier parameters; the consensus pool is restricted to prefix-free symmetric encoders 
+Bare-word, prefix-free symmetric similarity: a single embed(word) primitive is used identically
+everywhere - candidate ranking, the consensus gate, and the downstream metrics. There are no
+prefix/carrier parameters; the consensus pool is restricted to prefix-free symmetric encoders
 (models that require query:/passage: prefixes, e.g. BGE or E5, are excluded).
 
 Selection rules enforced here:
@@ -47,8 +47,8 @@ class ArbiterRef:
 class ConsensusSpec:
     """The consensus encoder set with its designated primary φ*.
 
-    Validated on construction: rejects an empty set, any missing HF revision, a primary outside the 
-    set, or any evaluated model; warns on apparent same-lineage siblings (shared training data -> 
+    Validated on construction: rejects an empty set, any missing HF revision, a primary outside the
+    set, or any evaluated model; warns on apparent same-lineage siblings (shared training data ->
     false diversity).
     """
 
@@ -148,7 +148,7 @@ def load_consensus(spec: ConsensusSpec) -> list[Arbiter]:
 def assert_external(spec: ConsensusSpec) -> None:
     """Reject any arbiter that is an evaluated model.
 
-    Using an evaluated model's embeddings to validate a dilemma it later plays is circular. This 
+    Using an evaluated model's embeddings to validate a dilemma it later plays is circular. This
     guards against model identity, not the serving mechanism.
     """
     for ref in spec.encoders:

@@ -1,7 +1,7 @@
 """Interactive semi-automatic CLI. Exposes main().
 
-Orchestrates pool loading, covariate balancing, lexical composition, role assignment, the 
-semi-automatic dilemma loop (the manual target/bridge selections stay manual), position 
+Orchestrates pool loading, covariate balancing, lexical composition, role assignment, the
+semi-automatic dilemma loop (the manual target/bridge selections stay manual), position
 randomization and serialization. Determinism: every random draw derives from the recorded board seed.
 """
 

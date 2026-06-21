@@ -1,30 +1,30 @@
 """Covariate balancing of contrastable subsets.
 
 Two independent balancing exercises, one per gender specification, are routed by Word.specification:
-gender-career = words whose specification is gender-career; gender-science = words whose 
-specification is gender-science (this includes the non-WEAT She Figures expansion, which carries a 
-specification but no weat_set). Neutral words (specification is None) are used in both boards 
-contextually and are not balanced here. Within an exercise the binary PSM treatment is pole 
+gender-career = words whose specification is gender-career; gender-science = words whose
+specification is gender-science (this includes the non-WEAT She Figures expansion, which carries a
+specification but no weat_set). Neutral words (specification is None) are used in both boards
+contextually and are not balanced here. Within an exercise the binary PSM treatment is pole
 membership - 1 iff gender_category == "male" (career: Career=1/Family=0; science: STEM=1/Arts=0).
 
 Pipeline per specification: low-anchor OOV imputation -> propensity-score matching -> per-covariate
-equivalence check. The matching is deliberately greedy (1:1 nearest-neighbour on the propensity logit, 
-no replacement, within a caliper), not optimal: greedy is deterministic and reproducible, which 
+equivalence check. The matching is deliberately greedy (1:1 nearest-neighbour on the propensity logit,
+no replacement, within a caliper), not optimal: greedy is deterministic and reproducible, which
 matters more here than squeezing out the last pair.
 
-The governing criterion is a descriptive standardized mean difference (SMD) threshold 
-(|SMD| < SMD_BALANCE_THRESHOLD -> balanced; |SMD| < SMD_WELL_BALANCED_THRESHOLD -> flagged 
-well_balanced), per the matching literature (Austin): post-matching balance is judged by SMD, not 
-significance tests, precisely because tests conflate effect size with sample size. SMD needs no 
-power, so it is meaningful even at the available n (~5-13 pairs). The criterion is configurable and 
+The governing criterion is a descriptive standardized mean difference (SMD) threshold
+(|SMD| < SMD_BALANCE_THRESHOLD -> balanced; |SMD| < SMD_WELL_BALANCED_THRESHOLD -> flagged
+well_balanced), per the matching literature (Austin): post-matching balance is judged by SMD, not
+significance tests, precisely because tests conflate effect size with sample size. SMD needs no
+power, so it is meaningful even at the available n (~5-13 pairs). The criterion is configurable and
 defaults to SMD.
 
 Two significance-based criteria stay selectable but are RETAINED only as reported, underpowered
-secondary diagnostics: the SPEC-original criterion "spec_original" (Mann-Whitney non-significant and 
-|d| < COHEN_D_THRESHOLD) and the a-priori TOST criterion "tost" (tost_p < alpha with a 
+secondary diagnostics: the SPEC-original criterion "spec_original" (Mann-Whitney non-significant and
+|d| < COHEN_D_THRESHOLD) and the a-priori TOST criterion "tost" (tost_p < alpha with a
 ±TOST_MARGIN_SMD SMD-unit margin). Nothing is tuned.
 
-All reported statistics are JSON-safe: any non-finite or undefined statistic is sanitized to None 
+All reported statistics are JSON-safe: any non-finite or undefined statistic is sanitized to None
 (never NaN/Inf), and an undefined equivalence statistic is treated as non-equivalent (conservative).
 """
 
@@ -83,7 +83,7 @@ _SPEC_PAIR: dict[Specification, ContrastablePair] = {
 class CovariateBalance:
     """Per-covariate equivalence result on the matched sample.
 
-    Statistic fields are None when undefined (e.g. a zero pooled SD, or too few points to estimate 
+    Statistic fields are None when undefined (e.g. a zero pooled SD, or too few points to estimate
     variance) - never NaN/Inf. An undefined statistic counts as non-equivalent.
     """
 
@@ -103,9 +103,9 @@ class CovariateBalance:
 class MatchCounts:
     """Matching tallies.
 
-    The two dropped_* counts measure different things and do not sum to "total unmatched majority 
-    words": dropped_by_group_excess is the structural surplus of the larger pole (|n_treat - n_ctrl|, 
-    never matchable 1:1), while dropped_by_caliper counts minority-pole units with no opposite-pole 
+    The two dropped_* counts measure different things and do not sum to "total unmatched majority
+    words": dropped_by_group_excess is the structural surplus of the larger pole (|n_treat - n_ctrl|,
+    never matchable 1:1), while dropped_by_caliper counts minority-pole units with no opposite-pole
     partner inside the caliper. pairs_kept is the usable count.
     """
 
@@ -240,9 +240,9 @@ def propensity_score_match(treatment: list[Word], control: list[Word], *, calipe
                            seed: int = 0) -> tuple[list[Word], list[Word], int, int]:
     """Greedy 1:1 caliper PSM on the propensity logit.
 
-    Standardizes the three covariates, fits an L2 logistic propensity model (tolerant of separation 
-    on tiny n), and greedily matches each minority-pole unit (in index order, ties broken by index) 
-    to its nearest still-available opposite-pole unit whose logit is within caliper_sd x SD(logit). 
+    Standardizes the three covariates, fits an L2 logistic propensity model (tolerant of separation
+    on tiny n), and greedily matches each minority-pole unit (in index order, ties broken by index)
+    to its nearest still-available opposite-pole unit whose logit is within caliper_sd x SD(logit).
     Matching is without replacement.
 
     Returns (matched_treatment, matched_control, dropped_by_caliper, dropped_by_group_excess).
@@ -404,8 +404,8 @@ def _tost_p(a: list[float], b: list[float], tost_margin: float) -> float | None:
 def _select_specification_pool(words: list[Word], specification: Specification) -> list[Word]:
     """Words routed to specification (neutral words, specification is None -> excluded).
 
-    Routes by Word.specification rather than deriving from weat_set, so non-WEAT sources (She 
-    Figures) that carry a specification but no weat_set are included. Text-sorted for a deterministic 
+    Routes by Word.specification rather than deriving from weat_set, so non-WEAT sources (She
+    Figures) that carry a specification but no weat_set are included. Text-sorted for a deterministic
     order."""
     pool = [w for w in words if w.specification == specification]
     # deterministic order
