@@ -10,9 +10,6 @@ Selection rules enforced here:
   * every arbiter is pinned by a Hugging Face revision;
   * the primary φ* belongs to the consensus set;
   * consensus encoders should come from distinct lineages (warned heuristically; no network calls).
-
-No default consensus is baked in (DEFAULT_CONSENSUS is None): the caller must supply a pinned 
-ConsensusSpec.
 """
 
 from __future__ import annotations
@@ -20,6 +17,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 from numpy.typing import NDArray
@@ -73,24 +71,78 @@ class ConsensusSpec:
         _warn_if_same_lineage(self.encoders)
 
 
+class Encoder(Protocol):
+    """A bare-text -> vector encoder. The single seam for dependency injection.
+
+    The real backend is SentenceTransformerEncoder; tests inject deterministic, network-free
+    stubs implementing this same protocol.
+    """
+
+    def encode(self, text: str) -> NDArray[np.float64]: ...
+
+
 @dataclass
 class Arbiter:
-    """A loaded, pinned sentence-transformers encoder. Bare-word, prefix-free."""
+    """A pinned encoder wrapped behind the bare-word embedding convention.
+
+    The encoder is mandatory and explicit (no default factory): production wraps a
+    SentenceTransformerEncoder via load_consensus; tests inject stubs.
+    """
 
     ref: ArbiterRef
+    encoder: Encoder
 
     def embed(self, word: str) -> NDArray[np.float64]:
-        """Embed a single bare word - the one embedding primitive used everywhere."""
-        raise NotImplementedError
+        """Embed a single bare word - the one embedding primitive used everywhere.
+
+        Lowercases the word and delegates to the encoder, returning the RAW model vector upcast to
+        float64. No normalization here: cos normalizes internally, and the future e_gen step needs
+        the raw geometry.
+        """
+        vec = self.encoder.encode(word.lower())
+        return np.asarray(vec, dtype=np.float64)
 
     def cos(self, a: NDArray[np.float64], b: NDArray[np.float64]) -> float:
-        """Cosine similarity between two embeddings."""
-        raise NotImplementedError
+        """Full cosine similarity in float64. Total: returns 0.0 if either vector has zero norm."""
+        a = np.asarray(a, dtype=np.float64)
+        b = np.asarray(b, dtype=np.float64)
+        norm_a = float(np.linalg.norm(a))
+        norm_b = float(np.linalg.norm(b))
+        if norm_a == 0.0 or norm_b == 0.0:
+            return 0.0
+        return float(np.dot(a, b) / (norm_a * norm_b))
+
+
+class SentenceTransformerEncoder:
+    """The ONLY encoder that touches sentence-transformers (and thus torch/transformers/network).
+
+    sentence_transformers is imported lazily inside __init__ so that importing this module pulls no
+    heavy dependencies and touches no network. Words are embedded bare and unnormalized, on CPU in
+    eval mode, for deterministic, prefix-free, reproducible cosines.
+    """
+
+    def __init__(self, ref: ArbiterRef) -> None:
+        from sentence_transformers import SentenceTransformer
+
+        self.ref = ref
+        self._model = SentenceTransformer(
+            ref.model_id, revision=ref.hf_revision, device="cpu"
+        )
+        self._model.eval()
+
+    def encode(self, text: str) -> NDArray[np.float64]:
+        vec = self._model.encode(
+            text, convert_to_numpy=True, normalize_embeddings=False
+        )
+        return np.asarray(vec, dtype=np.float64)
 
 
 def load_consensus(spec: ConsensusSpec) -> list[Arbiter]:
-    """Load each consensus encoder in-process via sentence-transformers, pinned by HF rev."""
-    raise NotImplementedError
+    """Load each consensus encoder in-process via sentence-transformers, pinned by HF rev.
+
+    The ONLY network-touching function and the ONLY place a SentenceTransformerEncoder is built.
+    """
+    return [Arbiter(ref=ref, encoder=SentenceTransformerEncoder(ref)) for ref in spec.encoders]
 
 
 def assert_external(spec: ConsensusSpec) -> None:
