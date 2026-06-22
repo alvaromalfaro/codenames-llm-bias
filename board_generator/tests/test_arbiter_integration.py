@@ -13,7 +13,12 @@ import os
 
 import pytest
 
-from board_generator.arbiter import ArbiterRef, ConsensusSpec, load_consensus
+from board_generator.arbiter import (
+    DEFAULT_CONSENSUS,
+    ArbiterRef,
+    ConsensusSpec,
+    load_consensus,
+)
 
 
 @pytest.mark.integration
@@ -39,3 +44,22 @@ def test_real_backend_embeds_and_scores() -> None:
 
     assert arbiter.cos(nurse, nurse) == pytest.approx(1.0, abs=1e-6)
     assert -1.0 <= arbiter.cos(nurse, hospital) <= 1.0
+
+
+@pytest.mark.integration
+def test_real_backend_loads_default_consensus_trio() -> None:
+    pytest.importorskip("sentence_transformers")
+    if not os.environ.get("RUN_ARBITER_INTEGRATION"):
+        pytest.skip("set RUN_ARBITER_INTEGRATION to run the real-backend arbiter test")
+
+    # Downloads the three pinned models in DEFAULT_CONSENSUS - expected, opt-in only.
+    arbiters = load_consensus(DEFAULT_CONSENSUS)
+    assert len(arbiters) == 3
+
+    for arbiter in arbiters:
+        for word in ("nurse", "engineer"):
+            vec = arbiter.embed(word)
+            assert arbiter.cos(vec, vec) == pytest.approx(1.0, abs=1e-6)
+        other = arbiter.embed("hospital")
+        first = arbiter.embed("nurse")
+        assert -1.0 <= arbiter.cos(first, other) <= 1.0

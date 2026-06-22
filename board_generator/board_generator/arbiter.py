@@ -27,9 +27,6 @@ EVALUATED_MODELS: frozenset[str] = frozenset(
     {"llama-3.1", "mistral-small-3.2", "grok-4.3", "gemini-3-pro"}
 )
 
-# No baked-in default consensus: the caller MUST pass a pinned ConsensusSpec.
-DEFAULT_CONSENSUS: ConsensusSpec | None = None
-
 
 @dataclass(frozen=True, slots=True)
 class ArbiterRef:
@@ -179,3 +176,30 @@ def _warn_if_same_lineage(encoders: Sequence[ArbiterRef]) -> None:
                 stacklevel=3,
             )
         seen[key] = ref.model_id
+
+
+# --- Frozen instrument: the decided consensus trio
+#
+# The arbiter set is now fixed: three distinct prefix-free symmetric families, none an evaluated
+# model, none requiring trust_remote_code. These (model_id, HF commit SHA) pins are
+# OPERATOR-SUPPLIED and committed verbatim - they are NOT resolved, fabricated, or updated by the
+# tool. Hard-coding the full commit SHAs here is exactly what makes the bank reproducible byte for
+# byte.
+MPNET = ArbiterRef(
+    "sentence-transformers/all-mpnet-base-v2",
+    "e8c3b32edf5434bc2275fc9bab85f82640a19130",
+)
+GTE_LARGE = ArbiterRef(
+    "thenlper/gte-large",
+    "4bef63f39fcc5e2d6b0aae83089f307af4970164",
+)
+SENTENCE_T5_LARGE = ArbiterRef(
+    "sentence-transformers/sentence-t5-large",
+    "1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+)
+
+# Primary φ* is MPNET and belongs to the consensus set.
+DEFAULT_CONSENSUS = ConsensusSpec(
+    encoders=(MPNET, GTE_LARGE, SENTENCE_T5_LARGE),
+    primary=MPNET,
+)
