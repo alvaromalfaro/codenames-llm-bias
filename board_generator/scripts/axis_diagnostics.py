@@ -1,29 +1,26 @@
 #!/usr/bin/env python3
-"""Pretty-print the gender-load filter report for the real word pool.
+"""Pretty-print the read-only axis diagnostics for the gender-load filter.
 
-DIAGNOSTIC, not a pipeline step - this only reports ρ_w; it never admits or prunes board words.
-Inclusion is by the source criterion; the WEAT core is grandfathered.
+One-time diagnostic - run manually; NOT part of the generator runtime. Like the load-filter report,
+this is one of the few steps that needs Hugging Face: it loads the real primary arbiter φ* and
+embeds words. It loads the annotated word pool (lexicon.load_words) and the gender-attribute CSV
+(read_attribute_words), builds the axis diagnostics and dumps them as indented JSON to stdout.
 
-One-time diagnostic step - run manually; not part of the generator runtime. It loads the real
-primary arbiter φ* and embeds words. It loads the annotated word pool (lexicon.load_words) and the
-gender-attribute CSV (read_attribute_words), builds the load-filter report and dumps it as indented
-JSON to stdout.
+Use this to decide whether the weak/negative τ_load is anisotropy (a large shared offset that
+mean-centering recovers from) or a genuine lack of gender signal, before changing the filter. It
+only reads resources and reuses the public APIs; it writes nothing.
 
 ρ_w is a measurement, so it uses the single primary φ* alone (not the consensus average). We still
 call load_consensus(DEFAULT_CONSENSUS) - the one HF entry point - and then select the arbiter whose
 ref is DEFAULT_CONSENSUS.primary.
 
-This keeps inspection out of the runtime: it only reads the resources and reuses the public
-load_filter API; it writes nothing. JSON goes to stdout, any loader warnings (e.g. OOV words) to
-stderr, so the output is a clean, parseable document.
-
-Decision: the report is emitted with allow_nan=False - the load-filter layer keeps every statistic
-finite (cosines, and the embedded balance report sanitizes non-finite stats to null), so the output
-is always valid JSON (no NaN/Infinity tokens).
+The report is emitted with allow_nan=False - every statistic is kept finite (cosines, and undefined
+effect sizes are None), so the output is always valid JSON (no NaN/Infinity tokens). JSON goes to
+stdout, any loader warnings (e.g. OOV words) to stderr.
 
 Usage:
-    uv run python scripts/load_filter_report.py
-    uv run python scripts/load_filter_report.py --seed 1234567 --quantile 0.10
+    uv run python scripts/axis_diagnostics.py
+    uv run python scripts/axis_diagnostics.py --seed 1234567 --permutations 10000
 """
 
 from __future__ import annotations
@@ -35,8 +32,9 @@ import sys
 from pathlib import Path
 
 from board_generator.arbiter import DEFAULT_CONSENSUS, Arbiter, load_consensus
+from board_generator.axis_diagnostics import build_axis_diagnostics
 from board_generator.lexicon import load_words
-from board_generator.load_filter import build_load_filter_report, read_attribute_words
+from board_generator.load_filter import read_attribute_words
 
 
 def _primary_arbiter() -> Arbiter:
@@ -49,22 +47,22 @@ def _primary_arbiter() -> Arbiter:
         "primary φ* not found in the loaded consensus (should be unreachable)")
 
 
-def load_filter_report(
-    words_dir: Path, subtlex_path: Path, attributes_path: Path, seed: int, quantile: float
+def axis_diagnostics_report(
+    words_dir: Path, subtlex_path: Path, attributes_path: Path, seed: int, permutations: int
 ) -> str:
-    """Load the real pool + attributes, build the load-filter report, return it as indented JSON."""
+    """Load the real pool + attributes, build the axis diagnostics, return them as indented JSON."""
     result = load_words(words_dir, subtlex_path)
     attributes = read_attribute_words(attributes_path)
     phi_star = _primary_arbiter()
-    report = build_load_filter_report(
-        result.words, attributes, phi_star, seed=seed, quantile=quantile
+    diagnostics = build_axis_diagnostics(
+        result.words, attributes, phi_star, seed=seed, n_permutations=permutations
     )
-    return json.dumps(dataclasses.asdict(report), indent=2, allow_nan=False)
+    return json.dumps(dataclasses.asdict(diagnostics), indent=2, allow_nan=False)
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Pretty-print the gender-load filter report as JSON."
+        description="Pretty-print the read-only axis diagnostics as JSON."
     )
     parser.add_argument(
         "--words",
@@ -85,13 +83,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="gender-attribute CSV (default: resources/attribute_words/gender_attributes.csv)",
     )
     parser.add_argument(
-        "--seed", type=int, default=1234567, help="re-balance seed (default: 1234567)"
+        "--seed", type=int, default=1234567, help="permutation RNG seed (default: 1234567)"
     )
     parser.add_argument(
-        "--quantile",
-        type=float,
-        default=0.10,
-        help="per-spec core quantile anchoring τ_load (default: 0.10)",
+        "--permutations",
+        type=int,
+        default=10000,
+        help="permutation-test label shuffles (default: 10000)",
     )
     return parser
 
@@ -105,8 +103,11 @@ def main() -> None:
     if not args.attributes.exists():
         sys.exit(f"gender-attribute CSV not found: {args.attributes}")
 
-    print(load_filter_report(args.words, args.subtlex,
-          args.attributes, args.seed, args.quantile))
+    print(
+        axis_diagnostics_report(
+            args.words, args.subtlex, args.attributes, args.seed, args.permutations
+        )
+    )
 
 
 if __name__ == "__main__":
