@@ -1,0 +1,117 @@
+{
+  "counts": {
+    "after_already_loaded": 332,
+    "after_stoplist": 335,
+    "final_candidates": 332,
+    "playable": 349,
+    "raw_lines": 390
+  },
+  "deck_source": "resources/neutral_pool/duet.txt",
+  "exclusion_reasons": [
+    "already_loaded",
+    "denotational_gender"
+  ],
+  "exclusions": [
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "baby"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "bride"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "brother"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "cow"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "cowboy"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "groom"
+    },
+    {
+      "detail": "gender-career",
+      "excluded_by": "already_loaded",
+      "token": "laundry"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "minotaur"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "miss"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "mother"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "mummy"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "pop"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "sister"
+    },
+    {
+      "detail": "gender-career",
+      "excluded_by": "already_loaded",
+      "token": "team"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "waitress"
+    },
+    {
+      "detail": "gender-career",
+      "excluded_by": "already_loaded",
+      "token": "wedding"
+    },
+    {
+      "detail": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198",
+      "excluded_by": "denotational_gender",
+      "token": "wizard"
+    }
+  ],
+  "lexicon_markers": {
+    "covariate_keys": [
+      "subtlex_freq",
+      "length",
+      "wordnet_polysemy"
+    ],
+    "normalization": "strip + lower; whitespace -> phrase (dropped)",
+    "playability": "board_generator.lexicon._check_playability",
+    "uses_embeddings_or_phi_star_or_network": false
+  },
+  "rho_w_used_for_exclusion": false,
+  "stoplist": {
+    "path": "resources/curation/gender_denotational_stoplist.csv",
+    "sha256": "e9bf8b8b0b361936fcdcf69567d453d845dc38e794d128ccfef2b44de02c3198"
+  },
+  "subtlex_source": "resources/frequencies/subtlex_us.csv"
+}
