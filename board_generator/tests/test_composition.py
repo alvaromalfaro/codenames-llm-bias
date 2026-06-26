@@ -14,7 +14,11 @@ import pytest
 
 from board_generator.balancing import MatchedSubset
 from board_generator.board import Dilemma
-from board_generator.composition import compose_control_words, compose_probe_words
+from board_generator.composition import (
+    compose_control_words,
+    compose_probe_words,
+    pair_selection_overlap,
+)
 from board_generator.dilemma_flow import DilemmaRecord
 from board_generator.lexicon import COVARIATE_KEYS, GenderCategory, Word
 
@@ -101,12 +105,12 @@ def test_probe_happy_path() -> None:
     texts = {w.text for w in words}
     assert {"doctor", "engineer", "neutral00"} <= texts
 
-    loaded_fill = words[3:19]
-    assert sum(w.gender_category == "male" for w in loaded_fill) == 8
-    assert sum(w.gender_category == "female" for w in loaded_fill) == 8
+    loaded_fill = words[3:15]
+    assert sum(w.gender_category == "male" for w in loaded_fill) == 6
+    assert sum(w.gender_category == "female" for w in loaded_fill) == 6
 
-    neutral_fill = words[19:]
-    assert len(neutral_fill) == 6
+    neutral_fill = words[15:]
+    assert len(neutral_fill) == 10
     assert all(w.gender_category == "neutral" for w in neutral_fill)
     # bridge not duplicated in fill
     assert "neutral00" not in {w.text for w in neutral_fill}
@@ -153,13 +157,13 @@ def test_probe_b1_3_excludes_pair_containing_dilemma_word() -> None:
     # target appears once (as the dilemma block word), never duplicated from the loaded fill.
     assert sum(w.text == target.text for w in words) == 1
     # its paired control word must also be absent from the fill.
-    assert matched.control[2].text not in {w.text for w in words[3:19]}
-    # still 8 full pairs placed (12 eligible minus the excluded one leaves >= 8).
-    loaded_fill = words[3:19]
-    assert len(loaded_fill) == 16
+    assert matched.control[2].text not in {w.text for w in words[3:15]}
+    # still 6 full pairs placed (12 eligible minus the excluded one leaves >= 6).
+    loaded_fill = words[3:15]
+    assert len(loaded_fill) == 12
 
 
-def test_probe_rotation_is_low_overlap_and_deterministic() -> None:
+def test_probe_selection_is_deterministic_and_index_dependent() -> None:
     matched = make_matched(12)
     target, stereo = make_word("doctor", "male"), make_word("engineer", "male")
     index = loaded_index_for(matched, target, stereo)
@@ -168,17 +172,16 @@ def test_probe_rotation_is_low_overlap_and_deterministic() -> None:
 
     def loaded_texts(board_index: int) -> set[str]:
         words = compose_probe_words(record, matched, pool, board_index, index)
-        return {w.text for w in words[3:19]}
+        return {w.text for w in words[3:15]}
 
-    a, b = loaded_texts(0), loaded_texts(1)
-    assert a != b  # different boards differ
-    # stride = ceil(12/8) = 2 -> pair overlap bounded by n_pairs - stride = 6 -> word overlap <= 12.
-    assert len(a & b) <= 12
-    assert loaded_texts(0) == loaded_texts(0)  # same index -> identical
+    # same index -> identical pick
+    assert loaded_texts(0) == loaded_texts(0)
+    # different boards generally differ
+    assert loaded_texts(0) != loaded_texts(1)
 
 
 def test_probe_thin_pool_takes_all_and_warns() -> None:
-    matched = make_matched(5)  # only 5 pairs -> fewer than n_pairs=8
+    matched = make_matched(5)  # only 5 pairs -> fewer than n_pairs=6
     target, stereo = make_word("doctor", "male"), make_word("engineer", "male")
     record = make_record("doctor", "neutral00", "engineer")
     # neutral fill is 25 - 3 - 2*5 = 12 neutrals; pool must cover that.
@@ -248,3 +251,53 @@ def test_covariate_keys_present_on_composed_words() -> None:
     words = compose_control_words(make_neutral_pool(40), 0, rng=Random(1))
     for word in words:
         assert all(key in word.covariates for key in COVARIATE_KEYS)
+
+
+# pair_selection_overlap
+
+
+def test_overlap_dispersion_beats_consecutive_window() -> None:
+    # Realistic case: 15 eligible pairs, 8 chosen per board, over the 8 career indices.
+    # Old consecutive window: stride = ceil(15/8) = 2 -> worst-case intersection n_pairs-stride = 6.
+    report = pair_selection_overlap(range(15), range(8), n_pairs=8)
+    assert report["n_board_pairs"] == 28  # C(8, 2)
+    assert report["mean_intersection"] < 6  # demonstrably better dispersion
+    assert 0.0 <= report["mean_jaccard"] <= 1.0
+    assert 0.0 <= report["max_jaccard"] <= 1.0
+
+
+def test_overlap_identical_board_indices_is_full() -> None:
+    report = pair_selection_overlap(range(15), [3, 3], n_pairs=8)
+    assert report["n_board_pairs"] == 1
+    assert report["max_jaccard"] == 1.0
+    assert report["mean_jaccard"] == 1.0
+    assert report["max_intersection"] == 8
+
+
+def test_overlap_single_board_is_well_defined_empty() -> None:
+    report = pair_selection_overlap(range(15), [0], n_pairs=8)
+    assert report["n_board_pairs"] == 0
+    assert report["mean_jaccard"] == 0.0
+    assert report["max_jaccard"] == 0.0
+    assert report["mean_intersection"] == 0.0
+    assert report["max_intersection"] == 0
+    assert report["selections"] == {0: sorted(report["selections"][0])}
+
+
+def test_overlap_mirrors_compose_selection() -> None:
+    # The diagnostic must report the same indices compose_probe_words actually places.
+    matched = make_matched(15)
+    target, stereo = make_word("doctor", "male"), make_word("engineer", "male")
+    index = loaded_index_for(matched, target, stereo)
+    pool = make_neutral_pool(20)
+    record = make_record("doctor", "neutral00", "engineer")
+
+    eligible = list(range(len(matched.treatment)))
+    # mirror the compose default (n_pairs=6) so the diagnostic reports the placed pairs.
+    report = pair_selection_overlap(eligible, [2], n_pairs=6)
+
+    words = compose_probe_words(record, matched, pool, 2, index)
+    placed_treatment = {
+        w.text for w in words[3:15] if w.gender_category == "male"}
+    expected = {matched.treatment[i].text for i in report["selections"][2]}
+    assert placed_treatment == expected
