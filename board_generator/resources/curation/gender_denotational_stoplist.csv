@@ -1,0 +1,15 @@
+token,normalized,reason,reviewer,date
+BRIDE,bride,denotational_gender,alvaromalfaro,2026-06-24
+BROTHER,brother,denotational_gender,alvaromalfaro,2026-06-24
+GROOM,groom,denotational_gender,alvaromalfaro,2026-06-24
+MOTHER,mother,denotational_gender,alvaromalfaro,2026-06-24
+SISTER,sister,denotational_gender,alvaromalfaro,2026-06-24
+MINOTAUR,minotaur,denotational_gender,alvaromalfaro,2026-06-24
+WIZARD,wizard,denotational_gender,alvaromalfaro,2026-06-24
+WAITRESS,waitress,denotational_gender,alvaromalfaro,2026-06-24
+COWBOY,cowboy,denotational_gender,alvaromalfaro,2026-06-24
+MISS,miss,denotational_gender,alvaromalfaro,2026-06-24
+POP,pop,denotational_gender,alvaromalfaro,2026-06-24
+MUMMY,mummy,denotational_gender,alvaromalfaro,2026-06-24
+BABY,baby,denotational_gender,alvaromalfaro,2026-06-24
+COW,cow,denotational_gender,alvaromalfaro,2026-06-24

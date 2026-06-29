@@ -3,11 +3,12 @@
 
 # Python cache and compiled files
 __pycache__/
-__init__.py
 
 # virtual environments
 venv/
 .venv/
+uv.lock
+*.egg-info
 
 # IDE and editor files
 .vscode/
@@ -16,8 +17,3 @@ venv/
 # database files
 data/db_postgres/
 data/db_mongo/
-
-# other files
-est.txt
-duet_info.txt
-03-codenames-duet-rulebook.pdf
