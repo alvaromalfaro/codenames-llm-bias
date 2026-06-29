@@ -1,4 +1,8 @@
-"""Interactive semi-automatic CLI. Exposes main() and run_dilemma_flow().
+"""CLI with two subcommands: bank and dilemma. Exposes main() and run_dilemma_flow().
+
+The tool has two operations of opposite natures, one per subcommand:
+- bank    - batch, offline build of the board bank from a manifest (board_generator.bank).
+- dilemma - interactive build of one dilemma (needs φ*/HF; run_dilemma_flow).
 
 Orchestrates pool loading, covariate balancing, lexical composition, role assignment, the
 semi-automatic dilemma loop (the manual target/bridge selections stay manual), position
@@ -14,9 +18,11 @@ wires prompts to the core.
 
 from __future__ import annotations
 
+import argparse
+from collections import Counter
 from pathlib import Path
 
-from board_generator import dilemma_flow
+from board_generator import bank, board, dilemma_flow
 from board_generator.arbiter import DEFAULT_CONSENSUS, Arbiter, load_consensus
 from board_generator.lexicon import Specification, Word, load_words
 
@@ -29,9 +35,146 @@ DEFAULT_SUBTLEX_PATH = (
 )
 
 
-def main() -> None:
-    """Run the interactive board-bank generation flow (manual steps stay manual)."""
-    raise NotImplementedError
+def main(argv: list[str] | None = None) -> None:
+    """Dispatch to a subcommand (bank or dilemma); pure argparse wiring, no logic.
+
+    The two flows have opposite natures: bank is a batch, offline build from a manifest, and dilemma
+    is the interactive build of one dilemma. A missing subcommand exits non-zero.
+    """
+    parser = argparse.ArgumentParser(
+        prog="board-generator",
+        description="Generate Codenames Duet boards instrumented for gender-bias measurement.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    _add_bank_subparser(subparsers)
+    _add_dilemma_subparser(subparsers)
+
+    args = parser.parse_args(argv)
+    if args.command == "bank":
+        _run_bank(args)
+    elif args.command == "dilemma":
+        _run_dilemma(args)
+
+
+def _add_bank_subparser(subparsers: argparse._SubParsersAction) -> None:
+    """Register the bank subcommand with the bank-build arguments (no logic beyond argparse)."""
+    parser = subparsers.add_parser(
+        "bank",
+        help="Build the fixed Codenames Duet board bank from a manifest.",
+        description="Build the fixed Codenames Duet board bank from a manifest.",
+    )
+    parser.add_argument(
+        "--manifest", required=True, type=Path, help="path to the bank manifest JSON"
+    )
+    parser.add_argument("--words-dir", type=Path, default=DEFAULT_WORDS_DIR)
+    parser.add_argument("--subtlex-path", type=Path,
+                        default=DEFAULT_SUBTLEX_PATH)
+    parser.add_argument(
+        "--dilemmas-dir", type=Path, default=dilemma_flow.DEFAULT_DILEMMA_DIR
+    )
+    parser.add_argument("--out-dir", type=Path,
+                        default=board.DEFAULT_OUTPUT_DIR)
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="build and validate the bank but write nothing",
+    )
+
+
+def _add_dilemma_subparser(subparsers: argparse._SubParsersAction) -> None:
+    """Register the dilemma subcommand with the interactive arguments."""
+    parser = subparsers.add_parser(
+        "dilemma",
+        help="Build one dilemma interactively; needs the primary arbiter φ*.",
+        description="Build one dilemma interactively; needs the primary arbiter φ*.",
+    )
+    parser.add_argument(
+        "--spec",
+        required=True,
+        choices=["gender-career", "gender-science"],
+        help="the dilemma specification",
+    )
+    parser.add_argument("--words-dir", type=Path, default=DEFAULT_WORDS_DIR)
+    parser.add_argument("--subtlex-path", type=Path,
+                        default=DEFAULT_SUBTLEX_PATH)
+    parser.add_argument(
+        "--out-dir",
+        type=Path,
+        default=dilemma_flow.DEFAULT_DILEMMA_DIR,
+        help="directory for the dilemma_<id>.json artifact",
+    )
+    parser.add_argument("--k", type=int, default=dilemma_flow.DEFAULT_K)
+    parser.add_argument("--attempt-cap", type=int, default=None)
+
+
+def _run_bank(args: argparse.Namespace) -> None:
+    """Build the board bank from a manifest (thin I/O around bank.build_bank).
+
+    Wiring only: read the manifest and the dilemma artifacts it lists, call the pure core, then
+    write the boards and the bank-level balance report (skipped under --dry-run). All composition,
+    seeding and validation live in board_generator.bank.
+    """
+    manifest = bank.load_manifest(args.manifest)
+    records = [
+        dilemma_flow.read_record(args.dilemmas_dir / filename)
+        for filename in manifest.dilemmas
+    ]
+    boards, report, warnings = bank.build_bank(
+        manifest,
+        records,
+        words_dir=args.words_dir,
+        subtlex_path=args.subtlex_path,
+    )
+
+    if not args.dry_run:
+        for board_record in boards:
+            board.write_board(board_record, args.out_dir)
+        board.write_balance_report(report, args.out_dir)
+
+    _print_bank_summary(
+        boards, warnings, dry_run=args.dry_run, out_dir=args.out_dir)
+
+
+def _run_dilemma(args: argparse.Namespace) -> None:
+    """Drive the interactive dilemma flow and print the written artifact path (wiring only)."""
+    path = run_dilemma_flow(
+        args.spec,
+        words_dir=args.words_dir,
+        subtlex_path=args.subtlex_path,
+        out_dir=args.out_dir,
+        k=args.k,
+        attempt_cap=args.attempt_cap,
+    )
+    print(f"\nWrote dilemma artifact to {path}")
+
+
+def _print_bank_summary(
+    boards: list[board.Board],
+    warnings: list[str],
+    *,
+    dry_run: bool,
+    out_dir: Path,
+) -> None:
+    """Print a one-screen bank summary: counts, per-spec probe breakdown and any warnings."""
+    probes = [b for b in boards if b.type == "probe"]
+    controls = [b for b in boards if b.type == "control"]
+    per_spec = Counter(b.specification for b in probes)
+
+    print(
+        f"\nBuilt {len(boards)} board(s): {len(probes)} probe + {len(controls)} control (50/50).")
+    for spec in sorted(per_spec):
+        print(f"  probe {spec}: {per_spec[spec]}")
+
+    if warnings:
+        print(
+            f"\nI-5 warnings ({len(warnings)} board(s), descriptive - not a gate):")
+        for line in warnings:
+            print(f"  {line}")
+
+    if dry_run:
+        print("\n--dry-run: validated, wrote nothing.")
+    else:
+        print(f"\nWrote boards + balance_report.json to {out_dir}")
 
 
 # Presentation / prompt helpers (no logic)
