@@ -7,9 +7,10 @@ coupling point with the platform).
 
 from __future__ import annotations
 
+import json
 import random
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -51,6 +52,7 @@ class WordEntry:
     gender_category: GenderCategory
     source: str
     covariates: dict[str, float]
+    weat_set: tuple[str, ...]  # provenance WEAT set(s); may be empty ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -234,6 +236,7 @@ def assemble_board(
             # WordEntry.covariates is typed dict[str, float], so the None is a deliberate,
             # documented gap rather than a mismatch to impute away here.
             covariates=dict(word.covariates),  # type: ignore[arg-type]
+            weat_set=word.weat_set,
         )
         for i, word in enumerate(placed)
     ]
@@ -268,16 +271,160 @@ def assemble_board(
     return board
 
 
+# The card-perspective role values after translation (internal "bystander" -> "civilian").
+_VALID_CARD_ROLES = frozenset({"agent", "civilian", "assassin"})
+
+
+def _bias_category(board: Board) -> str:
+    """The board's bias axis (top-level "category"): probe -> "gender", control -> "neutral"."""
+    return "gender" if board.type == "probe" else "neutral"
+
+
+def _perspective_role(role: Role) -> str:
+    """Translate an internal role to its card-perspective name (bystander -> civilian)."""
+    return "civilian" if role == "bystander" else role
+
+
+def _card_dict(entry: WordEntry) -> dict[str, Any]:
+    """One card in contract key order. Text is UPPERCASED; OOV subtlex_freq stays JSON null."""
+    cov = entry.covariates
+    return {
+        "id": entry.index,
+        "text": entry.text.upper(),
+        "human_perspective_role": _perspective_role(entry.role_a),
+        "llm_perspective_role": _perspective_role(entry.role_b),
+        "category": entry.gender_category,
+        "source": entry.source,
+        "weat_set": list(entry.weat_set),
+        "covariates": {
+            # None (OOV neutral) stays null
+            "subtlex_freq": cov.get("subtlex_freq"),
+            "length": cov["length"],
+            "wordnet_polysemy": cov["wordnet_polysemy"],
+        },
+    }
+
+
+def _dilemma_dict(dilemma: Dilemma) -> dict[str, Any]:
+    """The probe dilemma block; arbiter_scores in the order the Board carries them."""
+    return {
+        "target": dilemma.target,
+        "neutral_bridge": dilemma.neutral_bridge,
+        "stereotypical_bridge": dilemma.stereotypical_bridge,
+        "consensus_ok": dilemma.consensus_ok,
+        "arbiter_scores": [
+            {
+                "arbiter": score.arbiter,
+                "cos_target_neutral": score.cos_target_neutral,
+                "cos_target_stereo": score.cos_target_stereo,
+                "satisfies_eq_4_1": score.satisfies_eq_4_1,
+            }
+            for score in dilemma.arbiter_scores
+        ],
+    }
+
+
 def to_json_dict(board: Board) -> dict[str, Any]:
-    """Serialize a Board to the JSON structure (contract with the platform reader)."""
-    raise NotImplementedError
+    """Serialize a Board to the JSON structure (contract with the platform reader).
+
+    Translates the INTERNAL representation (role_a/role_b, "bystander", lowercased text, covariates
+    that may be None) into the platform contract (human/llm perspective names, "civilian", UPPERCASE
+    text, JSON null for missing covariates). Validates cheaply and defensively before emitting; the
+    caller relies on this raising rather than writing a malformed board.
+    """
+    cards = [_card_dict(entry)
+             for entry in sorted(board.words, key=lambda e: e.index)]
+
+    # Defensive validation: the board file IS the platform contract.
+    if len(cards) != 25:
+        raise ValueError(
+            f"board {board.board_id!r} has {len(cards)} cards, expected 25")
+    ids = sorted(card["id"] for card in cards)
+    if ids != list(range(25)):
+        raise ValueError(
+            f"board {board.board_id!r} card ids are not 0..24 unique: {ids}")
+    for card in cards:
+        for field in ("human_perspective_role", "llm_perspective_role"):
+            if card[field] not in _VALID_CARD_ROLES:
+                raise ValueError(
+                    f"board {board.board_id!r} card {card['id']} has illegal "
+                    f"{field}={card[field]!r}"
+                )
+
+    category = _bias_category(board)
+    if board.type == "probe":
+        if category != "gender":
+            raise ValueError(
+                f"probe board {board.board_id!r} must have category 'gender'")
+        if board.dilemma is None:
+            raise ValueError(
+                f"probe board {board.board_id!r} is missing its dilemma")
+        card_texts = {card["text"].lower() for card in cards}
+        for bridge in (
+            board.dilemma.target,
+            board.dilemma.neutral_bridge,
+            board.dilemma.stereotypical_bridge,
+        ):
+            if bridge.lower() not in card_texts:
+                raise ValueError(
+                    f"probe board {board.board_id!r} dilemma word {bridge!r} is not among its cards"
+                )
+        dilemma_block: dict[str, Any] | None = _dilemma_dict(board.dilemma)
+    else:
+        if category != "neutral":
+            raise ValueError(
+                f"control board {board.board_id!r} must have category 'neutral'")
+        if board.dilemma is not None:
+            raise ValueError(
+                f"control board {board.board_id!r} must not carry a dilemma")
+        dilemma_block = None
+
+    return {
+        "board_id": board.board_id,
+        "type": board.type,
+        "category": category,
+        "specification": board.specification,
+        "seed": board.seed,
+        "grid": {"rows": board.grid.rows, "cols": board.grid.cols},
+        "arbiters": {
+            "consensus": list(board.arbiters.consensus),
+            "primary": board.arbiters.primary,
+        },
+        "dilemma": dilemma_block,
+        "keycard_audit": {
+            # per_perspective keeps its internal "bystander" key verbatim (only CARD roles remap).
+            "per_perspective": dict(board.keycard_audit.per_perspective),
+            "overlap_ok": board.keycard_audit.overlap_ok,
+            "role_gender_independent": board.keycard_audit.role_gender_independent,
+        },
+        "cards": cards,
+    }
 
 
 def write_board(board: Board, out_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
-    """Write one board file under out_dir (default ../data/boards/)."""
-    raise NotImplementedError
+    """Write one board file under out_dir (default ../data/boards/).
+
+    Filename: f"{bias_category}_{board_id}.json" (e.g. gender_probe-career-000.json). Deterministic:
+    the same Board yields a byte-identical file. Overwrite is fine; nothing is written outside
+    out_dir.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{_bias_category(board)}_{board.board_id}.json"
+    payload = json.dumps(to_json_dict(board), indent=2,
+                         ensure_ascii=False) + "\n"
+    path.write_text(payload, encoding="utf-8")
+    return path
 
 
 def write_balance_report(report: BalanceReport, out_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
-    """Write the bank-level balance_report.json under out_dir."""
-    raise NotImplementedError
+    """Write the bank-level balance_report.json under out_dir.
+
+    BalanceReport is already JSON-safe (balancing.py sanitizes non-finite to None) and is a nest of
+    frozen dataclasses over Literal/str/float|None, so asdict gives a stable, field-ordered dict.
+    One report per bank.
+    """
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "balance_report.json"
+    payload = json.dumps(asdict(report), indent=2, ensure_ascii=False) + "\n"
+    path.write_text(payload, encoding="utf-8")
+    return path
