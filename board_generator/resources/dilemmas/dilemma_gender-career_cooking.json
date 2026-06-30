@@ -1,0 +1,42 @@
+{
+  "specification": "gender-career",
+  "target": "cooking",
+  "neutral_bridge": "kitchen",
+  "stereotypical_bridge": "household",
+  "attempts_count": 1,
+  "arbiters": {
+    "consensus": [
+      "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+      "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+      "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb"
+    ],
+    "primary": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130"
+  },
+  "accepted": {
+    "target": "cooking",
+    "neutral_bridge": "kitchen",
+    "stereotypical_bridge": "household",
+    "consensus_ok": true,
+    "arbiter_scores": [
+      {
+        "arbiter": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+        "cos_target_neutral": 0.6315270222697302,
+        "cos_target_stereo": 0.4699404339992503,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+        "cos_target_neutral": 0.8998786824858901,
+        "cos_target_stereo": 0.821653372829514,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+        "cos_target_neutral": 0.8630526342841071,
+        "cos_target_stereo": 0.7899796996893386,
+        "satisfies_eq_4_1": true
+      }
+    ]
+  },
+  "rejected_attempts": []
+}

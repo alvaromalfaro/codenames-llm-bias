@@ -1,0 +1,42 @@
+{
+  "specification": "gender-career",
+  "target": "strategy",
+  "neutral_bridge": "battle",
+  "stereotypical_bridge": "business",
+  "attempts_count": 1,
+  "arbiters": {
+    "consensus": [
+      "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+      "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+      "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb"
+    ],
+    "primary": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130"
+  },
+  "accepted": {
+    "target": "strategy",
+    "neutral_bridge": "battle",
+    "stereotypical_bridge": "business",
+    "consensus_ok": true,
+    "arbiter_scores": [
+      {
+        "arbiter": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+        "cos_target_neutral": 0.4158525082763507,
+        "cos_target_stereo": 0.39593866401946515,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+        "cos_target_neutral": 0.8261561894146875,
+        "cos_target_stereo": 0.8007687928053231,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+        "cos_target_neutral": 0.8301623414372264,
+        "cos_target_stereo": 0.8236339945491742,
+        "satisfies_eq_4_1": true
+      }
+    ]
+  },
+  "rejected_attempts": []
+}
