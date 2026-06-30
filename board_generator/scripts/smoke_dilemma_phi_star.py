@@ -1,6 +1,6 @@
 """Local φ* smoke - exercises the dilemma_flow core end-to-end.
 
-Builds ONE dilemma through the real DilemmaSession with the frozen consensus trio: loads pools, 
+Builds ONE dilemma through the real DilemmaSession with the frozen consensus trio: loads pools,
 ranks neutral and stereotypical bridges via the session, runs the Eq. 4.1 consensus gate, assembles
 a DilemmaRecord, and round-trips it through reverify to confirm consensus_ok reproduces under real
 geometry. Non-interactive: it picks the top-ranked candidate of each list as a stand-in for the

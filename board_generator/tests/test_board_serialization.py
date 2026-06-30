@@ -21,7 +21,6 @@ from board_generator.board import (
     write_balance_report,
     write_board,
 )
-
 from tests.test_board import _consensus, _control_words, _probe_words, _word
 
 

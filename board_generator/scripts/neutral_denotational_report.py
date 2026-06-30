@@ -3,7 +3,7 @@
 
 DIAGNOSTIC / SUGGESTION step, not a pipeline step. It is read-only: it SUGGESTS tokens that may
 denote gender, so a human can curate neutral.csv. It does NOT decide inclusion, does NOT write
-neutral.csv or any stoplist, deletes nothing, and uses no embeddings / no primary arbiter φ* / no 
+neutral.csv or any stoplist, deletes nothing, and uses no embeddings / no primary arbiter φ* / no
 Hugging Face / no network. Detection is purely lexical + WordNet, fully offline and deterministic.
 
 Pipeline:

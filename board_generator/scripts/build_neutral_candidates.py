@@ -9,7 +9,7 @@ load_filter_report.py, ...), this one writes files by design: it produces
 
 It is deterministic and offline - no embeddings, no primary arbiter φ*, no Hugging Face, no network.
 The candidates CSV is the input to the manual review gate; it is not neutral.csv. Finalization into
-resources/words/neutral.csv stays the human's job, which is also why the outputs land under 
+resources/words/neutral.csv stays the human's job, which is also why the outputs land under
 resources/neutral_pool/ - outside lexicon.load_words' glob over resources/words/, so they are never
 auto-loaded as final boards. Nothing under backend/ or data/boards/ is touched.
 

@@ -10,7 +10,7 @@ consensus sequence of arbiters (not a ConsensusSpec, whose construction would re
 that carry no real HF revision). There is no input()/print() here - the interactive prompts and the
 candidate presentation live in the thin cli.py I/O layer.
 
-The accepted dilemma is a board.Dilemma, embedded verbatim inside the new DilemmaRecord wrapper. 
+The accepted dilemma is a board.Dilemma, embedded verbatim inside the new DilemmaRecord wrapper.
 Stage B later extracts record.accepted unchanged - no reconversion. The record carries NO seed: the
 dilemma is seed-independent.
 """
