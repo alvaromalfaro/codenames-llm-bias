@@ -167,7 +167,7 @@ def _print_bank_summary(
 
     if warnings:
         print(
-            f"\nI-5 warnings ({len(warnings)} board(s), descriptive - not a gate):")
+            f"\nWarnings ({len(warnings)} board(s), descriptive - not a gate):")
         for line in warnings:
             print(f"  {line}")
 

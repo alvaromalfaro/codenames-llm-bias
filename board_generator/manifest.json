@@ -1,0 +1,19 @@
+{
+    "master_seed": 20260701,
+    "dilemmas": [
+        "dilemma_gender-science_transport.json",
+        "dilemma_gender-science_journalism.json",
+        "dilemma_gender-science_health.json",
+        "dilemma_gender-science_dance.json",
+        "dilemma_gender-science_astronomy.json",
+        "dilemma_gender-science_architecture.json",
+        "dilemma_gender-career_wedding.json",
+        "dilemma_gender-career_strategy.json",
+        "dilemma_gender-career_salary.json",
+        "dilemma_gender-career_professional.json",
+        "dilemma_gender-career_office.json",
+        "dilemma_gender-career_ironing.json",
+        "dilemma_gender-career_elderly.json",
+        "dilemma_gender-career_cooking.json"
+    ]
+}
