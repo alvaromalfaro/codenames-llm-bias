@@ -1,0 +1,95 @@
+{
+  "specification": "gender-science",
+  "target": "journalism",
+  "neutral_bridge": "magazine",
+  "stereotypical_bridge": "sculpture",
+  "attempts_count": 3,
+  "arbiters": {
+    "consensus": [
+      "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+      "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+      "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb"
+    ],
+    "primary": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130"
+  },
+  "accepted": {
+    "target": "journalism",
+    "neutral_bridge": "magazine",
+    "stereotypical_bridge": "sculpture",
+    "consensus_ok": true,
+    "arbiter_scores": [
+      {
+        "arbiter": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+        "cos_target_neutral": 0.537092070596548,
+        "cos_target_stereo": 0.3537849085423183,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+        "cos_target_neutral": 0.8204260809992501,
+        "cos_target_stereo": 0.7464715232530622,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+        "cos_target_neutral": 0.7941058546991158,
+        "cos_target_stereo": 0.7721642152986202,
+        "satisfies_eq_4_1": true
+      }
+    ]
+  },
+  "rejected_attempts": [
+    {
+      "target": "journalism",
+      "neutral_bridge": "magazine",
+      "stereotypical_bridge": "poetry",
+      "consensus_ok": false,
+      "arbiter_scores": [
+        {
+          "arbiter": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+          "cos_target_neutral": 0.537092070596548,
+          "cos_target_stereo": 0.426697269706389,
+          "satisfies_eq_4_1": true
+        },
+        {
+          "arbiter": "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+          "cos_target_neutral": 0.8204260809992501,
+          "cos_target_stereo": 0.7905099344529016,
+          "satisfies_eq_4_1": true
+        },
+        {
+          "arbiter": "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+          "cos_target_neutral": 0.7941058546991158,
+          "cos_target_stereo": 0.8237817822846538,
+          "satisfies_eq_4_1": false
+        }
+      ]
+    },
+    {
+      "target": "journalism",
+      "neutral_bridge": "magazine",
+      "stereotypical_bridge": "art",
+      "consensus_ok": false,
+      "arbiter_scores": [
+        {
+          "arbiter": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+          "cos_target_neutral": 0.537092070596548,
+          "cos_target_stereo": 0.47925726506028443,
+          "satisfies_eq_4_1": true
+        },
+        {
+          "arbiter": "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+          "cos_target_neutral": 0.8204260809992501,
+          "cos_target_stereo": 0.7975633650974145,
+          "satisfies_eq_4_1": true
+        },
+        {
+          "arbiter": "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+          "cos_target_neutral": 0.7941058546991158,
+          "cos_target_stereo": 0.8034982818326669,
+          "satisfies_eq_4_1": false
+        }
+      ]
+    }
+  ]
+}

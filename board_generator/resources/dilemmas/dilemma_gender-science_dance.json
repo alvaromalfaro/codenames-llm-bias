@@ -1,0 +1,69 @@
+{
+  "specification": "gender-science",
+  "target": "dance",
+  "neutral_bridge": "maracas",
+  "stereotypical_bridge": "education",
+  "attempts_count": 2,
+  "arbiters": {
+    "consensus": [
+      "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+      "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+      "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb"
+    ],
+    "primary": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130"
+  },
+  "accepted": {
+    "target": "dance",
+    "neutral_bridge": "maracas",
+    "stereotypical_bridge": "education",
+    "consensus_ok": true,
+    "arbiter_scores": [
+      {
+        "arbiter": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+        "cos_target_neutral": 0.42082712851530135,
+        "cos_target_stereo": 0.3069497098186594,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+        "cos_target_neutral": 0.8009687236961074,
+        "cos_target_stereo": 0.7734793453455665,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+        "cos_target_neutral": 0.7914865414584703,
+        "cos_target_stereo": 0.785837836102032,
+        "satisfies_eq_4_1": true
+      }
+    ]
+  },
+  "rejected_attempts": [
+    {
+      "target": "dance",
+      "neutral_bridge": "maracas",
+      "stereotypical_bridge": "medicine",
+      "consensus_ok": false,
+      "arbiter_scores": [
+        {
+          "arbiter": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+          "cos_target_neutral": 0.42082712851530135,
+          "cos_target_stereo": 0.3085642603523265,
+          "satisfies_eq_4_1": true
+        },
+        {
+          "arbiter": "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+          "cos_target_neutral": 0.8009687236961074,
+          "cos_target_stereo": 0.7811371833500066,
+          "satisfies_eq_4_1": true
+        },
+        {
+          "arbiter": "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+          "cos_target_neutral": 0.7914865414584703,
+          "cos_target_stereo": 0.7975798370105844,
+          "satisfies_eq_4_1": false
+        }
+      ]
+    }
+  ]
+}

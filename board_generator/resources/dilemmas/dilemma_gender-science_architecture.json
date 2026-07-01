@@ -1,0 +1,42 @@
+{
+  "specification": "gender-science",
+  "target": "architecture",
+  "neutral_bridge": "university",
+  "stereotypical_bridge": "transport",
+  "attempts_count": 1,
+  "arbiters": {
+    "consensus": [
+      "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+      "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+      "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb"
+    ],
+    "primary": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130"
+  },
+  "accepted": {
+    "target": "architecture",
+    "neutral_bridge": "university",
+    "stereotypical_bridge": "transport",
+    "consensus_ok": true,
+    "arbiter_scores": [
+      {
+        "arbiter": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+        "cos_target_neutral": 0.4503661334260562,
+        "cos_target_stereo": 0.42604700454081024,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+        "cos_target_neutral": 0.821612816600309,
+        "cos_target_stereo": 0.8029001662007236,
+        "satisfies_eq_4_1": true
+      },
+      {
+        "arbiter": "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb",
+        "cos_target_neutral": 0.8107345404131121,
+        "cos_target_stereo": 0.8100099883487065,
+        "satisfies_eq_4_1": true
+      }
+    ]
+  },
+  "rejected_attempts": []
+}
