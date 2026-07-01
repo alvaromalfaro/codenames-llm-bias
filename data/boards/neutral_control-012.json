@@ -1,0 +1,381 @@
+{
+  "board_id": "control-012",
+  "type": "control",
+  "category": "neutral",
+  "specification": null,
+  "seed": 2168465185910829454,
+  "grid": {
+    "rows": 5,
+    "cols": 5
+  },
+  "arbiters": {
+    "consensus": [
+      "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130",
+      "thenlper/gte-large@4bef63f39fcc5e2d6b0aae83089f307af4970164",
+      "sentence-transformers/sentence-t5-large@1b36eb48a1df42a07ffd02234d25abfbf3e3f3cb"
+    ],
+    "primary": "sentence-transformers/all-mpnet-base-v2@e8c3b32edf5434bc2275fc9bab85f82640a19130"
+  },
+  "dilemma": null,
+  "keycard_audit": {
+    "per_perspective": {
+      "agent": 9,
+      "bystander": 13,
+      "assassin": 3
+    },
+    "overlap_ok": true,
+    "role_gender_independent": true
+  },
+  "cards": [
+    {
+      "id": 0,
+      "text": "TIN",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "assassin",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 3.9373,
+        "length": 3,
+        "wordnet_polysemy": 7
+      }
+    },
+    {
+      "id": 1,
+      "text": "WALRUS",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "agent",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 3.0553,
+        "length": 6,
+        "wordnet_polysemy": 1
+      }
+    },
+    {
+      "id": 2,
+      "text": "TUTU",
+      "human_perspective_role": "agent",
+      "llm_perspective_role": "assassin",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 2.8481,
+        "length": 4,
+        "wordnet_polysemy": 2
+      }
+    },
+    {
+      "id": 3,
+      "text": "THUNDER",
+      "human_perspective_role": "assassin",
+      "llm_perspective_role": "agent",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.1243,
+        "length": 7,
+        "wordnet_polysemy": 7
+      }
+    },
+    {
+      "id": 4,
+      "text": "WEREWOLF",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 3.6498,
+        "length": 8,
+        "wordnet_polysemy": 1
+      }
+    },
+    {
+      "id": 5,
+      "text": "TRICK",
+      "human_perspective_role": "agent",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.6742,
+        "length": 5,
+        "wordnet_polysemy": 8
+      }
+    },
+    {
+      "id": 6,
+      "text": "TUNNEL",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.2523,
+        "length": 6,
+        "wordnet_polysemy": 4
+      }
+    },
+    {
+      "id": 7,
+      "text": "TUXEDO",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "agent",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 3.4932,
+        "length": 6,
+        "wordnet_polysemy": 1
+      }
+    },
+    {
+      "id": 8,
+      "text": "TORNADO",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "agent",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 3.4091,
+        "length": 7,
+        "wordnet_polysemy": 2
+      }
+    },
+    {
+      "id": 9,
+      "text": "TEA",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.7677,
+        "length": 3,
+        "wordnet_polysemy": 5
+      }
+    },
+    {
+      "id": 10,
+      "text": "TOAST",
+      "human_perspective_role": "agent",
+      "llm_perspective_role": "agent",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.5243,
+        "length": 5,
+        "wordnet_polysemy": 6
+      }
+    },
+    {
+      "id": 11,
+      "text": "TURTLE",
+      "human_perspective_role": "agent",
+      "llm_perspective_role": "agent",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.2314,
+        "length": 6,
+        "wordnet_polysemy": 4
+      }
+    },
+    {
+      "id": 12,
+      "text": "TIPI",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "agent",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": null,
+        "length": 4,
+        "wordnet_polysemy": 1
+      }
+    },
+    {
+      "id": 13,
+      "text": "VAMPIRE",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.2437,
+        "length": 7,
+        "wordnet_polysemy": 1
+      }
+    },
+    {
+      "id": 14,
+      "text": "TIGER",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.2677,
+        "length": 5,
+        "wordnet_polysemy": 2
+      }
+    },
+    {
+      "id": 15,
+      "text": "WHEEL",
+      "human_perspective_role": "agent",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.432,
+        "length": 5,
+        "wordnet_polysemy": 11
+      }
+    },
+    {
+      "id": 16,
+      "text": "VIRUS",
+      "human_perspective_role": "agent",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.2764,
+        "length": 5,
+        "wordnet_polysemy": 3
+      }
+    },
+    {
+      "id": 17,
+      "text": "VOLUME",
+      "human_perspective_role": "assassin",
+      "llm_perspective_role": "assassin",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 3.8421,
+        "length": 6,
+        "wordnet_polysemy": 6
+      }
+    },
+    {
+      "id": 18,
+      "text": "TROLL",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 3.4348,
+        "length": 5,
+        "wordnet_polysemy": 11
+      }
+    },
+    {
+      "id": 19,
+      "text": "TIP",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.4411,
+        "length": 3,
+        "wordnet_polysemy": 14
+      }
+    },
+    {
+      "id": 20,
+      "text": "VIKING",
+      "human_perspective_role": "civilian",
+      "llm_perspective_role": "agent",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 3.4441,
+        "length": 6,
+        "wordnet_polysemy": 1
+      }
+    },
+    {
+      "id": 21,
+      "text": "TEAR",
+      "human_perspective_role": "agent",
+      "llm_perspective_role": "agent",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.4311,
+        "length": 4,
+        "wordnet_polysemy": 9
+      }
+    },
+    {
+      "id": 22,
+      "text": "VOLCANO",
+      "human_perspective_role": "agent",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 3.5248,
+        "length": 7,
+        "wordnet_polysemy": 2
+      }
+    },
+    {
+      "id": 23,
+      "text": "UNIVERSITY",
+      "human_perspective_role": "agent",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.3725,
+        "length": 10,
+        "wordnet_polysemy": 3
+      }
+    },
+    {
+      "id": 24,
+      "text": "WAGON",
+      "human_perspective_role": "assassin",
+      "llm_perspective_role": "civilian",
+      "category": "neutral",
+      "source": "duet",
+      "weat_set": [],
+      "covariates": {
+        "subtlex_freq": 4.2494,
+        "length": 5,
+        "wordnet_polysemy": 5
+      }
+    }
+  ]
+}

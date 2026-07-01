@@ -1,0 +1,113 @@
+{
+  "specifications": [
+    {
+      "specification": "gender-career",
+      "contrastable_pair": "career-family",
+      "treatment_pole": "male",
+      "covariates": [
+        {
+          "covariate": "subtlex_freq",
+          "smd": -0.04390043414302351,
+          "mann_whitney_p": 0.9669147771731937,
+          "cohen_d": -0.04390043414302352,
+          "tost_p": 0.3361438772474649,
+          "tost_equivalent": false,
+          "spec_original_equivalent": true,
+          "passed": true,
+          "well_balanced": true
+        },
+        {
+          "covariate": "length",
+          "smd": -0.05773502691896275,
+          "mann_whitney_p": 0.8013739936776758,
+          "cohen_d": -0.05773502691896275,
+          "tost_p": 0.3498868365926456,
+          "tost_equivalent": false,
+          "spec_original_equivalent": true,
+          "passed": true,
+          "well_balanced": true
+        },
+        {
+          "covariate": "wordnet_polysemy",
+          "smd": 0.03998857632419945,
+          "mann_whitney_p": 0.9666693167390876,
+          "cohen_d": 0.03998857632419945,
+          "tost_p": 0.33229842401686915,
+          "tost_equivalent": false,
+          "spec_original_equivalent": true,
+          "passed": true,
+          "well_balanced": true
+        }
+      ],
+      "counts": {
+        "pairs_kept": 15,
+        "dropped_by_caliper": 5,
+        "dropped_by_group_excess": 1,
+        "imputed_count": 0
+      },
+      "imputed_words": [],
+      "warning": null,
+      "passed": true,
+      "well_balanced": true
+    },
+    {
+      "specification": "gender-science",
+      "contrastable_pair": "science-arts",
+      "treatment_pole": "male",
+      "covariates": [
+        {
+          "covariate": "subtlex_freq",
+          "smd": -0.02291712681385285,
+          "mann_whitney_p": 0.644355730783853,
+          "cohen_d": -0.02291712681385285,
+          "tost_p": 0.3278504763761584,
+          "tost_equivalent": false,
+          "spec_original_equivalent": true,
+          "passed": true,
+          "well_balanced": true
+        },
+        {
+          "covariate": "length",
+          "smd": 0.0,
+          "mann_whitney_p": 0.9374006919747355,
+          "cohen_d": 0.0,
+          "tost_p": 0.3073887586260737,
+          "tost_equivalent": false,
+          "spec_original_equivalent": true,
+          "passed": true,
+          "well_balanced": true
+        },
+        {
+          "covariate": "wordnet_polysemy",
+          "smd": -0.1824862315750496,
+          "mann_whitney_p": 0.2726486211931205,
+          "cohen_d": -0.1824862315750496,
+          "tost_p": 0.48237725930343783,
+          "tost_equivalent": false,
+          "spec_original_equivalent": true,
+          "passed": true,
+          "well_balanced": false
+        }
+      ],
+      "counts": {
+        "pairs_kept": 13,
+        "dropped_by_caliper": 6,
+        "dropped_by_group_excess": 7,
+        "imputed_count": 1
+      },
+      "imputed_words": [
+        "pedagogy"
+      ],
+      "warning": null,
+      "passed": true,
+      "well_balanced": false
+    }
+  ],
+  "criterion": "smd",
+  "seed": 20260701,
+  "alpha": 0.05,
+  "tost_margin": 0.2,
+  "caliper_sd": 0.2,
+  "smd_threshold": 0.2,
+  "smd_well_threshold": 0.1
+}
