@@ -54,7 +54,7 @@ class LLMClientLocal(LLMClient):
 
             return LLMResponse(
                 text=content,
-                model_used=self.local_model,
+                model_used=self.model_name,
                 latency_ms=ollama_response.total_duration,
                 usage=TokenUsage(
                     prompt_tokens=ollama_response.prompt_eval_count,

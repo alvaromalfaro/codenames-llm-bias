@@ -66,7 +66,8 @@ async def play(request: Request, model_provider: str, bias_category: str, model_
     """
     Start the game engine, load the board configuration, and render the game page.
     """
-    board = _board_loader.load_board("example_board.json")
+    bias_boards = _board_loader.boards[bias_category]
+    board = bias_boards[random.randint(0, len(bias_boards) - 1)]
     engine = CodenamesDuetEngine(board)
 
     if model_provider == "Auto":
