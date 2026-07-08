@@ -64,6 +64,9 @@ class LLMRequest(BaseModel):
     model: str
     # Temperature setting for the LLM response (default is 0.7)
     temperature: float = Field(ge=0.0, le=2.0, default=0.7)
+    # Optional sampling seed. When None, providers behave non-deterministically as before; when set,
+    # providers that support it are asked to seed their sampling for reproducibility.
+    seed: Optional[int] = None
     # Maximum number of tokens for the LLM response (default is 120, must be non-negative)
     max_tokens: int = Field(ge=1, default=120)
     # Timeout for the LLM response in seconds (default is 30, must be non-negative)
@@ -120,6 +123,16 @@ class LLMResponse(BaseModel):
     execution_mode: Literal["api", "local"] = "local"
     # The LLM provider (e.g., "openai", "azure", etc.)
     provider: Optional[str] = None
+    # Sampling telemetry: what was REQUESTED versus any evidence of what the provider APPLIED. These
+    # differ (e.g. a provider may silently ignore the seed), and that difference is the whole point.
+    # The temperature that was requested for this call.
+    requested_temperature: Optional[float] = None
+    # The seed that was requested for this call (None when no seed was requested).
+    requested_seed: Optional[int] = None
+    # Provider-reported system fingerprint (OpenRouter/OpenAI only; None for Ollama).
+    system_fingerprint: Optional[str] = None
+    # The model string the provider actually reports having served.
+    resolved_model: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_response(self) -> "LLMResponse":

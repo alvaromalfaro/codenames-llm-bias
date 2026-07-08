@@ -2,6 +2,7 @@ import json
 import os
 from json import JSONDecodeError
 import re
+from typing import Any
 from pydantic import BaseModel
 from backend.app.core.llm.client import LLMClient
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
@@ -23,19 +24,28 @@ class LLMClientLocal(LLMClient):
 
         format = expected_format.model_json_schema() if expected_format else "json"
 
+        # Ollama ignores sampling settings unless they are passed explicitly via `options`. Always
+        # forward the temperature; forward the seed ONLY when set (some ollama-client versions
+        # serialize a `"seed": None`, which would change behaviour).
+        options: dict[str, Any] = {"temperature": request.temperature}
+        if request.seed is not None:
+            options["seed"] = request.seed
+
         try:
             if self.think:
                 ollama_response = self._client.chat(
                     model=self.model_name,
                     messages=messages,
                     think=self.think,
-                    format=format
+                    format=format,
+                    options=options
                 )
             else:
                 ollama_response = self._client.chat(
                     model=self.model_name,
                     messages=messages,
-                    format=format
+                    format=format,
+                    options=options
                 )
 
             # Convert the Ollama response to JSON
@@ -65,7 +75,11 @@ class LLMClientLocal(LLMClient):
                 raw_payload=response_json,
                 request_id=None,
                 execution_mode="local",
-                provider="ollama"
+                provider="ollama",
+                requested_temperature=request.temperature,
+                requested_seed=request.seed,
+                system_fingerprint=None,
+                resolved_model=response_json.get("model") or self.model_name,
             )
 
         except RequestError as re:

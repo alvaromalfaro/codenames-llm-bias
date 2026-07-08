@@ -40,6 +40,7 @@ class LLMClientOpenRouter(LLMClient):
                 model=self.model_name,
                 messages=messages,
                 temperature=request.temperature,
+                seed=request.seed,
                 max_tokens=request.max_tokens,
                 timeout=request.timeout_s,
                 response_format=response_format,
@@ -71,6 +72,10 @@ class LLMClientOpenRouter(LLMClient):
                 request_id=response.id,
                 execution_mode="api",
                 provider="openrouter",
+                requested_temperature=request.temperature,
+                requested_seed=request.seed,
+                system_fingerprint=getattr(response, "system_fingerprint", None),
+                resolved_model=response.model,
             )
 
         except AuthenticationError as e:
