@@ -19,15 +19,11 @@
 llm_models = {
     "Ollama": {
         # LLaMA
-        "llama3.2:latest": {
-            "think": False
-        },
-        # Gemma4
-        "gemma4:latest": {
+        "llama3.1:latest": {
             "think": False
         },
         # Mistral
-        "magistral:latest": {
+        "mistral-small3.2:latest": {
             "think": False
         },
     },
