@@ -29,7 +29,7 @@ async def test_llm_service_propose_clue_success(game_state_cg):
 
     # Create a mock LLMClient that returns the mock response when generate is called
     mock_client = MagicMock(spec=LLMClient)
-    mock_client.local_model = "test_model"
+    mock_client.model_name = "test_model"
     mock_client.generate = AsyncMock(return_value=mock_response)
     service = LLMService()
 
@@ -107,7 +107,7 @@ async def test_llm_service_propose_guess_success(game_state_guessing):
 
     # Create a mock LLMClient that returns the mock response when generate is called
     mock_client = MagicMock(spec=LLMClient)
-    mock_client.local_model = "test_model"
+    mock_client.model_name = "test_model"
     mock_client.generate = AsyncMock(return_value=mock_response)
     service = LLMService()
 
@@ -321,7 +321,7 @@ async def test_propose_clue_retries_on_invalid_clue(game_state_cg):
         return r
 
     mock_client = MagicMock(spec=LLMClient)
-    mock_client.local_model = "test_model"
+    mock_client.model_name = "test_model"
     mock_client.generate = AsyncMock(side_effect=[
         make_response(invalid_text),
         make_response(valid_text),
@@ -360,7 +360,7 @@ async def test_propose_clue_raises_after_max_retries(game_state_cg):
         return r
 
     mock_client = MagicMock(spec=LLMClient)
-    mock_client.local_model = "test_model"
+    mock_client.model_name = "test_model"
     mock_client.generate = AsyncMock(return_value=make_response(invalid_text))
 
     service = LLMService()

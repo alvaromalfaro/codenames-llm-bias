@@ -37,7 +37,7 @@ async def test_llm_client_local_generate_success(llm_request_cg):
 
         assert isinstance(result, LLMResponse)
         assert result.text == mock_response.message.content
-        assert result.model_used == client.local_model
+        assert result.model_used == client.model_name
         assert result.latency_ms == mock_response.total_duration
         assert result.usage.prompt_tokens == mock_response.prompt_eval_count
         assert result.usage.completion_tokens == mock_response.eval_count
