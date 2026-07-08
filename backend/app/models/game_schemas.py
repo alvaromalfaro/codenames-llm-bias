@@ -259,6 +259,26 @@ class GamePhase(str, Enum):
     SUDDEN_DEATH_LLM = "sudden_death_llm"
 
 
+class ResolvedTarget(BaseModel):
+    """
+    A clue-time snapshot of one word from the clue-giver's intended target set S, resolved against
+    the authoritative board. Because reveal state changes during play, this snapshot must be
+    computed at the moment the clue is given, not reconstructed later. Captured for measurement
+    only; never transmitted to the guesser.
+
+    An unmappable word (not on the board) yields ``card_id``/``giver_role``/``revealed_at_clue`` all
+    ``None`` - the snapshot itself is the malformation diagnostic (no separate flag fields).
+    """
+    word: str  # The target word exactly as emitted by the clue-giver
+    # Board card id, via Board.get_card_id_by_word; None if unmappable
+    card_id: Optional[int] = None
+    # The target's role from the CLUE-GIVER's perspective (llm if player_id==0 else human role);
+    # None if unmappable.
+    giver_role: Optional[CardRole] = None
+    # The card's reveal state at the moment the clue was given; None if unmappable.
+    revealed_at_clue: Optional[bool] = None
+
+
 class ClueEntry(BaseModel):
     # Clue must be a non-empty string without spaces (more complex clue validation will be
     # implemented in the game engine).
@@ -270,6 +290,10 @@ class ClueEntry(BaseModel):
     clue_giver: int = Field(ge=0, le=1)  # 0: "llm" or 1: "human"
     # The turn number when the clue was given (for historical tracking)
     turn_number: int = 0
+    # The intended target set S, exactly as emitted by the clue-giver (measurement only).
+    targets: list[str] = Field(default_factory=list)
+    # Clue-time resolved snapshot of S against the authoritative board (measurement only).
+    targets_resolved: list[ResolvedTarget] = Field(default_factory=list)
     # LLM response payload
     raw_payload: Optional[dict] = None
 

@@ -159,6 +159,10 @@ class ClueProposal(BaseModel):
     count: int = Field(ge=1)
     # Optional reasoning provided by the LLM for the clue proposal
     reasoning: Optional[str] = None
+    # The intended target set S: the board words the clue-giver means its clue to activate, exactly
+    # as emitted by the model. Captured for measurement only and never transmitted to the guesser.
+    # Permissive by design: an empty or malformed list is recorded, not rejected.
+    targets: list[str] = Field(default_factory=list)
     # The raw payload returned by the LLM provider for the proposal
     raw_payload: dict[str, Any] = Field(default_factory=dict)
 
@@ -221,10 +225,15 @@ class ClueJSONFormat(BaseModel):
         - clue: A string containing the clue text proposed by the LLM.
         - count: An integer representing how many words are associated with the clue. This must be a 
             positive integer.
+        - targets: The exact board words the clue is meant for (the intended target set S). Reading
+            out the decision already embodied in clue+count, so it comes LAST. Permissive: defaults
+            to an empty list and carries no length constraint; malformation is recorded downstream,
+            never rejected here.
     """
     reasoning: str
     clue: str
     count: int
+    targets: list[str] = []
 
 
 class ProposalFormat(BaseModel):
