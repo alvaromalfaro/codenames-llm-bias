@@ -5,7 +5,7 @@ from backend.app.core.llm_service import LLMService
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.clue_validator import ClueValidator
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal
-from backend.app.models.game_schemas import GamePhase
+from backend.app.models.game_schemas import GamePhase, ClueEntry, ResolvedTarget
 
 
 @pytest.mark.asyncio
@@ -369,3 +369,104 @@ async def test_propose_clue_raises_after_max_retries(game_state_cg):
         await service.propose_clue(mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
 
     assert mock_client.generate.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_parses_targets_onto_proposal(game_state_cg):
+    """
+    propose_clue extracts the intended target set S from the clue JSON and places it, verbatim,
+    onto the returned ClueProposal.
+    """
+    mock_response = MagicMock()
+    mock_response.text = (
+        "{\"clue\": \"battle\", \"count\": 3, "
+        "\"reasoning\": \"military theme\", "
+        "\"targets\": [\"NAPOLEON\", \"RIFLE\", \"RUSSIA\"]}"
+    )
+    mock_response.raw_payload = json.loads(mock_response.text)
+
+    mock_client = MagicMock(spec=LLMClient)
+    mock_client.model_name = "test_model"
+    mock_client.generate = AsyncMock(return_value=mock_response)
+
+    result = await LLMService().propose_clue(
+        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+
+    assert isinstance(result, ClueProposal)
+    assert result.targets == ["NAPOLEON", "RIFLE", "RUSSIA"]
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_missing_targets_defaults_empty(game_state_cg):
+    """
+    A clue JSON without a targets field is accepted; the proposal simply carries an empty S.
+    """
+    mock_response = MagicMock()
+    mock_response.text = '{"clue": "battle", "count": 3, "reasoning": "r"}'
+    mock_response.raw_payload = json.loads(mock_response.text)
+
+    mock_client = MagicMock(spec=LLMClient)
+    mock_client.model_name = "test_model"
+    mock_client.generate = AsyncMock(return_value=mock_response)
+
+    result = await LLMService().propose_clue(
+        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+
+    assert result.targets == []
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_records_malformed_targets_without_retry(game_state_cg):
+    """
+    Record-only guarantee: a malformed target set S (here |targets| != count, a non-agent target,
+    and an off-board word all at once) is captured as-is on a valid clue. It must not raise on
+    account of S and must not trigger any extra generation (S is never a retry trigger).
+    """
+    # Clue 'battle' is legal (not a board word); count is 3 but only 1 target is listed, that
+    # target is a civilian (from the LLM perspective) rather than an agent, plus an off-board word.
+    mock_response = MagicMock()
+    mock_response.text = (
+        "{\"clue\": \"battle\", \"count\": 3, \"reasoning\": \"r\", "
+        "\"targets\": [\"BUCKET\", \"ZEBRA\"]}"
+    )
+    mock_response.raw_payload = json.loads(mock_response.text)
+
+    mock_client = MagicMock(spec=LLMClient)
+    mock_client.model_name = "test_model"
+    mock_client.generate = AsyncMock(return_value=mock_response)
+
+    result = await LLMService().propose_clue(
+        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+
+    # Accepted and stored despite the malformation, and generated exactly once (no S-driven retry).
+    assert result.clue == "battle"
+    assert result.targets == ["BUCKET", "ZEBRA"]
+    assert mock_client.generate.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_targets_never_reach_guesser_prompt(game_state_guessing):
+    """
+    The intended target set S must never enter any guesser-side code path. A sentinel target word 
+    placed on the current clue (and on a historical clue) must appear nowhere in the guesser request 
+    built for that turn.
+    """
+    sentinel = "ZZ_SENTINEL_TARGET_ZZ"
+
+    # Stamp the sentinel onto S for both the current clue and a prior clue in history.
+    current_clue = game_state_guessing.current_clue
+    current_clue.targets = [sentinel]
+    current_clue.targets_resolved = [ResolvedTarget(word=sentinel)]
+
+    history_clue = ClueEntry(
+        clue="ocean", count=2, clue_giver=1, turn_number=0,
+        targets=[sentinel], targets_resolved=[ResolvedTarget(word=sentinel)],
+    )
+    game_state_guessing.clue_history.insert(0, history_clue)
+
+    # game_state_guessing has guesser == 0.
+    request = LLMService()._build_guess_request(
+        game_state_guessing, "test_model", player_id=0)
+
+    for message in request.messages:
+        assert sentinel not in message.content

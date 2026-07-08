@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 from backend.app.models.llm_schemas import LLMMessage, TokenUsage, LLMRequest, LLMResponse, \
-    ClueProposal, GuessProposal
+    ClueProposal, GuessProposal, ClueJSONFormat
 
 
 def test_llm_message_valid():
@@ -670,6 +670,52 @@ def test_llm_clue_proposal_invalid_raw_payload():
         )
 
     assert "raw_payload" in str(exc_info.value)
+
+
+def test_clue_json_format_accepts_targets_and_field_order():
+    """
+    The clue-giver output schema accepts the intended target set S, and its field order is
+    reasoning -> clue -> count -> targets (CoT first, the read-out target set last).
+    """
+    fmt = ClueJSONFormat(
+        reasoning="CROWN and THRONE both relate to royalty.",
+        clue="royal",
+        count=2,
+        targets=["CROWN", "THRONE"],
+    )
+
+    assert fmt.targets == ["CROWN", "THRONE"]
+    assert list(fmt.model_dump().keys()) == ["reasoning", "clue", "count", "targets"]
+
+    # Round-trips through JSON preserving the target set.
+    reparsed = ClueJSONFormat.model_validate_json(fmt.model_dump_json())
+    assert reparsed.targets == ["CROWN", "THRONE"]
+
+
+def test_clue_json_format_targets_default_empty():
+    """
+    The targets field is permissive: it defaults to an empty list and carries no length
+    constraint, so a clue JSON without a target set validates cleanly.
+    """
+    fmt = ClueJSONFormat(reasoning="r", clue="royal", count=2)
+    assert fmt.targets == []
+
+
+def test_clue_proposal_carries_targets():
+    """
+    A ClueProposal carries the raw intended target set S as emitted, defaulting to an empty list.
+    """
+    proposal = ClueProposal(
+        clue="royal",
+        count=2,
+        reasoning="reasoning",
+        targets=["CROWN", "THRONE"],
+    )
+    assert proposal.targets == ["CROWN", "THRONE"]
+
+    # Absent targets default to an empty list rather than failing validation.
+    bare = ClueProposal(clue="royal", count=2)
+    assert bare.targets == []
 
 
 def test_llm_guess_proposal_valid():

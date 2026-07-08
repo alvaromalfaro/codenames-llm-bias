@@ -1,7 +1,7 @@
 import random
 import pytest
 from backend.app.core.engine import CodenamesDuetEngine
-from backend.app.models.game_schemas import Board, GamePhase, CardRole, ClueEntry
+from backend.app.models.game_schemas import Board, GamePhase, CardRole, ClueEntry, ResolvedTarget
 
 
 def test_engine_initialization(valid_board_data: dict):
@@ -52,6 +52,54 @@ def test_engine_receive_clue(valid_board_data: dict):
     assert engine.state.current_clue.turn_number == 1
     assert engine.state.clue_history == []
     assert engine.state.current_clue.raw_payload is None
+    # Absent an intended target set, S is captured as empty (never None / never rejected).
+    assert engine.state.current_clue.targets == []
+    assert engine.state.current_clue.targets_resolved == []
+
+
+def test_engine_receive_clue_resolves_target_snapshot(valid_board_data: dict):
+    """
+    receive_clue records a clue-time resolved snapshot of the intended target set S: each target
+    maps to its card_id, the giver-perspective role, and the reveal state at clue time. An
+    off-board word yields an all-None snapshot (the malformation diagnostic).
+    """
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = 0
+    engine.state.guesser = 1
+
+    # BRICK -> LLM-agent (id 1); BUCKET -> LLM-civilian (id 0); ZEBRA -> not on the board.
+    engine.receive_clue(clue="battle", count=2, player_id=0,
+                        targets=["BRICK", "BUCKET", "ZEBRA"])
+
+    resolved = engine.state.current_clue.targets_resolved
+    assert engine.state.current_clue.targets == ["BRICK", "BUCKET", "ZEBRA"]
+    assert resolved[0] == ResolvedTarget(
+        word="BRICK", card_id=1, giver_role=CardRole.AGENT, revealed_at_clue=False)
+    assert resolved[1] == ResolvedTarget(
+        word="BUCKET", card_id=0, giver_role=CardRole.CIVILIAN, revealed_at_clue=False)
+    assert resolved[2] == ResolvedTarget(
+        word="ZEBRA", card_id=None, giver_role=None, revealed_at_clue=None)
+
+
+def test_engine_resolve_target_snapshot_is_perspective_aware(valid_board_data: dict):
+    """
+    The resolved snapshot uses the CLUE-GIVER's perspective: the same word (RUSSIA, id 4, which is
+    an LLM-agent but a human-civilian) resolves to different giver roles depending on the seat.
+    """
+    # Player 0 (LLM) seat: RUSSIA is an agent.
+    engine0 = CodenamesDuetEngine(board=Board(**valid_board_data))
+    engine0.state.clue_giver = 0
+    engine0.state.guesser = 1
+    engine0.receive_clue(clue="battle", count=1, player_id=0, targets=["RUSSIA"])
+    assert engine0.state.current_clue.targets_resolved[0].giver_role == CardRole.AGENT
+
+    # Player 1 (human) seat: the very same card is a civilian.
+    engine1 = CodenamesDuetEngine(board=Board(**valid_board_data))
+    engine1.state.clue_giver = 1
+    engine1.state.guesser = 0
+    engine1.receive_clue(clue="battle", count=1, player_id=1, targets=["RUSSIA"])
+    assert engine1.state.current_clue.targets_resolved[0].giver_role == CardRole.CIVILIAN
 
 
 @pytest.mark.parametrize("modification, expected_error", [
