@@ -165,3 +165,116 @@ async def test_llm_client_local_generate_without_expected_format(llm_request_cg)
         assert result.text == mock_content
         _, kwargs = mock_chat.call_args
         assert kwargs.get("format") == "json"
+
+
+def _mock_ollama_response(model: str | None = None) -> MagicMock:
+    """Builds a MagicMock mimicking a successful Ollama chat response for the tests below."""
+    mock_content = json.dumps({"reasoning": "test reasoning", "clue": "battle", "count": 3})
+    mock_response = MagicMock()
+    mock_response.message.content = mock_content
+    mock_response.total_duration = 3200
+    mock_response.prompt_eval_count = 10
+    mock_response.eval_count = 20
+    mock_response.done_reason = "stop"
+    dumped = {"message": {"content": mock_content}}
+    if model is not None:
+        dumped["model"] = model
+    mock_response.model_dump_json.return_value = json.dumps(dumped)
+    return mock_response
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_forwards_temperature_and_seed_when_seeded(llm_request_cg):
+    """
+    When request.seed is not None, the mocked chat() must be called with an `options` dict that
+    carries BOTH the temperature and the seed.
+    """
+    request = llm_request_cg.model_copy(update={"seed": 123})
+
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = _mock_ollama_response()
+        client = LLMClientLocal("ollama3.2:latest")
+
+        await client.generate(request, expected_format=ClueJSONFormat)
+
+        _, kwargs = mock_chat.call_args
+        assert "options" in kwargs
+        assert kwargs["options"]["temperature"] == request.temperature
+        assert kwargs["options"]["seed"] == 123
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_omits_seed_when_unset(llm_request_cg):
+    """
+    When request.seed is None, `options` must carry the temperature but NOT a `seed` key (guarding
+    against passing `"seed": None`, which some ollama-client versions serialize).
+    """
+    assert llm_request_cg.seed is None
+
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = _mock_ollama_response()
+        client = LLMClientLocal("ollama3.2:latest")
+
+        await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+        _, kwargs = mock_chat.call_args
+        assert "options" in kwargs
+        assert kwargs["options"]["temperature"] == llm_request_cg.temperature
+        assert "seed" not in kwargs["options"]
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_always_passes_options_with_temperature(llm_request_cg):
+    """
+    Regression guard against the temperature leak returning: chat() must ALWAYS be called with an
+    `options` dict carrying `temperature`.
+    """
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = _mock_ollama_response()
+        client = LLMClientLocal("ollama3.2:latest")
+
+        await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+        _, kwargs = mock_chat.call_args
+        assert "options" in kwargs
+        assert "temperature" in kwargs["options"]
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_populates_sampling_telemetry(llm_request_cg):
+    """
+    The returned LLMResponse must carry the requested sampling telemetry (temperature + seed), a
+    None system_fingerprint (Ollama has none), and a resolved_model.
+    """
+    request = llm_request_cg.model_copy(update={"seed": 99, "temperature": 0.3})
+
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = _mock_ollama_response(model="llama3.2:latest")
+        client = LLMClientLocal("ollama3.2:latest")
+
+        result = await client.generate(request, expected_format=ClueJSONFormat)
+
+        assert result.requested_temperature == 0.3
+        assert result.requested_seed == 99
+        assert result.system_fingerprint is None
+        assert result.resolved_model == "llama3.2:latest"
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_resolved_model_falls_back_to_model_name(llm_request_cg):
+    """
+    When the Ollama response carries no `model` field, resolved_model falls back to the configured
+    model name.
+    """
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = _mock_ollama_response(model=None)
+        client = LLMClientLocal("ollama3.2:latest")
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+        assert result.resolved_model == "ollama3.2:latest"

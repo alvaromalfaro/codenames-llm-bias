@@ -1,3 +1,4 @@
+import random
 import pytest
 from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.models.game_schemas import Board, GamePhase, CardRole, ClueEntry
@@ -545,3 +546,40 @@ def test_engine_pass_turn_invalid_inputs(valid_board_data: dict, modification: s
         engine.state.guesses_made_this_turn = 0  # No guesses made
         with pytest.raises(ValueError, match=expected_error):
             engine.pass_turn(player_id=1)
+
+
+def test_engine_seeded_rng_is_deterministic(valid_board_data: dict):
+    """
+    Validates that injecting a seeded random.Random produces a deterministic start player, and that
+    two engines seeded identically agree on the start player (i.e. the engine's randomness is
+    reproducible and per-instance).
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    board = Board(**valid_board_data)
+
+    engine_a = CodenamesDuetEngine(board=board, rng=random.Random(42))
+    engine_b = CodenamesDuetEngine(board=board, rng=random.Random(42))
+
+    # A seeded RNG makes the start player deterministic and reproducible across instances.
+    assert engine_a.state.clue_giver == engine_b.state.clue_giver
+    assert engine_a.state.guesser == engine_b.state.guesser
+    assert engine_a.state.clue_giver != engine_a.state.guesser
+    # Independently recompute what random.Random(42) yields for the start-player draw.
+    expected_start = random.Random(42).choice([0, 1])
+    assert engine_a.state.clue_giver == expected_start
+
+
+def test_engine_default_rng_still_works(valid_board_data: dict):
+    """
+    Validates that omitting the rng argument still produces a valid game (a fresh unseeded
+    random.Random is used), preserving the previous non-breaking behaviour.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+
+    assert engine.state.clue_giver in [0, 1]
+    assert engine.state.guesser in [0, 1]
+    assert engine.state.clue_giver != engine.state.guesser
