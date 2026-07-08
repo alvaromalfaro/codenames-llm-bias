@@ -13,16 +13,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # NoSQL database for raw JSON from LLMs
-  mongodb:
-    image: mongo:latest
-    container_name: codenames-mongo
-    restart: always # Always restart if it fails
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-
   # Local LLM inference via Ollama
   ollama:
     image: ollama/ollama:latest
@@ -61,10 +51,8 @@ services:
       - .env # Include environment variables from .env file
     depends_on:
       - db
-      - mongodb
       - ollama
 
 volumes:
   postgres_data:
-  mongo_data:
   ollama_data:
