@@ -2,7 +2,7 @@ from typing import Optional
 import uuid
 import random
 from pydantic import ValidationError
-from backend.app.models.game_schemas import Board, GamePhase, GameState, CardRole, ClueEntry, WordCard
+from backend.app.models.game_schemas import Board, GamePhase, GameState, CardRole, ClueEntry, WordCard, ResolvedTarget
 from backend.app.core.clue_validator import ClueValidator
 
 
@@ -35,7 +35,8 @@ class CodenamesDuetEngine:
         )
         self.clue_validator = ClueValidator(board.cards)
 
-    def receive_clue(self, clue: str, count: int, player_id: int, raw_payload: Optional[dict] = None):
+    def receive_clue(self, clue: str, count: int, player_id: int, raw_payload: Optional[dict] = None,
+                     targets: Optional[list[str]] = None):
         """
         Processes a clue provided by the clue-giving player.
 
@@ -43,6 +44,10 @@ class CodenamesDuetEngine:
         :param count: The number of cards the clue relates to.
         :param player_id: The identifier of the player providing the clue.
         :param raw_payload: Optional raw payload from the LLM response.
+        :param targets: Optional intended target set S (the board words the clue-giver means its
+            clue to activate). Recorded raw and as a clue-time resolved snapshot on the ClueEntry
+            for measurement only. It never affects clue legality and is never transmitted to the
+            guesser. A malformed or empty list is captured as-is, never rejected.
 
         :raises ValueError: If the clue is invalid or if it's not the clue-giving player's turn.
         :raises PermissionError: If a player other than the clue giver attempts to provide a clue.
@@ -53,12 +58,15 @@ class CodenamesDuetEngine:
         if player_id != self.state.clue_giver:
             raise PermissionError("Only the clue giver can provide a clue.")
 
+        targets = targets or []
         try:
             clue_entry = ClueEntry(
                 clue=clue,
                 count=count,
                 clue_giver=player_id,
                 turn_number=self.state.turn_number,
+                targets=targets,
+                targets_resolved=self._resolve_targets(targets, player_id),
                 raw_payload=raw_payload
             )
         except ValidationError as e:
@@ -73,6 +81,40 @@ class CodenamesDuetEngine:
 
         # Transition to the guessing phase
         self.state.current_phase = GamePhase.GUESSING
+
+    def _resolve_targets(self, targets: list[str], player_id: int) -> list[ResolvedTarget]:
+        """
+        Resolves the clue-giver's intended target set S against the authoritative board, from the
+        CLUE-GIVER's perspective and using the current (clue-time) reveal state. This is a
+        measurement snapshot only; it is never used for game rules and never reaches the guesser.
+
+        Each emitted word is matched case-insensitively against the board. A word that maps to a
+        card carries its ``card_id``, the card's role from the giver's perspective (LLM role when
+        ``player_id == 0``, otherwise the human role), and the card's reveal state at this moment.
+        An unmappable word yields an all-``None`` snapshot (the diagnostic that S was malformed).
+
+        :param targets: The intended target words exactly as emitted by the clue-giver.
+        :param player_id: The seat of the clue-giver (0 = LLM, 1 = human).
+
+        :return: One ResolvedTarget per emitted word, in order.
+        """
+        board = self.state.board
+        resolved: list[ResolvedTarget] = []
+        for word in targets:
+            card = next(
+                (c for c in board.cards if c.text.lower() == word.lower()), None)
+            if card is None:
+                resolved.append(ResolvedTarget(word=word))
+                continue
+            giver_role = (card.llm_perspective_role if player_id == 0
+                          else card.human_perspective_role)
+            resolved.append(ResolvedTarget(
+                word=word,
+                card_id=card.id,
+                giver_role=giver_role,
+                revealed_at_clue=card.revealed,
+            ))
+        return resolved
 
     def resolve_guess(self, card_id: int, player_id: int) -> str:
         """

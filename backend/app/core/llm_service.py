@@ -230,15 +230,19 @@ class LLMService:
             clue = response_json.get("clue")
             count = response_json.get("count")
             reasoning = response_json.get("reasoning", "")
+            # The intended target set S. Captured verbatim for measurement only; a missing,
+            # empty, or malformed list is recorded as-is and never triggers a retry.
+            targets = response_json.get("targets", [])
         except json.JSONDecodeError:
             raise ValueError(
                 "LLM response is not valid JSON. Response content: " + response_content)
 
         print(
-            f"DEBUG: Extracted clue proposal - Clue: '{clue}', Count: {count}, Reasoning: '{reasoning}'")
+            f"DEBUG: Extracted clue proposal - Clue: '{clue}', Count: {count}, "
+            f"Reasoning: '{reasoning}', Targets: {targets}")
 
         return ClueProposal(clue=clue.strip(), count=count, reasoning=reasoning.strip(),
-                            raw_payload=response.raw_payload)
+                            targets=targets, raw_payload=response.raw_payload)
 
     def _build_clue_retry_request(
         self,
@@ -578,8 +582,10 @@ class LLMService:
             "distraction. Step 5: Verify the final candidate violates no structural game rules "
             "(e.g., substrings, homophones).\n",
             "   \"clue\": \"your_single_word_clue\",\n"
-            "   \"count\": x\n"
-            "}"
+            "   \"count\": x,\n"
+            "   \"targets\": [\"exact_board_word\", \"...\"]\n"
+            "}\n\n"
+            "The \"targets\" field lists the exact board words your clue is meant for."
         )
 
     def _default_user_prompt_cg(self) -> str:
@@ -601,8 +607,8 @@ class LLMService:
             "REVEALED WORDS (Already guessed, no longer valid targets):\n"
             "{revealed_words}\n\n"
             "### YOUR TASK ###\n"
-            "Propose a clue and a count for the guessing player. Remember the rules for valid "
-            "clues and counts."
+            "Propose a clue and a count for the guessing player, and list the exact board words your "
+            "clue is for. Remember the rules for valid clues and counts."
         )
 
     def _default_system_prompt_gg(self) -> str:
@@ -699,8 +705,8 @@ class LLMService:
             "REVEALED WORDS (Already guessed, no longer valid targets):\n"
             "No words revealed yet.\n\n"
             "### YOUR TASK ###\n"
-            "Propose a clue and a count for the guessing player. Remember the rules for valid clues "
-            "and counts."
+            "Propose a clue and a count for the guessing player, and list the exact board words your "
+            "clue is for. Remember the rules for valid clues and counts."
         )
 
     def _default_os_assistant_cg(self) -> str:
@@ -719,7 +725,8 @@ class LLMService:
             "to 'royal'. Safe to proceed. Step 4: TOWER could weakly associate with 'royal' (Tower "
             "of London), so I reduce count to 2 targeting CROWN and THRONE, the strongest matches, "
             "to avoid the civilian TOWER. Step 5: 'royal' is not a board word, not a derivative of "
-            "any board word, and not a homophone. Valid.\", \"clue\": \"royal\", \"count\": 2}"
+            "any board word, and not a homophone. Valid.\", \"clue\": \"royal\", \"count\": 2, "
+            "\"targets\": [\"CROWN\", \"THRONE\"]}"
         )
 
     def _default_os_user_gg(self) -> str:
