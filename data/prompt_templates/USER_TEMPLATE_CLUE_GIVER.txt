@@ -14,4 +14,4 @@ REVEALED WORDS (Already guessed, no longer valid targets):
 {revealed_words}
 
 ### YOUR TASK ###
-Propose a clue and a count for the guessing player. Remember the rules for valid clues and counts.
+Propose a clue and a count for the guessing player, and list the exact board words your clue is for. Remember the rules for valid clues and counts.
