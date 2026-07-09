@@ -18,6 +18,7 @@ from sqlalchemy import (
     BigInteger,
     Identity,
     Integer,
+    Index,
     func,
 )
 from sqlalchemy.dialects import postgresql
@@ -286,3 +287,94 @@ class GameSeatModel(Base):
                                   None] = mapped_column(Double, nullable=True)
     requested_seed: Mapped[Decimal | None] = mapped_column(
         Numeric(20, 0), nullable=True)
+
+
+class TurnModel(Base):
+    """One turn: a clue plus its guessing phase. 
+
+    `phase` discriminates normal play from sudden death, which the sudden-death bias metric needs to
+    isolate.
+    """
+    __tablename__ = "turn"
+    __table_args__ = (
+        CheckConstraint(
+            "clue_giver_seat IN (0,1)", name="ck_turn_clue_giver_seat"
+        ),
+        CheckConstraint(
+            "phase IN ('normal','sudden_death')", name="ck_turn_phase"
+        ),
+        UniqueConstraint("game_id", "turn_number",
+                         name="uq_turn_game_turn_number"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    game_id: Mapped[str] = mapped_column(
+        postgresql.UUID(as_uuid=False),
+        ForeignKey("game.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    turn_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    clue_giver_seat: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    phase: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=sa_text("'normal'")
+    )
+
+
+class LlmCallModel(Base):
+    """Per-invocation sampling telemetry for one model call. 
+
+    retry_index > 0 marks a call regenerated after a clue-legality rejection; these rejected calls 
+    are persisted (not only the accepted one) so the effect of eliciting targets on gameplay can be 
+    audited. 
+
+    resolved_model and system_fingerprint let us detect after the fact whether an API provider 
+    silently swapped the model mid-experiment.
+    """
+    __tablename__ = "llm_call"
+    __table_args__ = (
+        CheckConstraint("seat_index IN (0,1)", name="ck_llm_call_seat_index"),
+        CheckConstraint(
+            "role IN ('clue_giver','guesser','guesser_sd')", name="ck_llm_call_role"
+        ),
+        Index("ix_llm_call_game_id", "game_id"),
+        Index("ix_llm_call_turn_id", "turn_id"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    game_id: Mapped[str] = mapped_column(
+        postgresql.UUID(as_uuid=False),
+        ForeignKey("game.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    turn_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("turn.id", ondelete="CASCADE"), nullable=True
+    )
+    seat_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    retry_index: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=sa_text("0")
+    )
+    provider: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_used: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved_model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    system_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_temperature: Mapped[float |
+                                  None] = mapped_column(Double, nullable=True)
+    requested_seed: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 0), nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(
+        Integer, nullable=True)
+    finish_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    execution_mode: Mapped[str | None] = mapped_column(Text, nullable=True)
+    request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_payload: Mapped[dict | None] = mapped_column(
+        postgresql.JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
