@@ -378,3 +378,111 @@ class LlmCallModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class ClueModel(Base):
+    """The clue-giver's action for a turn (one per turn). 
+
+    llm_call_id points to the accepted call; retries live in llm_call with retry_index > 0.
+    targets_raw stores the model's raw intended-target list verbatim; the resolved form lives in 
+    clue_target.
+    """
+    __tablename__ = "clue"
+    __table_args__ = (
+        CheckConstraint("count >= 1", name="ck_clue_count_positive"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    turn_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("turn.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    llm_call_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("llm_call.id"), nullable=True
+    )
+    clue_word: Mapped[str] = mapped_column(Text, nullable=False)
+    count: Mapped[int] = mapped_column(Integer, nullable=False)
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    targets_raw: Mapped[list] = mapped_column(
+        postgresql.JSONB, nullable=False, server_default=sa_text("'[]'")
+    )
+
+
+class ClueTargetModel(Base):
+    """One resolved element of the clue-giver's intended set S.
+
+    Deliberately has no constraint tying the number of targets to the clue's count: the cardinality
+    of S is a diagnostic, not a gate, and enforcing it would discard classifiable observations. 
+
+    card_id is null when the target word cannot be mapped to a board card (derivable malformation).
+    """
+    __tablename__ = "clue_target"
+    __table_args__ = (
+        CheckConstraint(
+            "giver_role IN ('agent','assassin','civilian')",
+            name="ck_clue_target_giver_role",
+        ),
+        UniqueConstraint("clue_id", "position",
+                         name="uq_clue_target_clue_position"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    clue_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("clue.id", ondelete="CASCADE"), nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    word: Mapped[str] = mapped_column(Text, nullable=False)
+    card_id: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    giver_role: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revealed_at_clue: Mapped[bool | None] = mapped_column(
+        Boolean, nullable=True)
+
+
+class RevealEventModel(Base):
+    """The engine's ground truth for a single card resolution during a turn. 
+
+    This is the authoritative source from which per-card reveal and time-marker state are 
+    reconstructed, so that state is not duplicated. Records whether the reveal ended the turn or the
+    game, and the time-token bank level afterwards.
+    """
+    __tablename__ = "reveal_event"
+    __table_args__ = (
+        CheckConstraint("acting_seat IN (0,1)",
+                        name="ck_reveal_event_acting_seat"),
+        CheckConstraint(
+            "result_role IN ('agent','assassin','civilian')",
+            name="ck_reveal_event_result_role",
+        ),
+        UniqueConstraint(
+            "turn_id", "position_in_turn", name="uq_reveal_event_turn_position"
+        ),
+        Index("ix_reveal_event_turn_id", "turn_id"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    turn_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("turn.id", ondelete="CASCADE"), nullable=False
+    )
+    position_in_turn: Mapped[int] = mapped_column(Integer, nullable=False)
+    card_id: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    acting_seat: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    result_role: Mapped[str] = mapped_column(Text, nullable=False)
+    ended_turn: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa_text("false")
+    )
+    ended_game: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa_text("false")
+    )
+    time_marker_placed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa_text("false")
+    )
+    timer_tokens_after: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True)
