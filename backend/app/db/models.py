@@ -14,10 +14,15 @@ from sqlalchemy import (
     Numeric,
     SmallInteger,
     Text,
+    UniqueConstraint,
+    BigInteger,
+    Identity,
+    Integer,
     func,
 )
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import text as sa_text
 
 
 class Base(DeclarativeBase):
@@ -145,3 +150,139 @@ class BoardModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class WordCardModel(Base):
+    """One of the 25 cards of a board. 
+
+    Carries both perspective roles, since the Duet double-sided key card is encoded per card rather 
+    than as a separate object.
+
+    Lexical covariates (SUBTLEX frequency, length, WordNet polysemy) are flattened into columns 
+    instead of nested JSON, because they are the difficulty confounders the analysis must control 
+    for: flattened, that adjustment is a plain join.
+    """
+    __tablename__ = "word_card"
+    __table_args__ = (
+        CheckConstraint(
+            "card_id BETWEEN 0 AND 24", name="ck_word_card_card_id_range"
+        ),
+        CheckConstraint(
+            "llm_perspective_role IN ('agent','assassin','civilian')",
+            name="ck_word_card_llm_role",
+        ),
+        CheckConstraint(
+            "human_perspective_role IN ('agent','assassin','civilian')",
+            name="ck_word_card_human_role",
+        ),
+        CheckConstraint(
+            "category IN ('male','female','neutral')", name="ck_word_card_category"
+        ),
+        UniqueConstraint("board_id", "card_id",
+                         name="uq_word_card_board_card"),
+        UniqueConstraint("board_id", "text", name="uq_word_card_board_text"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    board_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("board.board_id", ondelete="CASCADE"), nullable=False
+    )
+    card_id: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    llm_perspective_role: Mapped[str] = mapped_column(Text, nullable=False)
+    human_perspective_role: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    weat_set: Mapped[list[str] | None] = mapped_column(
+        postgresql.ARRAY(Text), nullable=True
+    )
+    subtlex_freq: Mapped[float | None] = mapped_column(Double, nullable=True)
+    length: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wordnet_polysemy: Mapped[int | None] = mapped_column(
+        Integer, nullable=True)
+
+
+class GameModel(Base):
+    """One complete Duet play.
+
+    game_status gates the analysis: a game is committed atomically at finish and only 'completed' 
+    games are valid observations, so a run truncated by an error is marked 'error' and never
+    silently pollutes the estimators.
+
+    Links to its board (which carries the probe/control type and the measurement frame) and records
+    the per-game derived seed and start player.
+    """
+    __tablename__ = "game"
+    __table_args__ = (
+        CheckConstraint("start_player IN (0,1)", name="ck_game_start_player"),
+        CheckConstraint(
+            "game_status IN ('in_progress','completed','aborted','error')",
+            name="ck_game_status",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(
+        postgresql.UUID(as_uuid=False), primary_key=True, default=_uuid_str
+    )
+    run_id: Mapped[str | None] = mapped_column(
+        postgresql.UUID(as_uuid=False), ForeignKey("run.id"), nullable=True
+    )
+    board_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("board.board_id"), nullable=False
+    )
+    derived_seed: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 0), nullable=True)
+    start_player: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True)
+    game_status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=sa_text("'in_progress'")
+    )
+    result: Mapped[str | None] = mapped_column(Text, nullable=True)
+    timer_tokens_final: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class GameSeatModel(Base):
+    """One seat of a game (two rows for an LLM-vs-LLM game).
+
+    Models both modalities with a single table: in the ecological modality the human seat has 
+    provider 'human' and a null model_ref. 
+
+    requested_seed is stored per seat because it records the value actually sent to each provider, 
+    which can differ from the canonical derived seed (for instance if a local backend narrows a 
+    64-bit seed).
+    """
+    __tablename__ = "game_seat"
+    __table_args__ = (
+        CheckConstraint("seat_index IN (0,1)", name="ck_game_seat_seat_index"),
+        CheckConstraint(
+            "provider IN ('ollama','openrouter','human')", name="ck_game_seat_provider"
+        ),
+        UniqueConstraint("game_id", "seat_index",
+                         name="uq_game_seat_game_seat"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    game_id: Mapped[str] = mapped_column(
+        postgresql.UUID(as_uuid=False),
+        ForeignKey("game.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    seat_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    model_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider: Mapped[str | None] = mapped_column(Text, nullable=True)
+    precision: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_temperature: Mapped[float |
+                                  None] = mapped_column(Double, nullable=True)
+    requested_seed: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 0), nullable=True)
