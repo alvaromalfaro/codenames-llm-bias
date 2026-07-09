@@ -486,3 +486,70 @@ class RevealEventModel(Base):
     )
     timer_tokens_after: Mapped[int | None] = mapped_column(
         SmallInteger, nullable=True)
+
+
+class GuessProposalModel(Base):
+    """The guesser's single model output for a turn: the ordered list of proposed cards with 
+    confidences, produced in one forward pass.
+
+    The individual items live in guess_proposal_item.
+    """
+    __tablename__ = "guess_proposal"
+    __table_args__ = (
+        CheckConstraint(
+            "guesser_seat IN (0,1)", name="ck_guess_proposal_guesser_seat"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    turn_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("turn.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    llm_call_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("llm_call.id"), nullable=True
+    )
+    guesser_seat: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stop_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class GuessProposalItemModel(Base):
+    """One ordered item of a guess proposal, with the model's self-reported confidence.
+
+    Crucially this includes items the engine never reached because an earlier guess ended the turn: 
+    reveal_event_id is null for those. That unreached tail (a confident intent toward a card that 
+    was never played) is exactly where a bias signal can hide, so it is preserved rather than 
+    discarded.
+    """
+    __tablename__ = "guess_proposal_item"
+    __table_args__ = (
+        CheckConstraint(
+            "confidence >= 0.0 AND confidence <= 1.0",
+            name="ck_guess_proposal_item_confidence",
+        ),
+        UniqueConstraint(
+            "guess_proposal_id", "position", name="uq_guess_proposal_item_position"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    guess_proposal_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("guess_proposal.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    word: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Double, nullable=True)
+    resolved_card_id: Mapped[int | None] = mapped_column(
+        SmallInteger, nullable=True)
+    reveal_event_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("reveal_event.id"), nullable=True
+    )
