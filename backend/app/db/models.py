@@ -553,3 +553,106 @@ class GuessProposalItemModel(Base):
     reveal_event_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("reveal_event.id"), nullable=True
     )
+
+
+class EmbeddingMpnetModel(Base):
+    """Extrinsic embeddings in the arbiter phi* (mpnet) space, keyed by (frame, text). 
+
+    Populated in two phases: board words at platform startup, and clue words after the fact, since
+    clues are not known a priori.
+
+    Storage only, with no approximate-nearest-neighbour index, because all downstream scalars are
+    computed offline.
+    """
+    __tablename__ = "embedding_mpnet"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('board_word','clue')", name="ck_embedding_mpnet_kind"
+        ),
+        UniqueConstraint("frame_id", "text",
+                         name="uq_embedding_mpnet_frame_text"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    frame_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("measurement_frame.frame_id"), nullable=False
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(768), nullable=False)
+
+
+class EmbeddingLlamaModel(Base):
+    """Intrinsic embeddings in the evaluated Llama model's space, keyed by (recipe, text). 
+
+    Uniqueness on (recipe, text) rather than text alone is what prevents a stale-recipe cache hit: 
+    if the extraction recipe changes, the old vector must not be silently reused.
+    """
+    __tablename__ = "embedding_llama"
+    __table_args__ = (
+        UniqueConstraint("recipe_id", "text",
+                         name="uq_embedding_llama_recipe_text"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    recipe_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("extraction_recipe.recipe_id"), nullable=False
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(
+        Vector(4096), nullable=False)
+
+
+class EmbeddingMistralModel(Base):
+    """Intrinsic embeddings in the evaluated Mistral model's space (5120-dim), keyed by (recipe, 
+    text).
+
+    Same recipe-scoped caching rule as the Llama table.
+    """
+    __tablename__ = "embedding_mistral"
+    __table_args__ = (
+        UniqueConstraint(
+            "recipe_id", "text", name="uq_embedding_mistral_recipe_text"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    recipe_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("extraction_recipe.recipe_id"), nullable=False
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(
+        Vector(5120), nullable=False)
+
+
+class WordLoadModel(Base):
+    """Derived per-word gender load: rho = cos(phi*(w), e_gen), plus the WEAT-by-sets robustness 
+    variant.
+
+    Keyed by frame because a load value is meaningless without the frame that produced it. 
+
+    These are post-hoc batch products of the metrics pipeline, not written during play.
+    """
+    __tablename__ = "word_load"
+    __table_args__ = (
+        UniqueConstraint("frame_id", "text", name="uq_word_load_frame_text"),
+    )
+
+    id: Mapped[int] = mapped_column(
+        BigInteger, Identity(always=True), primary_key=True
+    )
+    frame_id: Mapped[str] = mapped_column(
+        Text, ForeignKey("measurement_frame.frame_id"), nullable=False
+    )
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    rho: Mapped[float] = mapped_column(Double, nullable=False)
+    rho_weat: Mapped[float | None] = mapped_column(Double, nullable=True)
+    computed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
