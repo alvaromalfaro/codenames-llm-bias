@@ -28,9 +28,7 @@ llm_models = {
         },
     },
     "OpenRouter": {
-        "meta-llama/llama-3.3-70b-instruct:free": {},
-        "openai/gpt-oss-120b:free": {},
-        "minimax/minimax-m2.5:free": {},
-        "deepseek/deepseek-v4-flash:free": {},
+        "x-ai/grok-4.3": {},
+        "google/gemini-3.5-flash": {},
     },
 }
