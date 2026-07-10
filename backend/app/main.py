@@ -1,9 +1,14 @@
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from backend.app.api.routes import router
+from backend.app.db.ingest_boards import ingest_boards_if_absent
+from backend.app.db.session import session_scope
+
+logger = logging.getLogger(__name__)
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
 _DATA_DIR = _BASE_DIR.parent / "data"
@@ -11,10 +16,26 @@ if not _DATA_DIR.exists():
     _DATA_DIR = _BASE_DIR / "data"
 
 
+def _ingest_boards_on_startup() -> None:
+    """Ingest board artifacts defensively.
+
+    A missing DATABASE_URL or an unreachable database must not break app startup, so any failure is 
+    caught and logged as a warning.
+    """
+    try:
+        with session_scope() as session:
+            inserted = ingest_boards_if_absent(session, _DATA_DIR / "boards")
+        logger.info("Board ingestion complete (%d new boards).", inserted)
+    except Exception as exc:
+        logger.warning(
+            "Skipping board ingestion (database unavailable): %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup tasks
     print("Starting up the application...")
+    _ingest_boards_on_startup()
     yield
     # Shutdown tasks
     print("Shutting down the application...")
