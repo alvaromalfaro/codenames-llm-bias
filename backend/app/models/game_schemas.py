@@ -279,6 +279,31 @@ class ResolvedTarget(BaseModel):
     revealed_at_clue: Optional[bool] = None
 
 
+class RankedCard(BaseModel):
+    """
+    One entry of an out-of-band confidence-ranking measurement: a board word and the model's
+    confidence that it belongs to the set being measured (the clue's targets, or the guesser's
+    remaining agents in sudden death). Confidence is clamped to [0, 1] by the parser before this
+    model is constructed.
+    """
+    word: str  # The unrevealed board word being scored
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class ConfidenceRanking(BaseModel):
+    """
+    A parsed confidence-ranking measurement over the unrevealed cards at a fixed pre-resolution
+    instant. This is an out-of-band signal captured for the CIT / sudden-death bias metrics; it is
+    never used for game rules and never influences play. Missing cards (the model omitted some) are
+    a derivable malformation - the list simply holds fewer entries, with no flag fields.
+    """
+    reasoning: Optional[str] = None
+    # Ordered (word, confidence) entries, one per unrevealed card the model scored.
+    rankings: list[RankedCard] = Field(default_factory=list)
+    # The raw LLM payload for the measurement call (in-memory only).
+    raw_payload: Optional[dict] = None
+
+
 class ClueEntry(BaseModel):
     # Clue must be a non-empty string without spaces (more complex clue validation will be
     # implemented in the game engine).
@@ -294,8 +319,21 @@ class ClueEntry(BaseModel):
     targets: list[str] = Field(default_factory=list)
     # Clue-time resolved snapshot of S against the authoritative board (measurement only).
     targets_resolved: list[ResolvedTarget] = Field(default_factory=list)
+    # Out-of-band confidence ranking over all unrevealed cards, elicited at the pre-resolution
+    # instant of this turn (measurement only; parallel to targets_resolved). None until measured.
+    confidence_ranking: Optional[ConfidenceRanking] = None
     # LLM response payload
     raw_payload: Optional[dict] = None
+
+
+class SuddenDeathEntry(BaseModel):
+    """
+    Per-GAME sudden-death record. There is exactly one sudden-death state per game, so this is a
+    single object hanging off GameState (NOT a per-turn list). It currently holds only the
+    out-of-band confidence ranking elicited on entry to the sudden-death phase, before the first
+    selection; further sudden-death signals can attach here later.
+    """
+    confidence_ranking: Optional[ConfidenceRanking] = None
 
 
 class GameState(BaseModel):
@@ -325,6 +363,13 @@ class GameState(BaseModel):
 
     # Clue history
     clue_history: list[ClueEntry] = Field(default_factory=list)
+
+    # Per-game sudden-death record (measurement only); None until the sudden-death phase is entered
+    # and its confidence ranking is attached. Exactly one per game - not a per-turn list.
+    sudden_death: Optional[SuddenDeathEntry] = None
+    # Set by the engine when the game transitions into sudden death, and consumed once when the LLM's
+    # sudden-death confidence ranking is elicited and attached (before the first sudden-death guess).
+    sd_measurement_pending: bool = False
 
     # Finalization state
     is_game_over: bool = False

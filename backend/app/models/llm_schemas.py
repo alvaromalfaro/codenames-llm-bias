@@ -270,3 +270,32 @@ class GuessJSONFormat(BaseModel):
     reasoning: str
     stop_reason: str
     proposals: list[ProposalFormat]
+
+
+class RankingFormat(BaseModel):
+    """
+    A model for the expected format of each entry in a confidence-ranking measurement response from
+    the LLM. It includes the board word being scored and the confidence assigned to it. Mirrors
+    ``ProposalFormat`` but belongs to the out-of-band measurement call, not to game play.
+
+    The fields are as follows:
+        - word: The exact unrevealed board word being scored.
+        - confidence: The confidence score for that word (clamped to [0, 1] when parsed).
+    """
+    word: str
+    confidence: float
+
+
+class ConfidenceRankingJSONFormat(BaseModel):
+    """
+    A model for the expected JSON format of a confidence-ranking measurement response from the LLM.
+    This is the out-of-band measurement analogue of ``GuessJSONFormat``: instead of the truncated
+    sequence the guesser intends to play, it elicits a dense score over every unrevealed card.
+
+    The fields are as follows:
+        - reasoning: A string containing the LLM's reasoning for the ranking.
+        - rankings: A list of RankingFormat instances, one per unrevealed card (a response that omits
+            some cards is parsed permissively downstream, never rejected here).
+    """
+    reasoning: str
+    rankings: list[RankingFormat]
