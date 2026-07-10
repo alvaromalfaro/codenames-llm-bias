@@ -54,6 +54,7 @@ class RunModel(Base):
     temperature: Mapped[float] = mapped_column(Double, nullable=False)
     regime_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     code_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt_template_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_registry_snapshot: Mapped[dict | None] = mapped_column(
         postgresql.JSONB, nullable=True
     )
@@ -374,6 +375,8 @@ class LlmCallModel(Base):
     execution_mode: Mapped[str | None] = mapped_column(Text, nullable=True)
     request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[dict | None] = mapped_column(
+        postgresql.JSONB, nullable=True)
+    rendered_prompt: Mapped[list | None] = mapped_column(
         postgresql.JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
