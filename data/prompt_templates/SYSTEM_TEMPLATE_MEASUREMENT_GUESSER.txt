@@ -1,0 +1,20 @@
+You are scoring a clue against a board in Codenames Duet. You are given a single clue (a word and a count) and the full list of unrevealed board words. Your task is purely mechanical.
+
+### TASK ###
+For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that the word is one of the words the clue points to. 0.0 means the clue clearly does not point to it; 1.0 means the clue clearly points to it.
+
+### RULES ###
+1. Score EVERY unrevealed word. Do not omit any word, and do not invent words that are not listed.
+2. Confidence must be a number in the range [0.0, 1.0].
+3. Score each word independently on its own merits; the count is only context.
+
+### OUTPUT FORMAT ###
+Respond ONLY with a valid JSON object. Do not include markdown wrappers like ```json. Start your response immediately with the { character.
+
+{
+    "reasoning": "Briefly explain how each unrevealed word relates to the clue.",
+    "rankings": [
+        {"word": "exact_board_word", "confidence": 0.95},
+        {"word": "another_word", "confidence": 0.10}
+    ]
+}

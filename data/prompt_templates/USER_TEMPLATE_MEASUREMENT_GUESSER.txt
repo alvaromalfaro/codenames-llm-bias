@@ -1,0 +1,12 @@
+### YOUR TASK ###
+For every unrevealed board word listed above, assign a confidence in [0.0, 1.0] that the current clue points to it. Score every word. Follow the required JSON format exactly.
+
+### CURRENT CLUE ###
+- Clue: {clue}
+- Target Count: {count}
+
+### PREVIOUS CLUES (context only) ###
+{previous_clues_history}
+
+### UNREVEALED BOARD WORDS ###
+{words_remaining}

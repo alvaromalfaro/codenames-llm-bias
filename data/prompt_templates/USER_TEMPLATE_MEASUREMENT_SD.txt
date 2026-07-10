@@ -1,0 +1,8 @@
+### YOUR TASK ###
+You have {agents_remaining} agent(s) left to find. For every unrevealed board word listed above, assign a confidence in [0.0, 1.0] that it is one of your remaining agent cards. Score every word. Follow the required JSON format exactly.
+
+### CLUE HISTORY (all clues given to you during the game) ###
+{clue_history}
+
+### UNREVEALED BOARD WORDS ###
+{words_remaining}
