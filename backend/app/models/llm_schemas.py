@@ -147,6 +147,40 @@ class LLMResponse(BaseModel):
         return self
 
 
+class LLMCallRecord(BaseModel):
+    """In-memory audit carrier for a single model invocation, mapping 1:1 to the ``llm_call`` table.
+
+    Held on the domain objects (``ClueProposal``/``GuessProposal``/``ConfidenceRanking``) alongside
+    the existing ``raw_payload``; it is never sent to a provider and never influences game play. The
+    persistence write-path reads these post-hoc to write ``llm_call`` rows. Permissive by design so 
+    a partial or provider-specific response never blocks capture.
+
+    ``rendered_prompt`` is the messages list as sent (``LLMRequest.messages``); the writer serialises
+    it to JSONB. ``retry_index`` marks clue-legality regenerations (> 0 = a rejected/regenerated
+    attempt), so both accepted and rejected clue attempts can be audited.
+    """
+    # The role of the call: 'clue_giver' | 'guesser' | 'guesser_sd' | 'measurement' | 'measurement_sd'.
+    role: str
+    # 0 for the first attempt; incremented for each clue-legality regeneration.
+    retry_index: int = 0
+    # The messages exactly as sent to the provider (LLMRequest.messages).
+    rendered_prompt: list[LLMMessage] = Field(default_factory=list)
+    # Sampling telemetry copied verbatim from the paired LLMResponse.
+    resolved_model: Optional[str] = None
+    system_fingerprint: Optional[str] = None
+    requested_temperature: Optional[float] = None
+    requested_seed: Optional[int] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    latency_ms: Optional[int] = None
+    finish_reason: Optional[str] = None
+    model_used: Optional[str] = None
+    provider: Optional[str] = None
+    request_id: Optional[str] = None
+    # The raw provider payload for this call.
+    raw_payload: dict[str, Any] = Field(default_factory=dict)
+
+
 class ClueProposal(BaseModel):
     """
     A proposal for a clue in the game, containing the text of the clue, the count of how many words
@@ -165,6 +199,9 @@ class ClueProposal(BaseModel):
     targets: list[str] = Field(default_factory=list)
     # The raw payload returned by the LLM provider for the proposal
     raw_payload: dict[str, Any] = Field(default_factory=dict)
+    # In-memory audit carriers for EVERY clue attempt (accepted + rejected), ordered by attempt with
+    # retry_index. Never sent to a provider; consumed only by the persistence write-path.
+    llm_calls: list[LLMCallRecord] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_clue_proposal(self) -> "ClueProposal":
@@ -191,6 +228,9 @@ class GuessProposal(BaseModel):
     stop_reason: str
     # The raw payload returned by the LLM provider for the proposal
     raw_payload: dict[str, Any] = Field(default_factory=dict)
+    # In-memory audit carrier for the single call that produced this proposal. Never sent to a
+    # provider; consumed only by the persistence write-path.
+    llm_call: Optional[LLMCallRecord] = None
 
     @model_validator(mode="after")
     def validate_guess_proposal(self) -> "GuessProposal":

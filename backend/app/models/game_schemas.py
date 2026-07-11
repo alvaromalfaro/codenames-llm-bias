@@ -2,6 +2,8 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Literal, Optional
 
+from backend.app.models.llm_schemas import LLMCallRecord
+
 
 class CardRole(str, Enum):
     """
@@ -302,6 +304,9 @@ class ConfidenceRanking(BaseModel):
     rankings: list[RankedCard] = Field(default_factory=list)
     # The raw LLM payload for the measurement call (in-memory only).
     raw_payload: Optional[dict] = None
+    # In-memory audit carrier for the measurement call that produced this ranking. Never sent to a
+    # provider; consumed only by the persistence write-path.
+    llm_call: Optional[LLMCallRecord] = None
 
 
 class ClueEntry(BaseModel):
