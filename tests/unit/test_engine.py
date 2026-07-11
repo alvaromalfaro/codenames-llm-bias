@@ -91,14 +91,16 @@ def test_engine_resolve_target_snapshot_is_perspective_aware(valid_board_data: d
     engine0 = CodenamesDuetEngine(board=Board(**valid_board_data))
     engine0.state.clue_giver = 0
     engine0.state.guesser = 1
-    engine0.receive_clue(clue="battle", count=1, player_id=0, targets=["RUSSIA"])
+    engine0.receive_clue(clue="battle", count=1,
+                         player_id=0, targets=["RUSSIA"])
     assert engine0.state.current_clue.targets_resolved[0].giver_role == CardRole.AGENT
 
     # Player 1 (human) seat: the very same card is a civilian.
     engine1 = CodenamesDuetEngine(board=Board(**valid_board_data))
     engine1.state.clue_giver = 1
     engine1.state.guesser = 0
-    engine1.receive_clue(clue="battle", count=1, player_id=1, targets=["RUSSIA"])
+    engine1.receive_clue(clue="battle", count=1,
+                         player_id=1, targets=["RUSSIA"])
     assert engine1.state.current_clue.targets_resolved[0].giver_role == CardRole.CIVILIAN
 
 
@@ -395,7 +397,7 @@ def test_engine_resolve_guess_change_to_sudden_death(valid_board_data: dict):
 
     result = engine.resolve_guess(card_id=16, player_id=1)
     assert result == "civilian"
-    assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
+    assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
     assert engine.state.timer_tokens == 0
 
 
@@ -462,24 +464,23 @@ def test_engine_resolve_guess_sudden_death_loss_civilian(valid_board_data: dict,
     assert engine.state.result == result
 
 
-def test_engine_sudden_death_human_to_llm_transition(valid_board_data: dict):
+def test_engine_sudden_death_llm_to_human_transition(valid_board_data: dict):
     """
-    Validates that when the human guesses their last agent in SUDDEN_DEATH_HUMAN, the phase
-    transitions to SUDDEN_DEATH_LLM (not victory) when the LLM still has agents remaining.
+    Validates that when the LLM guesses their last agent in SUDDEN_DEATH_LLM, the phase
+    transitions to SUDDEN_DEATH_HUMAN (not victory) when the human still has agents remaining.
     """
     board = Board(**valid_board_data)
     engine = CodenamesDuetEngine(board=board)
 
-    engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
-    engine.state.agents_remaining[1] = 1   # human has one agent left
-    engine.state.agents_remaining[0] = 3   # LLM still has agents
+    engine.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
+    engine.state.agents_remaining[0] = 1   # LLM has one agent left
+    engine.state.agents_remaining[1] = 3   # human still has agents
 
-    # Card 4 is an LLM-only agent (llm=AGENT, human=CIVILIAN), so only agents_remaining[1] drops
-    result = engine.resolve_guess(card_id=4, player_id=1)
+    result = engine.resolve_guess(card_id=2, player_id=0)
 
     assert result == "agent"
-    assert engine.state.agents_remaining[1] == 0
-    assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
+    assert engine.state.agents_remaining[0] == 0
+    assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
 
 
 def test_engine_sudden_death_skip_human_if_done(valid_board_data: dict):
@@ -498,7 +499,8 @@ def test_engine_sudden_death_skip_human_if_done(valid_board_data: dict):
     engine.state.agents_remaining[0] = 3   # LLM still has agents
 
     # Guess a civilian to drain the last timer token and trigger _switch_roles
-    engine.state.board.cards[16].time_marker_by = []   # ensure card 16 is clean
+    # ensure card 16 is clean
+    engine.state.board.cards[16].time_marker_by = []
     result = engine.resolve_guess(card_id=16, player_id=1)
 
     assert result == "civilian"
