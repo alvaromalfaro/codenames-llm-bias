@@ -176,9 +176,10 @@ def test_unique_constraints():
     assert frozenset({"guess_proposal_id", "position"}) in _unique_column_sets(
         tables["guess_proposal_item"]
     )
-    # 1:1 turn relationships are enforced by a single-column UNIQUE on turn_id.
+    # The clue is 1:1 with its turn (single-column UNIQUE on turn_id). A turn can carry both a
+    # 'play' and a 'measurement' guess_proposal, so uniqueness there is on (turn_id, kind).
     assert frozenset({"turn_id"}) in _unique_column_sets(tables["clue"])
-    assert frozenset({"turn_id"}) in _unique_column_sets(
+    assert frozenset({"turn_id", "kind"}) in _unique_column_sets(
         tables["guess_proposal"])
 
 
