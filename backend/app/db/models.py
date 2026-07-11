@@ -337,7 +337,8 @@ class LlmCallModel(Base):
     __table_args__ = (
         CheckConstraint("seat_index IN (0,1)", name="ck_llm_call_seat_index"),
         CheckConstraint(
-            "role IN ('clue_giver','guesser','guesser_sd')", name="ck_llm_call_role"
+            "role IN ('clue_giver','guesser','guesser_sd','measurement','measurement_sd')",
+            name="ck_llm_call_role",
         ),
         Index("ix_llm_call_game_id", "game_id"),
         Index("ix_llm_call_turn_id", "turn_id"),
@@ -502,6 +503,12 @@ class GuessProposalModel(Base):
         CheckConstraint(
             "guesser_seat IN (0,1)", name="ck_guess_proposal_guesser_seat"
         ),
+        CheckConstraint(
+            "kind IN ('play','measurement')", name="ck_guess_proposal_kind"
+        ),
+        UniqueConstraint(
+            "turn_id", "kind", name="uq_guess_proposal_turn_kind"
+        ),
     )
 
     id: Mapped[int] = mapped_column(
@@ -511,12 +518,12 @@ class GuessProposalModel(Base):
         BigInteger,
         ForeignKey("turn.id", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
     )
     llm_call_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("llm_call.id"), nullable=True
     )
     guesser_seat: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)
     reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     stop_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
