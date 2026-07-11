@@ -2,7 +2,10 @@ from typing import Optional
 import uuid
 import random
 from pydantic import ValidationError
-from backend.app.models.game_schemas import Board, GamePhase, GameState, CardRole, ClueEntry, WordCard, ResolvedTarget
+from backend.app.models.game_schemas import (
+    Board, GamePhase, GameState, CardRole, ClueEntry, WordCard, ResolvedTarget,
+    ConfidenceRanking, SuddenDeathEntry,
+)
 from backend.app.core.clue_validator import ClueValidator
 
 
@@ -115,6 +118,36 @@ class CodenamesDuetEngine:
                 revealed_at_clue=card.revealed,
             ))
         return resolved
+
+    def attach_confidence_ranking(self, ranking: ConfidenceRanking) -> None:
+        """
+        Attaches an out-of-band confidence ranking to the current turn's ClueEntry, at the
+        pre-resolution instant (the clue is live, not yet archived). This mirrors how the resolved
+        target snapshot is attached to the same record: it is measurement-only, never used for game
+        rules, and never reaches the guesser.
+
+        :param ranking: The parsed confidence ranking over the unrevealed cards for this turn.
+
+        :raises ValueError: If there is no live current clue to attach the ranking to.
+        """
+        if self.state.current_clue is None:
+            raise ValueError(
+                "No current clue to attach a confidence ranking to.")
+        self.state.current_clue.confidence_ranking = ranking
+
+    def attach_sudden_death_ranking(self, ranking: ConfidenceRanking) -> None:
+        """
+        Attaches the out-of-band sudden-death confidence ranking to the per-game SuddenDeathEntry,
+        creating that record on first use, and consumes the pending flag so the measurement happens
+        exactly once.
+
+        :param ranking: The parsed confidence ranking over the LLM's remaining agents at sudden-death
+            entry.
+        """
+        if self.state.sudden_death is None:
+            self.state.sudden_death = SuddenDeathEntry()
+        self.state.sudden_death.confidence_ranking = ranking
+        self.state.sd_measurement_pending = False
 
     def resolve_guess(self, card_id: int, player_id: int) -> str:
         """
@@ -266,10 +299,10 @@ class CodenamesDuetEngine:
             self._finish_game(result=res)
             return res
 
-        # Human just found their last agent in SUDDEN_DEATH_HUMAN -> hand off to LLM
-        if (self.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
-                and self.state.agents_remaining[1] == 0):
-            self.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
+        # LLM just found their last agent in SUDDEN_DEATH_LLM -> hand off to Human
+        if (self.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
+                and self.state.agents_remaining[0] == 0):
+            self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
 
         return "agent"
 
@@ -301,12 +334,16 @@ class CodenamesDuetEngine:
         self.state.current_clue = None
 
         # If the timer tokens have run out and there are still agents remaining, transition to the
-        # sudden death phase - human goes first unless they have no agents left
+        # sudden death phase - LLM goes first unless they have no agents left
         if self.state.timer_tokens <= 0 and self._any_agents_remaining():
-            if self.state.agents_remaining[1] == 0:
-                self.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
-            else:
+            if self.state.agents_remaining[0] == 0:
                 self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
+            else:
+                self.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
+            # Flag the pre-selection instant so the out-of-band sudden-death confidence ranking is
+            # elicited exactly once, before the first sudden-death guess. Detected here; consumed at
+            # the LLM's sudden-death proposal entry.
+            self.state.sd_measurement_pending = True
 
     def _any_agents_remaining(self) -> bool:
         """
