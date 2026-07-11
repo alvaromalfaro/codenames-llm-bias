@@ -2,7 +2,7 @@ import json
 from typing import TYPE_CHECKING
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.clue_validator import ClueValidator
-from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat
+from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage, LLMCallRecord, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat
 from backend.app.models.game_schemas import GameState, GamePhase, CardRole, ClueEntry, ConfidenceRanking, RankedCard
 
 if TYPE_CHECKING:
@@ -60,6 +60,33 @@ class LLMService:
         self._one_shot_assistant_gg = self._load_one_shot(
             self.ONE_SHOT_ASSISTANT_GG_PATH, 3)
 
+    @staticmethod
+    def _call_record(request: LLMRequest, response: LLMResponse, role: str, retry_index: int = 0) -> LLMCallRecord:
+        """Build the in-memory audit carrier from the paired request/response.
+
+        The service only fills a field it already has in hand; it never touches persistence. The
+        rendered prompt is the messages as sent (``request.messages``); all sampling telemetry is
+        copied verbatim from the ``LLMResponse``.
+        """
+        usage = response.usage
+        return LLMCallRecord(
+            role=role,
+            retry_index=retry_index,
+            rendered_prompt=list(request.messages),
+            resolved_model=response.resolved_model,
+            system_fingerprint=response.system_fingerprint,
+            requested_temperature=response.requested_temperature,
+            requested_seed=response.requested_seed,
+            prompt_tokens=usage.prompt_tokens if usage else None,
+            completion_tokens=usage.completion_tokens if usage else None,
+            latency_ms=response.latency_ms,
+            finish_reason=response.finish_reason,
+            model_used=response.model_used,
+            provider=response.provider,
+            request_id=response.request_id,
+            raw_payload=response.raw_payload,
+        )
+
     async def propose_clue(self, llm_client: LLMClient, game_state: GameState, validator: ClueValidator, player_id: int = 0) -> ClueProposal:
         """
         Proposes a clue for the current game state. This method checks that the game is in the 
@@ -84,10 +111,15 @@ class LLMService:
             game_state, llm_client.model_name, player_id)
 
         reason = ""
+        # Audit every attempt (accepted + rejected), ordered by retry_index.
+        llm_calls: list[LLMCallRecord] = []
 
-        for _ in range(MAX_CLUE_RETRIES):
+        for retry_index in range(MAX_CLUE_RETRIES):
             response = await llm_client.generate(request, expected_format=ClueJSONFormat)
             proposal = self._build_clue_proposal(response)
+            llm_calls.append(
+                self._call_record(request, response, "clue_giver", retry_index)
+            )
 
             clue_entry = ClueEntry(
                 clue=proposal.clue,
@@ -97,6 +129,7 @@ class LLMService:
             )
             valid, reason = validator.is_valid(clue_entry)
             if valid:
+                proposal.llm_calls = llm_calls
                 return proposal
 
             print(
@@ -147,6 +180,8 @@ class LLMService:
 
         # Process the response and convert it into a GuessProposal.
         guess_proposal = self._build_guess_proposal(response)
+        guess_proposal.llm_call = self._call_record(
+            request, response, "guesser")
 
         return guess_proposal
 
@@ -168,7 +203,10 @@ class LLMService:
         request = self._build_guess_sd_request(
             game_state, llm_client.model_name)
         response = await llm_client.generate(request, expected_format=GuessJSONFormat)
-        return self._build_guess_proposal(response)
+        guess_proposal = self._build_guess_proposal(response)
+        guess_proposal.llm_call = self._call_record(
+            request, response, "guesser_sd")
+        return guess_proposal
 
     async def elicit_confidence_ranking(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> ConfidenceRanking:
         """
@@ -196,7 +234,9 @@ class LLMService:
         request = self._build_measurement_request(
             game_state, llm_client.model_name, player_id)
         response = await llm_client.generate(request, expected_format=ConfidenceRankingJSONFormat)
-        return self._build_confidence_ranking(response)
+        ranking = self._build_confidence_ranking(response)
+        ranking.llm_call = self._call_record(request, response, "measurement")
+        return ranking
 
     async def elicit_confidence_ranking_sd(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> ConfidenceRanking:
         """
@@ -217,7 +257,10 @@ class LLMService:
         request = self._build_measurement_sd_request(
             game_state, llm_client.model_name, player_id)
         response = await llm_client.generate(request, expected_format=ConfidenceRankingJSONFormat)
-        return self._build_confidence_ranking(response)
+        ranking = self._build_confidence_ranking(response)
+        ranking.llm_call = self._call_record(
+            request, response, "measurement_sd")
+        return ranking
 
     async def measure_and_attach_confidence_ranking(self, llm_client: LLMClient, engine: "CodenamesDuetEngine", player_id: int = 0) -> ConfidenceRanking:
         """
