@@ -8,6 +8,29 @@ from backend.app.models.llm_schemas import ClueProposal, GuessProposal
 from backend.app.models.game_schemas import GamePhase, ClueEntry, ResolvedTarget
 
 
+def _mock_response(text, raw_payload=None):
+    """A mock LLM response with realistic telemetry.
+
+    The service now reads sampling telemetry off the response to build the in-memory audit carrier,
+    so these fields must be typed values (None), not the auto-created child mocks a bare MagicMock
+    would return.
+    """
+    r = MagicMock()
+    r.text = text
+    r.model_used = "test_model"
+    r.latency_ms = 3200
+    r.raw_payload = raw_payload if raw_payload is not None else json.loads(text)
+    r.usage = None
+    r.finish_reason = None
+    r.provider = None
+    r.request_id = None
+    r.resolved_model = None
+    r.system_fingerprint = None
+    r.requested_temperature = None
+    r.requested_seed = None
+    return r
+
+
 @pytest.mark.asyncio
 async def test_llm_service_propose_clue_success(game_state_cg):
     """
@@ -15,17 +38,13 @@ async def test_llm_service_propose_clue_success(game_state_cg):
     the expected clue proposal.
     """
     # Create a mock LLMResponse with the expected structure
-    mock_response = MagicMock()
-    mock_response.text = (
+    mock_response = _mock_response(
         "{\"clue\": \"battle\", "
         "\"count\": 3, "
         "\"reasoning\": \"The word 'battle' captures a military commander ('NAPOLEON'),"
         "the hardware ('RIFLE') and a primary theater of conflict ('RUSSIA')\""
         "}"
     )
-    mock_response.model_used = "test_model"
-    mock_response.latency_ms = 3200
-    mock_response.raw_payload = json.loads(mock_response.text)
 
     # Create a mock LLMClient that returns the mock response when generate is called
     mock_client = MagicMock(spec=LLMClient)
@@ -89,8 +108,7 @@ async def test_llm_service_propose_guess_success(game_state_guessing):
     the expected guess proposal.
     """
     # Create a mock LLMResponse with the expected structure
-    mock_response = MagicMock()
-    mock_response.text = (
+    mock_response = _mock_response(
         "{"
         "\"proposals\": ["
         "{\"word\": \"NAPOLEON\", \"confidence\": 0.9}, "
@@ -101,9 +119,6 @@ async def test_llm_service_propose_guess_success(game_state_guessing):
         "\"stop_reason\": \"Cannot determine other words\""
         "}"
     )
-    mock_response.model_used = "test_model"
-    mock_response.latency_ms = 3200
-    mock_response.raw_payload = json.loads(mock_response.text)
 
     # Create a mock LLMClient that returns the mock response when generate is called
     mock_client = MagicMock(spec=LLMClient)
@@ -314,17 +329,11 @@ async def test_propose_clue_retries_on_invalid_clue(game_state_cg):
     invalid_text = '{"clue": "BUCKET", "count": 2, "reasoning": "bucket reasoning"}'
     valid_text = '{"clue": "battle", "count": 2, "reasoning": "battle reasoning"}'
 
-    def make_response(text):
-        r = MagicMock()
-        r.text = text
-        r.raw_payload = json.loads(text)
-        return r
-
     mock_client = MagicMock(spec=LLMClient)
     mock_client.model_name = "test_model"
     mock_client.generate = AsyncMock(side_effect=[
-        make_response(invalid_text),
-        make_response(valid_text),
+        _mock_response(invalid_text),
+        _mock_response(valid_text),
     ])
 
     service = LLMService()
@@ -344,6 +353,48 @@ async def test_propose_clue_retries_on_invalid_clue(game_state_cg):
     assert "BUCKET" in messages[-1].content
     assert "rejected" in messages[-1].content.lower()
 
+    # Audit carrier: BOTH attempts (rejected + accepted) are captured, in order, with retry_index,
+    # and each carries the messages it was sent (rendered_prompt).
+    assert [c.retry_index for c in result.llm_calls] == [0, 1]
+    assert all(c.role == "clue_giver" for c in result.llm_calls)
+    # The accepted (last) attempt's rendered prompt is the retry request (has the correction turns).
+    assert any("rejected" in m.content.lower() for m in result.llm_calls[1].rendered_prompt)
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_success_records_single_accepted_call(game_state_cg):
+    """A clue accepted on the first attempt carries exactly one llm_call (retry_index 0)."""
+    mock_client = MagicMock(spec=LLMClient)
+    mock_client.model_name = "test_model"
+    mock_client.generate = AsyncMock(return_value=_mock_response(
+        '{"clue": "battle", "count": 2, "reasoning": "r"}'))
+
+    result = await LLMService().propose_clue(
+        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+
+    assert len(result.llm_calls) == 1
+    assert result.llm_calls[0].role == "clue_giver"
+    assert result.llm_calls[0].retry_index == 0
+    assert len(result.llm_calls[0].rendered_prompt) > 0
+
+
+@pytest.mark.asyncio
+async def test_propose_guess_records_llm_call(game_state_guessing):
+    """propose_guess attaches a single 'guesser' llm_call carrying the messages as sent."""
+    mock_client = MagicMock(spec=LLMClient)
+    mock_client.model_name = "test_model"
+    mock_client.generate = AsyncMock(return_value=_mock_response(
+        '{"proposals": [{"word": "NAPOLEON", "confidence": 0.9}], '
+        '"reasoning": "r", "stop_reason": "s"}'))
+
+    result = await LLMService().propose_guess(mock_client, game_state_guessing)
+
+    assert result.llm_call is not None
+    assert result.llm_call.role == "guesser"
+    # The rendered prompt is exactly the request's messages that were sent.
+    sent_request = mock_client.generate.await_args_list[0][0][0]
+    assert result.llm_call.rendered_prompt == sent_request.messages
+
 
 @pytest.mark.asyncio
 async def test_propose_clue_raises_after_max_retries(game_state_cg):
@@ -353,15 +404,9 @@ async def test_propose_clue_raises_after_max_retries(game_state_cg):
     """
     invalid_text = '{"clue": "BUCKET", "count": 2, "reasoning": "bucket reasoning"}'
 
-    def make_response(text):
-        r = MagicMock()
-        r.text = text
-        r.raw_payload = json.loads(text)
-        return r
-
     mock_client = MagicMock(spec=LLMClient)
     mock_client.model_name = "test_model"
-    mock_client.generate = AsyncMock(return_value=make_response(invalid_text))
+    mock_client.generate = AsyncMock(return_value=_mock_response(invalid_text))
 
     service = LLMService()
 
@@ -377,13 +422,11 @@ async def test_propose_clue_parses_targets_onto_proposal(game_state_cg):
     propose_clue extracts the intended target set S from the clue JSON and places it, verbatim,
     onto the returned ClueProposal.
     """
-    mock_response = MagicMock()
-    mock_response.text = (
+    mock_response = _mock_response(
         "{\"clue\": \"battle\", \"count\": 3, "
         "\"reasoning\": \"military theme\", "
         "\"targets\": [\"NAPOLEON\", \"RIFLE\", \"RUSSIA\"]}"
     )
-    mock_response.raw_payload = json.loads(mock_response.text)
 
     mock_client = MagicMock(spec=LLMClient)
     mock_client.model_name = "test_model"
@@ -401,9 +444,8 @@ async def test_propose_clue_missing_targets_defaults_empty(game_state_cg):
     """
     A clue JSON without a targets field is accepted; the proposal simply carries an empty S.
     """
-    mock_response = MagicMock()
-    mock_response.text = '{"clue": "battle", "count": 3, "reasoning": "r"}'
-    mock_response.raw_payload = json.loads(mock_response.text)
+    mock_response = _mock_response(
+        '{"clue": "battle", "count": 3, "reasoning": "r"}')
 
     mock_client = MagicMock(spec=LLMClient)
     mock_client.model_name = "test_model"
@@ -424,12 +466,10 @@ async def test_propose_clue_records_malformed_targets_without_retry(game_state_c
     """
     # Clue 'battle' is legal (not a board word); count is 3 but only 1 target is listed, that
     # target is a civilian (from the LLM perspective) rather than an agent, plus an off-board word.
-    mock_response = MagicMock()
-    mock_response.text = (
+    mock_response = _mock_response(
         "{\"clue\": \"battle\", \"count\": 3, \"reasoning\": \"r\", "
         "\"targets\": [\"BUCKET\", \"ZEBRA\"]}"
     )
-    mock_response.raw_payload = json.loads(mock_response.text)
 
     mock_client = MagicMock(spec=LLMClient)
     mock_client.model_name = "test_model"
