@@ -253,6 +253,14 @@ async def llm_make_guess(game_id: str):
     except (ValueError, PermissionError) as e:
         print(f"Error during LLM guess proposal: {str(e)}")
 
+    # Out-of-band measurement: elicit the confidence ranking over all unrevealed cards at the
+    # pre-resolution instant (same state as the play-guess request above), before the resolve loop.
+    # Strictly additive and side-effect-free; a failure here must never break game play.
+    try:
+        await _llm_service.measure_and_attach_confidence_ranking(llm_client, engine, player_id=0)
+    except (ValueError, PermissionError) as e:
+        print(f"Error during LLM confidence-ranking measurement: {str(e)}")
+
     html = ""
     for word in proposal.proposals:
         card_id = engine.state.board.get_card_id_by_word(word)
@@ -313,6 +321,15 @@ async def llm_make_guess_sd(game_id: str):
 
     if engine.state.current_phase != GamePhase.SUDDEN_DEATH_LLM:
         return HTMLResponse("Not in LLM sudden death phase.", status_code=400)
+
+    # Out-of-band measurement: on entry to the LLM's sudden-death turn, if the engine flagged the
+    # sudden-death transition, elicit and attach the confidence ranking once, before any selection.
+    # Strictly additive; a failure here must never break game play.
+    if engine.state.sd_measurement_pending:
+        try:
+            await _llm_service.measure_and_attach_confidence_ranking_sd(llm_client, engine, player_id=0)
+        except (ValueError, PermissionError) as e:
+            print(f"Error during LLM sudden-death confidence-ranking measurement: {str(e)}")
 
     try:
         proposal = await _llm_service.propose_guess_sd(llm_client, engine.state, player_id=0)
