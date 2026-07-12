@@ -1,3 +1,4 @@
+import logging
 import random
 from pathlib import Path
 from fastapi import APIRouter, Request, Form
@@ -11,7 +12,11 @@ from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.core.llm.client_openrouter import LLMClientOpenRouter
 from backend.app.config import llm_models
+from backend.app.db import writer
+from backend.app.db.recorder import GameRecorder
 from backend.app.models.game_schemas import GamePhase
+
+logger = logging.getLogger(__name__)
 
 
 _TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -25,7 +30,23 @@ _model_providers = list(llm_models.keys())
 _model_names = {provider: list(models.keys())
                 for provider, models in llm_models.items()}
 _llm_service = LLMService()
-_games: dict[str, tuple[CodenamesDuetEngine, LLMClient]] = {}
+_games: dict[str, tuple[CodenamesDuetEngine, LLMClient, GameRecorder]] = {}
+
+
+def _flush_if_over(engine: CodenamesDuetEngine, recorder: GameRecorder) -> None:
+    """Terminal flush trigger: after an engine call, if the game is over and not yet flushed, persist
+    the whole game. Non-fatal for the interactive path - a flush failure is logged and swallowed so
+    it never changes the HTTP game-over response (the writer itself still raises)."""
+    if not engine.state.is_game_over or recorder.flushed:
+        return
+    recorder.set_outcome(engine.state.result, engine.state.timer_tokens)
+    try:
+        writer.persist_game(recorder, status="completed")
+    except Exception:
+        logger.warning(
+            "Failed to persist game %s at game-over; continuing.",
+            recorder.game_id, exc_info=True,
+        )
 
 
 @router.get("/")
@@ -81,7 +102,14 @@ async def play(request: Request, model_provider: str, bias_category: str, model_
         llm_client = LLMClientLocal(
             model_name=model_name, think=model_config.get("think", False))
 
-    _games[engine.state.game_id] = (engine, llm_client)
+    # start_player is not a GameState field; at game start engine.state.clue_giver == start_player.
+    recorder = GameRecorder(
+        game_id=engine.state.game_id,
+        board_id=board.board_id,
+        start_player=engine.state.clue_giver,
+        llm_client=llm_client,
+    )
+    _games[engine.state.game_id] = (engine, llm_client, recorder)
 
     return templates.TemplateResponse(request, "game.html", {
         "model_provider": model_provider,
@@ -101,11 +129,14 @@ async def give_clue(game_id: str, clue: str = Form(...), count: int = Form(...),
     if not game:
         return HTMLResponse("Game not found.", status_code=404)
 
-    engine, _ = game
+    engine, _, recorder = game
     try:
         engine.receive_clue(clue, count, player_id)
     except (ValueError, PermissionError) as e:
         return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
+
+    # Human clue: no llm_calls and empty targets (record-only, never synthesized).
+    recorder.record_clue(engine.state.current_clue, proposal=None)
 
     log_html = templates.get_template("partials/_log_entry.html").render({
         "card": None,
@@ -133,11 +164,22 @@ async def make_guess(game_id: str, card_id: int = Form(...), player_id: int = Fo
     if not game:
         return HTMLResponse("Game not found.", status_code=404)
 
-    engine, _ = game
+    engine, _, recorder = game
     try:
         result = engine.resolve_guess(card_id, player_id)
     except (ValueError, PermissionError) as e:
         return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
+
+    # Human reveal: a reveal_event only, no synthetic proposal.
+    recorder.record_reveal(
+        card_id=card_id,
+        result_str=result,
+        timer_tokens_after=engine.state.timer_tokens,
+        ended_game=engine.state.is_game_over,
+        proposal_index=None,
+        acting_seat=player_id,
+    )
+    _flush_if_over(engine, recorder)
 
     card = engine.state.board.cards[card_id]
 
@@ -180,7 +222,7 @@ async def pass_turn(game_id: str, player_id: int = Form(...)):
     if not game:
         return HTMLResponse("Game not found.", status_code=404)
 
-    engine, _ = game
+    engine, _, _ = game
     try:
         engine.pass_turn(player_id)
     except (ValueError, PermissionError) as e:
@@ -212,13 +254,16 @@ async def llm_give_clue(game_id: str):
     if not game:
         return HTMLResponse("Game not found.", status_code=404)
 
-    engine, llm_client = game
+    engine, llm_client, recorder = game
 
     proposal = await _llm_service.propose_clue(llm_client, engine.state, engine.clue_validator)
 
     engine.receive_clue(proposal.clue, proposal.count,
                         player_id=0, raw_payload=proposal.raw_payload,
                         targets=proposal.targets)
+
+    # Record the clue with all its model attempts (accepted + rejected) from the proposal.
+    recorder.record_clue(engine.state.current_clue, proposal=proposal)
 
     print(
         f"LLM proposed clue: {proposal.clue} ({proposal.count}) with reasoning: {proposal.reasoning}")
@@ -246,12 +291,15 @@ async def llm_make_guess(game_id: str):
     if not game:
         return HTMLResponse("Game not found.", status_code=404)
 
-    engine, llm_client = game
+    engine, llm_client, recorder = game
 
     try:
         proposal = await _llm_service.propose_guess(llm_client, engine.state, player_id=0)
     except (ValueError, PermissionError) as e:
         print(f"Error during LLM guess proposal: {str(e)}")
+
+    # Record the ordered play proposal (kind='play') for this turn.
+    recorder.record_play_proposal(proposal)
 
     # Out-of-band measurement: elicit the confidence ranking over all unrevealed cards at the
     # pre-resolution instant (same state as the play-guess request above), before the resolve loop.
@@ -261,8 +309,11 @@ async def llm_make_guess(game_id: str):
     except (ValueError, PermissionError) as e:
         print(f"Error during LLM confidence-ranking measurement: {str(e)}")
 
+    # Record the measurement (no-op if it failed above).
+    recorder.record_measurement(engine.state.current_clue.confidence_ranking)
+
     html = ""
-    for word in proposal.proposals:
+    for idx, word in enumerate(proposal.proposals):
         card_id = engine.state.board.get_card_id_by_word(word)
         if card_id is None:
             # LLM hallucinated a word not on the board
@@ -272,6 +323,17 @@ async def llm_make_guess(game_id: str):
             result = engine.resolve_guess(card_id, player_id=0)
         except (ValueError, PermissionError):
             break
+
+        # Index-aligned reveal capture: idx is the position in the play proposal's items.
+        recorder.record_reveal(
+            card_id=card_id,
+            result_str=result,
+            timer_tokens_after=engine.state.timer_tokens,
+            ended_game=engine.state.is_game_over,
+            proposal_index=idx,
+            acting_seat=0,
+        )
+        _flush_if_over(engine, recorder)
 
         print(
             f"LLM proposed guess: {word}")
@@ -317,10 +379,13 @@ async def llm_make_guess_sd(game_id: str):
     if not game:
         return HTMLResponse("Game not found.", status_code=404)
 
-    engine, llm_client = game
+    engine, llm_client, recorder = game
 
     if engine.state.current_phase != GamePhase.SUDDEN_DEATH_LLM:
         return HTMLResponse("Not in LLM sudden death phase.", status_code=400)
+
+    # The sudden-death turn has no clue; record the clue_giver held at SD entry as its clue_giver_seat.
+    sd_clue_giver = engine.state.clue_giver
 
     # Out-of-band measurement: on entry to the LLM's sudden-death turn, if the engine flagged the
     # sudden-death transition, elicit and attach the confidence ranking once, before any selection.
@@ -329,7 +394,13 @@ async def llm_make_guess_sd(game_id: str):
         try:
             await _llm_service.measure_and_attach_confidence_ranking_sd(llm_client, engine, player_id=0)
         except (ValueError, PermissionError) as e:
-            print(f"Error during LLM sudden-death confidence-ranking measurement: {str(e)}")
+            print(
+                f"Error during LLM sudden-death confidence-ranking measurement: {str(e)}")
+
+    # Record the SD measurement (no-op if it failed or was already taken this game).
+    if engine.state.sudden_death is not None:
+        recorder.record_sd_measurement(
+            engine.state.sudden_death.confidence_ranking, sd_clue_giver)
 
     try:
         proposal = await _llm_service.propose_guess_sd(llm_client, engine.state, player_id=0)
@@ -337,8 +408,11 @@ async def llm_make_guess_sd(game_id: str):
         print(f"Error during LLM sudden death guess proposal: {str(e)}")
         return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
 
+    # Record the SD play proposal (kind='play') on the sudden-death turn.
+    recorder.record_sd_play_proposal(proposal, sd_clue_giver)
+
     html = ""
-    for word in proposal.proposals:
+    for idx, word in enumerate(proposal.proposals):
         card_id = engine.state.board.get_card_id_by_word(word)
         if card_id is None:
             continue
@@ -347,6 +421,17 @@ async def llm_make_guess_sd(game_id: str):
             result = engine.resolve_guess(card_id, player_id=0)
         except (ValueError, PermissionError):
             break
+
+        recorder.record_sd_reveal(
+            clue_giver_seat=sd_clue_giver,
+            card_id=card_id,
+            result_str=result,
+            timer_tokens_after=engine.state.timer_tokens,
+            ended_game=engine.state.is_game_over,
+            proposal_index=idx,
+            acting_seat=0,
+        )
+        _flush_if_over(engine, recorder)
 
         print(f"LLM sudden death guess: {word}")
 
