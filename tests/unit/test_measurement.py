@@ -21,7 +21,18 @@ from backend.app.models.game_schemas import (
 def _mock_response(text: str) -> MagicMock:
     resp = MagicMock()
     resp.text = text
+    resp.model_used = "test_model"
+    resp.latency_ms = 0
     resp.raw_payload = json.loads(text)
+    # Typed telemetry (None) so the audit-carrier build gets real values, not child mocks.
+    resp.usage = None
+    resp.finish_reason = None
+    resp.provider = None
+    resp.request_id = None
+    resp.resolved_model = None
+    resp.system_fingerprint = None
+    resp.requested_temperature = None
+    resp.requested_seed = None
     return resp
 
 
@@ -137,6 +148,53 @@ async def test_elicit_confidence_ranking_end_to_end(game_state_guessing):
     assert isinstance(ranking, ConfidenceRanking)
     assert [r.word for r in ranking.rankings] == ["BRICK", "ANT"]
     client.generate.assert_awaited_once()
+
+    # Audit carrier: the measurement call is captured with role 'measurement' and the sent messages.
+    assert ranking.llm_call is not None
+    assert ranking.llm_call.role == "measurement"
+    sent_request = client.generate.await_args_list[0][0][0]
+    assert ranking.llm_call.rendered_prompt == sent_request.messages
+
+
+@pytest.mark.asyncio
+async def test_sd_measurement_records_llm_call(valid_board_data):
+    """The sudden-death measurement is captured with role 'measurement_sd'."""
+    engine = _sd_engine(valid_board_data)
+    ranking = await LLMService().elicit_confidence_ranking_sd(
+        _mock_client(_rankings_json([("BRICK", 0.9)])), engine.state, player_id=0)
+    assert ranking.llm_call is not None
+    assert ranking.llm_call.role == "measurement_sd"
+
+
+@pytest.mark.asyncio
+async def test_captured_measurement_prompt_excludes_targets(valid_board_data):
+    """Persistence-evidence guardrail: the intended target set S never appears in the captured
+    rendered_prompt of a measurement call - the exact bytes the writer will persist to
+    ``llm_call.rendered_prompt`` for roles 'measurement'/'measurement_sd'."""
+    sentinel = "ZZ_SENTINEL_TARGET_ZZ"
+
+    # Standard measurement: stamp the sentinel onto the live clue's S.
+    engine = _guessing_engine(valid_board_data)
+    engine.state.current_clue.targets = [sentinel]
+    engine.state.current_clue.targets_resolved = [
+        ResolvedTarget(word=sentinel)]
+    ranking = await LLMService().elicit_confidence_ranking(
+        _mock_client(_rankings_json([("BRICK", 0.9)])), engine.state, player_id=0)
+    assert ranking.llm_call.role == "measurement"
+    for message in ranking.llm_call.rendered_prompt:
+        assert sentinel not in message.content
+
+    # Sudden-death measurement: stamp the sentinel onto a historical clue's S.
+    sd_engine = _sd_engine(valid_board_data)
+    sd_engine.state.clue_history.append(ClueEntry(
+        clue="ocean", count=2, clue_giver=1, turn_number=1,
+        targets=[sentinel], targets_resolved=[ResolvedTarget(word=sentinel)],
+    ))
+    sd_ranking = await LLMService().elicit_confidence_ranking_sd(
+        _mock_client(_rankings_json([("BRICK", 0.9)])), sd_engine.state, player_id=0)
+    assert sd_ranking.llm_call.role == "measurement_sd"
+    for message in sd_ranking.llm_call.rendered_prompt:
+        assert sentinel not in message.content
 
 
 @pytest.mark.asyncio
