@@ -507,7 +507,7 @@ class GuessProposalModel(Base):
             "kind IN ('play','measurement')", name="ck_guess_proposal_kind"
         ),
         UniqueConstraint(
-            "turn_id", "kind", name="uq_guess_proposal_turn_kind"
+            "turn_id", "kind", "guesser_seat", name="uq_guess_proposal_turn_kind_seat"
         ),
     )
 

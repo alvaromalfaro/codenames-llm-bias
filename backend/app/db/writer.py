@@ -11,6 +11,8 @@ runner will not). ``recorder.flushed`` is set only after the transaction commits
 """
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import func, select
 
 from backend.app.db.models import (
@@ -29,7 +31,12 @@ from backend.app.db.models import (
 from backend.app.db.recorder import GameRecorder, TurnRecord
 from backend.app.db.session import session_scope
 
-# The LLM occupies seat 0 and is the only seat that issues model calls.
+logger = logging.getLogger(__name__)
+
+# Default seat for an llm_call whose seat is not passed explicitly. Only the clue path relies on it
+# (interactive LLM clues are seat 0; a human clue emits no calls). Proposal seats are always derived
+# or carried (normal play: 1 - clue_giver_seat; sudden death: the per-seat map key) and never default
+# to this constant.
 _LLM_SEAT = 0
 
 
@@ -57,23 +64,104 @@ def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int = _LLM_
     )
 
 
+def _write_play(session, gp, *, game_id: str, turn_id: int, guesser_seat: int,
+                word_map: dict[str, int]) -> list[GuessProposalItemModel]:
+    """Insert one ``kind='play'`` guess_proposal (+ its llm_call and ordered items) for ``guesser_seat``.
+
+    Returns the item rows in position order so the caller can index-align reveal backfill.
+    """
+    play_call_id = None
+    if gp.llm_call is not None:
+        call = _new_llm_call(gp.llm_call, game_id=game_id,
+                             turn_id=turn_id, seat_index=guesser_seat)
+        session.add(call)
+        session.flush()
+        play_call_id = call.id
+    proposal = GuessProposalModel(
+        turn_id=turn_id,
+        llm_call_id=play_call_id,
+        guesser_seat=guesser_seat,
+        kind="play",
+        reasoning=gp.reasoning,
+        stop_reason=gp.stop_reason,
+    )
+    session.add(proposal)
+    session.flush()
+    items: list[GuessProposalItemModel] = []
+    for position, (word, confidence) in enumerate(zip(gp.proposals, gp.confidence)):
+        item = GuessProposalItemModel(
+            guess_proposal_id=proposal.id,
+            position=position,
+            word=word,
+            confidence=confidence,
+            resolved_card_id=word_map.get(word.lower()),
+        )
+        session.add(item)
+        items.append(item)
+    session.flush()
+    return items
+
+
+def _write_measurement(session, cr, *, game_id: str, turn_id: int, guesser_seat: int,
+                       word_map: dict[str, int]) -> None:
+    """Insert one ``kind='measurement'`` guess_proposal (+ its llm_call and items) for ``guesser_seat``.
+
+    Measurement items never reference a reveal (they are an out-of-band ranking, not plays).
+    """
+    meas_call_id = None
+    if cr.llm_call is not None:
+        call = _new_llm_call(cr.llm_call, game_id=game_id,
+                             turn_id=turn_id, seat_index=guesser_seat)
+        session.add(call)
+        session.flush()
+        meas_call_id = call.id
+    proposal = GuessProposalModel(
+        turn_id=turn_id,
+        llm_call_id=meas_call_id,
+        guesser_seat=guesser_seat,
+        kind="measurement",
+        reasoning=cr.reasoning,
+        stop_reason=None,
+    )
+    session.add(proposal)
+    session.flush()
+    for position, ranked in enumerate(cr.rankings):
+        session.add(
+            GuessProposalItemModel(
+                guess_proposal_id=proposal.id,
+                position=position,
+                word=ranked.word,
+                confidence=ranked.confidence,
+                resolved_card_id=word_map.get(ranked.word.lower()),
+                reveal_event_id=None,
+            )
+        )
+    session.flush()
+
+
+def _write_reveals(session, reveals, *, turn_id: int) -> list[RevealEventModel]:
+    """Insert a turn's reveal_event rows in order; return them aligned to ``reveals``."""
+    rows: list[RevealEventModel] = []
+    for position, reveal in enumerate(reveals):
+        row = RevealEventModel(
+            turn_id=turn_id,
+            position_in_turn=position,
+            card_id=reveal.card_id,
+            acting_seat=reveal.acting_seat,
+            result_role=reveal.result_role,
+            ended_turn=reveal.ended_turn,
+            ended_game=reveal.ended_game,
+            timer_tokens_after=reveal.timer_tokens_after,
+        )
+        session.add(row)
+        rows.append(row)
+    if rows:
+        session.flush()
+    return rows
+
+
 def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, int]) -> None:
     """Insert one turn and all its children, honoring FK insert order within the turn."""
-    # Resolve the guesser seat for this turn's proposals. Sudden death is one turn with (potentially)
-    # two guessers, but UNIQUE(turn_id, kind) can hold only one 'play'/'measurement' per turn: two
-    # distinct SD seats cannot be represented without widening the key, so we raise a named error
-    # BEFORE writing anything (the enclosing transaction rolls back -> never a partial write). This
-    # path is unreachable until the LLM-vs-LLM runner drives seat 1 through sudden death. Normal turns
-    # and single-seat SD attribute the play/measurement to the acting guesser seat.
-    if len(turn.sd_guesser_seats) > 1:
-        raise ValueError(
-            "two-seat SD persistence requires widening UNIQUE(turn_id, kind) -> "
-            "(turn_id, kind, guesser_seat) via a future migration; deferred to 5b/5c "
-            f"(turn {turn.turn_number} has SD guesser seats {sorted(turn.sd_guesser_seats)})"
-        )
-    guesser_seat = next(iter(turn.sd_guesser_seats)
-                        ) if turn.sd_guesser_seats else _LLM_SEAT
-
     turn_row = TurnModel(
         game_id=game_id,
         turn_number=turn.turn_number,
@@ -119,98 +207,64 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
                 )
             )
 
-    # play proposal (kind='play')
-    play_items: list[GuessProposalItemModel] = []
-    if turn.play_proposal is not None:
-        gp = turn.play_proposal
-        play_call_id = None
-        if gp.llm_call is not None:
-            call = _new_llm_call(
-                gp.llm_call, game_id=game_id, turn_id=turn_row.id)
-            session.add(call)
-            session.flush()
-            play_call_id = call.id
-        play_proposal = GuessProposalModel(
-            turn_id=turn_row.id,
-            llm_call_id=play_call_id,
-            guesser_seat=guesser_seat,
-            kind="play",
-            reasoning=gp.reasoning,
-            stop_reason=gp.stop_reason,
-        )
-        session.add(play_proposal)
-        session.flush()
-        for position, (word, confidence) in enumerate(zip(gp.proposals, gp.confidence)):
-            item = GuessProposalItemModel(
-                guess_proposal_id=play_proposal.id,
-                position=position,
-                word=word,
-                confidence=confidence,
-                resolved_card_id=word_map.get(word.lower()),
-            )
-            session.add(item)
-            play_items.append(item)
-        session.flush()
+    if turn.phase == "sudden_death":
+        # Sudden death is one collective turn on which both seats may guess/measure. Emit a
+        # guess_proposal row per (seat, kind); UNIQUE(turn_id, kind, guesser_seat) admits both seats.
+        play_items_by_seat: dict[int, list[GuessProposalItemModel]] = {}
+        for seat, gp in sorted(turn.sd_play_by_seat.items()):
+            play_items_by_seat[seat] = _write_play(
+                session, gp, game_id=game_id, turn_id=turn_row.id,
+                guesser_seat=seat, word_map=word_map)
+        for seat, cr in sorted(turn.sd_measurement_by_seat.items()):
+            _write_measurement(session, cr, game_id=game_id, turn_id=turn_row.id,
+                               guesser_seat=seat, word_map=word_map)
 
-    # measurement proposal (kind='measurement'); items never reference a reveal
-    if turn.measurement is not None:
-        cr = turn.measurement
-        meas_call_id = None
-        if cr.llm_call is not None:
-            call = _new_llm_call(
-                cr.llm_call, game_id=game_id, turn_id=turn_row.id)
-            session.add(call)
-            session.flush()
-            meas_call_id = call.id
-        meas_proposal = GuessProposalModel(
-            turn_id=turn_row.id,
-            llm_call_id=meas_call_id,
-            guesser_seat=guesser_seat,
-            kind="measurement",
-            reasoning=cr.reasoning,
-            stop_reason=None,
-        )
-        session.add(meas_proposal)
-        session.flush()
-        for position, ranked in enumerate(cr.rankings):
-            session.add(
-                GuessProposalItemModel(
-                    guess_proposal_id=meas_proposal.id,
-                    position=position,
-                    word=ranked.word,
-                    confidence=ranked.confidence,
-                    resolved_card_id=word_map.get(ranked.word.lower()),
-                    reveal_event_id=None,
+        reveal_rows = _write_reveals(
+            session, turn.reveals, turn_id=turn_row.id)
+        # Per-seat index-aligned backfill: a reveal by seat s indexes seat s's play items only.
+        # CONTRACT: reveal.proposal_index is 0-based relative to acting_seat's own SD play proposal,
+        # never a global index over turn.reveals - the SD conductor resets it per seat. A global
+        # counter would overshoot len(items) and drop the backfill.
+        backfilled = False
+        for reveal, row in zip(turn.reveals, reveal_rows):
+            idx = reveal.proposal_index
+            items = play_items_by_seat.get(reveal.acting_seat, [])
+            if idx is not None and 0 <= idx < len(items):
+                items[idx].reveal_event_id = row.id
+                backfilled = True
+            elif idx is not None and idx >= len(items):
+                # Out-of-range index breaks the per-seat contract (e.g. a global counter leaking in);
+                # skip rather than raise but surface it.
+                logger.warning(
+                    "SD reveal proposal_index %d out of range for game %s turn %d seat %d "
+                    "(%d play items); reveal_event backfill skipped",
+                    idx, game_id, turn.turn_number, reveal.acting_seat, len(
+                        items),
                 )
-            )
+        if backfilled:
+            session.flush()
+    else:
+        # Normal turn: the guesser is the non-clue-giver (a game identity, not a hardcoded seat).
+        guesser_seat = 1 - turn.clue_giver_seat
+        play_items: list[GuessProposalItemModel] = []
+        if turn.play_proposal is not None:
+            play_items = _write_play(
+                session, turn.play_proposal, game_id=game_id, turn_id=turn_row.id,
+                guesser_seat=guesser_seat, word_map=word_map)
+        if turn.measurement is not None:
+            _write_measurement(session, turn.measurement, game_id=game_id, turn_id=turn_row.id,
+                               guesser_seat=guesser_seat, word_map=word_map)
 
-    # reveal events
-    reveal_rows: list[RevealEventModel] = []
-    for position, reveal in enumerate(turn.reveals):
-        row = RevealEventModel(
-            turn_id=turn_row.id,
-            position_in_turn=position,
-            card_id=reveal.card_id,
-            acting_seat=reveal.acting_seat,
-            result_role=reveal.result_role,
-            ended_turn=reveal.ended_turn,
-            ended_game=reveal.ended_game,
-            timer_tokens_after=reveal.timer_tokens_after,
-        )
-        session.add(row)
-        reveal_rows.append(row)
-    if reveal_rows:
-        session.flush()
-
-    # index-aligned backfill of play items' reveal_event_id
-    # Each reveal carries the index of the play-proposal item it came from; the unreached / off-board
-    # tail (items with no reveal) keeps reveal_event_id NULL.
-    for reveal, row in zip(turn.reveals, reveal_rows):
-        idx = reveal.proposal_index
-        if idx is not None and 0 <= idx < len(play_items):
-            play_items[idx].reveal_event_id = row.id
-    if play_items:
-        session.flush()
+        reveal_rows = _write_reveals(
+            session, turn.reveals, turn_id=turn_row.id)
+        # index-aligned backfill of play items' reveal_event_id; the unreached / off-board tail
+        # (items with no reveal) keeps reveal_event_id NULL.
+        for reveal, row in zip(turn.reveals, reveal_rows):
+            idx = reveal.proposal_index
+            if idx is not None and 0 <= idx < len(play_items):
+                play_items[idx].reveal_event_id = row.id
+        if play_items:
+            session.flush()
 
 
 def persist_game(recorder: GameRecorder, *, status: str) -> None:

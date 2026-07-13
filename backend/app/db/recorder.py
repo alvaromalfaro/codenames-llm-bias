@@ -81,12 +81,13 @@ class TurnRecord:
     play_proposal: Optional[GuessProposal] = None       # kind='play'
     measurement: Optional[ConfidenceRanking] = None     # kind='measurement'
     reveals: list[RevealRecord] = field(default_factory=list)
-    # Guesser seats that produced SD proposals/measurements on this (single) sudden-death turn. In
-    # sudden death BOTH seats guess, so the guesser is NOT derivable from clue_giver_seat and must be
-    # carried explicitly. The single-seat case (all that is reachable pre-runner) yields one seat,
-    # which the writer uses for guesser_seat; two distinct seats cannot share one SD turn under
-    # UNIQUE(turn_id, kind) and are the writer's named-raise seam. Empty on normal turns.
-    sd_guesser_seats: set[int] = field(default_factory=set)
+    # Sudden death is a single collective turn on which both seats guess (the guesser is not
+    # derivable from clue_giver_seat), so its play proposals and measurements are carried per guesser
+    # seat rather than in the single normal-play slots above. Empty on normal turns; the writer emits
+    # one guess_proposal row per (seat, kind) under UNIQUE(turn_id, kind, guesser_seat).
+    sd_play_by_seat: dict[int, GuessProposal] = field(default_factory=dict)
+    sd_measurement_by_seat: dict[int, ConfidenceRanking] = field(
+        default_factory=dict)
 
 
 class GameRecorder:
@@ -209,21 +210,27 @@ class GameRecorder:
         if ranking is None:
             return
         turn = self.ensure_sudden_death_turn(clue_giver_seat)
-        turn.measurement = ranking
-        turn.sd_guesser_seats.add(guesser_seat)
+        turn.sd_measurement_by_seat[guesser_seat] = ranking
         self._observe_seat0_sampling([ranking.llm_call])
 
     def record_sd_play_proposal(self, guess_proposal: GuessProposal, clue_giver_seat: int,
                                 guesser_seat: int = 0) -> None:
         turn = self.ensure_sudden_death_turn(clue_giver_seat)
-        turn.play_proposal = guess_proposal
-        turn.sd_guesser_seats.add(guesser_seat)
+        turn.sd_play_by_seat[guesser_seat] = guess_proposal
         self._observe_seat0_sampling([guess_proposal.llm_call])
 
     def record_sd_reveal(self, *, clue_giver_seat: int, card_id: int, result_str: str,
                          timer_tokens_after: Optional[int], ended_game: bool, proposal_index: Optional[int],
                          acting_seat: int,
                          ) -> None:
+        """Record one sudden-death reveal on the single SD turn.
+
+        CONTRACT (relied on by the writer's per-seat backfill): in sudden death ``proposal_index`` is
+        0-based relative to ``acting_seat``'s own SD play proposal (``sd_play_by_seat[acting_seat]``),
+        not a global index over this turn's reveals. Both seats guess on one turn, so the SD conductor
+        must reset the index to 0 per seat; a global counter would mis-align the
+        ``guess_proposal_item.reveal_event_id`` backfill in ``writer._write_turn``.
+        """
         self.ensure_sudden_death_turn(clue_giver_seat).reveals.append(
             RevealRecord(
                 card_id=card_id,
