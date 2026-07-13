@@ -334,10 +334,20 @@ class ClueEntry(BaseModel):
 class SuddenDeathEntry(BaseModel):
     """
     Per-GAME sudden-death record. There is exactly one sudden-death state per game, so this is a
-    single object hanging off GameState (NOT a per-turn list). It currently holds only the
-    out-of-band confidence ranking elicited on entry to the sudden-death phase, before the first
-    selection; further sudden-death signals can attach here later.
+    single object hanging off GameState (not a per-turn list). It holds the out-of-band confidence
+    rankings elicited on entry to each seat's sudden-death guessing, before that seat's first
+    selection.
+
+    Both seats can reach sudden death sequentially (the SUDDEN_DEATH_LLM -> SUDDEN_DEATH_HUMAN
+    handoff may put a second LLM on seat 1 in an LLM-vs-LLM run), so the authoritative store is
+    per-(game, seat): ``rankings_by_seat`` maps the guesser seat -> its ranking. ``confidence_ranking``
+    is retained as a backward-compat mirror of the most-recently-attached ranking (the single-seat
+    interactive path only ever measures seat 0).
     """
+    # Authoritative per-seat store: guesser seat (0 = LLM, 1 = human) -> its SD ranking.
+    rankings_by_seat: dict[int, ConfidenceRanking] = Field(
+        default_factory=dict)
+    # Backward-compat mirror of the most-recently-attached ranking (see class docstring).
     confidence_ranking: Optional[ConfidenceRanking] = None
 
 

@@ -32,7 +32,7 @@ class CodenamesDuetEngine:
         self.state = GameState(
             # TODO: The game id will come from the database when it's implemented
             game_id=str(uuid.uuid4()),
-            board=board,
+            board=board.model_copy(deep=True),
             clue_giver=start_player,
             guesser=1 - start_player
         )
@@ -135,17 +135,22 @@ class CodenamesDuetEngine:
                 "No current clue to attach a confidence ranking to.")
         self.state.current_clue.confidence_ranking = ranking
 
-    def attach_sudden_death_ranking(self, ranking: ConfidenceRanking) -> None:
+    def attach_sudden_death_ranking(self, ranking: ConfidenceRanking, player_id: int = 0) -> None:
         """
         Attaches the out-of-band sudden-death confidence ranking to the per-game SuddenDeathEntry,
-        creating that record on first use, and consumes the pending flag so the measurement happens
-        exactly once.
+        creating that record on first use, and consumes the pending flag so each seat's measurement
+        happens exactly once (the flag is re-armed at the SD seat handoff in _reveal_agent).
 
-        :param ranking: The parsed confidence ranking over the LLM's remaining agents at sudden-death
-            entry.
+        The ranking is stored per guesser seat in ``rankings_by_seat`` (the authoritative store);
+        ``confidence_ranking`` is also updated as a backward-compat mirror of the most recent attach.
+
+        :param ranking: The parsed confidence ranking over the guesser's remaining agents at that
+            seat's sudden-death entry.
+        :param player_id: The seat of the guesser whose ranking this is (0 = LLM, 1 = human).
         """
         if self.state.sudden_death is None:
             self.state.sudden_death = SuddenDeathEntry()
+        self.state.sudden_death.rankings_by_seat[player_id] = ranking
         self.state.sudden_death.confidence_ranking = ranking
         self.state.sd_measurement_pending = False
 
@@ -299,10 +304,14 @@ class CodenamesDuetEngine:
             self._finish_game(result=res)
             return res
 
-        # LLM just found their last agent in SUDDEN_DEATH_LLM -> hand off to Human
+        # LLM just found their last agent in SUDDEN_DEATH_LLM -> hand off to Human (seat 1). Re-arm
+        # the measurement flag so seat 1's sudden-death confidence ranking is elicited once, at its
+        # own pre-first-selection instant (consumed at that seat's SD proposal entry).
         if (self.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
                 and self.state.agents_remaining[0] == 0):
             self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
+            if self.state.agents_remaining[1] > 0:
+                self.state.sd_measurement_pending = True
 
         return "agent"
 

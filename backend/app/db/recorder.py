@@ -81,6 +81,12 @@ class TurnRecord:
     play_proposal: Optional[GuessProposal] = None       # kind='play'
     measurement: Optional[ConfidenceRanking] = None     # kind='measurement'
     reveals: list[RevealRecord] = field(default_factory=list)
+    # Guesser seats that produced SD proposals/measurements on this (single) sudden-death turn. In
+    # sudden death BOTH seats guess, so the guesser is NOT derivable from clue_giver_seat and must be
+    # carried explicitly. The single-seat case (all that is reachable pre-runner) yields one seat,
+    # which the writer uses for guesser_seat; two distinct seats cannot share one SD turn under
+    # UNIQUE(turn_id, kind) and are the writer's named-raise seam. Empty on normal turns.
+    sd_guesser_seats: set[int] = field(default_factory=set)
 
 
 class GameRecorder:
@@ -198,15 +204,20 @@ class GameRecorder:
             self.turns.append(self._sd_turn)
         return self._sd_turn
 
-    def record_sd_measurement(self, ranking: Optional[ConfidenceRanking], clue_giver_seat: int) -> None:
+    def record_sd_measurement(self, ranking: Optional[ConfidenceRanking], clue_giver_seat: int,
+                              guesser_seat: int = 0) -> None:
         if ranking is None:
             return
-        self.ensure_sudden_death_turn(clue_giver_seat).measurement = ranking
+        turn = self.ensure_sudden_death_turn(clue_giver_seat)
+        turn.measurement = ranking
+        turn.sd_guesser_seats.add(guesser_seat)
         self._observe_seat0_sampling([ranking.llm_call])
 
-    def record_sd_play_proposal(self, guess_proposal: GuessProposal, clue_giver_seat: int) -> None:
-        self.ensure_sudden_death_turn(
-            clue_giver_seat).play_proposal = guess_proposal
+    def record_sd_play_proposal(self, guess_proposal: GuessProposal, clue_giver_seat: int,
+                                guesser_seat: int = 0) -> None:
+        turn = self.ensure_sudden_death_turn(clue_giver_seat)
+        turn.play_proposal = guess_proposal
+        turn.sd_guesser_seats.add(guesser_seat)
         self._observe_seat0_sampling([guess_proposal.llm_call])
 
     def record_sd_reveal(self, *, clue_giver_seat: int, card_id: int, result_str: str,

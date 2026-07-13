@@ -201,7 +201,7 @@ class LLMService:
                 "Cannot propose a sudden death guess outside of SUDDEN_DEATH_LLM phase.")
 
         request = self._build_guess_sd_request(
-            game_state, llm_client.model_name)
+            game_state, llm_client.model_name, player_id)
         response = await llm_client.generate(request, expected_format=GuessJSONFormat)
         guess_proposal = self._build_guess_proposal(response)
         guess_proposal.llm_call = self._call_record(
@@ -293,7 +293,7 @@ class LLMService:
         """
         ranking = await self.elicit_confidence_ranking_sd(
             llm_client, engine.state, player_id)
-        engine.attach_sudden_death_ranking(ranking)
+        engine.attach_sudden_death_ranking(ranking, player_id)
         return ranking
 
     def _build_clue_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
@@ -441,7 +441,7 @@ class LLMService:
             for clue_entry in game_state.clue_history if clue_entry.clue_giver != player_id
         ])
         words_remaining = "\n".join([
-            f"- {card.text}" for card in game_state.board.cards if 0 not in card.revealed_by and
+            f"- {card.text}" for card in game_state.board.cards if player_id not in card.revealed_by and
             player_id not in card.time_marker_by
         ])
 
@@ -470,23 +470,30 @@ class LLMService:
         return LLMRequest(messages=messages, model=model, temperature=self.temperature,
                           max_tokens=self.max_tokens, timeout_s=self.timeout_s)
 
-    def _build_guess_sd_request(self, game_state: GameState, model: str) -> LLMRequest:
+    def _build_guess_sd_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
         """
         Builds an LLMRequest for sudden death guessing. No current clue is available; the LLM
-        receives full clue history and must identify all remaining agents from memory.
+        receives full clue history and must identify all remaining agents from memory. Seat-
+        parameterized: it reports the guesser's own remaining agent count and the SAME unrevealed-word
+        predicate (``player_id not in card.revealed_by``) as _build_measurement_sd_request, so it
+        generalizes to either seat in an LLM-vs-LLM run.
+
+        :param game_state: The current state of the game (sudden death).
+        :param model: The LLM model to use.
+        :param player_id: The seat of the guesser (0 for LLM).
         """
         clue_history = "\n".join([
             f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
-            for e in game_state.clue_history
+            for e in game_state.clue_history if e.clue_giver != player_id
         ])
         words_remaining = "\n".join([
             f"- {card.text}" for card in game_state.board.cards
-            if 0 not in card.revealed_by
+            if player_id not in card.revealed_by and player_id not in card.time_marker_by
         ])
         user_prompt = self._user_prompt_sd_gg.format(
             clue_history=clue_history or "No clues were given.",
             words_remaining=words_remaining,
-            agents_remaining=game_state.agents_remaining[0],
+            agents_remaining=game_state.agents_remaining[player_id],
         )
 
         print("DEBUG: User prompt for sudden death guess:\n" + user_prompt)
@@ -552,7 +559,7 @@ class LLMService:
             for clue_entry in game_state.clue_history if clue_entry.clue_giver != player_id
         ])
         words_remaining = "\n".join([
-            f"- {card.text}" for card in game_state.board.cards if 0 not in card.revealed_by and
+            f"- {card.text}" for card in game_state.board.cards if player_id not in card.revealed_by and
             player_id not in card.time_marker_by
         ])
 
@@ -590,7 +597,7 @@ class LLMService:
         ])
         words_remaining = "\n".join([
             f"- {card.text}" for card in game_state.board.cards
-            if player_id not in card.revealed_by
+            if player_id not in card.revealed_by and player_id not in card.time_marker_by
         ])
         user_prompt = self._user_prompt_meas_sd.format(
             clue_history=clue_history or "No clues were given.",

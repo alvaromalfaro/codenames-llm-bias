@@ -59,6 +59,21 @@ def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int = _LLM_
 
 def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, int]) -> None:
     """Insert one turn and all its children, honoring FK insert order within the turn."""
+    # Resolve the guesser seat for this turn's proposals. Sudden death is one turn with (potentially)
+    # two guessers, but UNIQUE(turn_id, kind) can hold only one 'play'/'measurement' per turn: two
+    # distinct SD seats cannot be represented without widening the key, so we raise a named error
+    # BEFORE writing anything (the enclosing transaction rolls back -> never a partial write). This
+    # path is unreachable until the LLM-vs-LLM runner drives seat 1 through sudden death. Normal turns
+    # and single-seat SD attribute the play/measurement to the acting guesser seat.
+    if len(turn.sd_guesser_seats) > 1:
+        raise ValueError(
+            "two-seat SD persistence requires widening UNIQUE(turn_id, kind) -> "
+            "(turn_id, kind, guesser_seat) via a future migration; deferred to 5b/5c "
+            f"(turn {turn.turn_number} has SD guesser seats {sorted(turn.sd_guesser_seats)})"
+        )
+    guesser_seat = next(iter(turn.sd_guesser_seats)
+                        ) if turn.sd_guesser_seats else _LLM_SEAT
+
     turn_row = TurnModel(
         game_id=game_id,
         turn_number=turn.turn_number,
@@ -118,7 +133,7 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
         play_proposal = GuessProposalModel(
             turn_id=turn_row.id,
             llm_call_id=play_call_id,
-            guesser_seat=_LLM_SEAT,
+            guesser_seat=guesser_seat,
             kind="play",
             reasoning=gp.reasoning,
             stop_reason=gp.stop_reason,
@@ -150,7 +165,7 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
         meas_proposal = GuessProposalModel(
             turn_id=turn_row.id,
             llm_call_id=meas_call_id,
-            guesser_seat=_LLM_SEAT,
+            guesser_seat=guesser_seat,
             kind="measurement",
             reasoning=cr.reasoning,
             stop_reason=None,
