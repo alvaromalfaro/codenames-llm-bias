@@ -188,8 +188,8 @@ def test_sudden_death_single_turn_no_clue():
     sd = sd_turns[0]
     assert sd.clue is None
     assert sd.clue_giver_seat == 0
-    assert sd.measurement is ranking
-    assert sd.play_proposal is not None
+    assert sd.sd_measurement_by_seat[0] is ranking
+    assert sd.sd_play_by_seat.get(0) is not None
     assert len(sd.reveals) == 1
     assert sd.reveals[0].result_role == "agent"
     assert sd.reveals[0].ended_game is True
@@ -203,32 +203,41 @@ def test_ensure_sudden_death_turn_is_idempotent():
     assert len([t for t in rec.turns if t.phase == "sudden_death"]) == 1
 
 
-def test_sd_records_tag_explicit_guesser_seat():
-    """The SD record methods store the guesser seat (in SD both seats guess, so it is not derivable
-    from clue_giver_seat and must be carried explicitly)."""
+def test_sd_records_key_by_explicit_guesser_seat():
+    """The SD record methods key play/measurement by guesser seat (in SD both seats guess, so it is
+    not derivable from clue_giver_seat and must be carried explicitly)."""
     rec = _recorder()
-    rec.record_sd_measurement(
-        ConfidenceRanking(rankings=[RankedCard(word="X", confidence=0.5)],
-                          llm_call=_call(role="measurement_sd")),
-        clue_giver_seat=0, guesser_seat=1)
-    rec.record_sd_play_proposal(
-        _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=0, guesser_seat=1)
+    ranking = ConfidenceRanking(rankings=[RankedCard(word="X", confidence=0.5)],
+                                llm_call=_call(role="measurement_sd"))
+    proposal = _guess_proposal(_call(role="guesser_sd"))
+    rec.record_sd_measurement(ranking, clue_giver_seat=0, guesser_seat=1)
+    rec.record_sd_play_proposal(proposal, clue_giver_seat=0, guesser_seat=1)
 
     sd = [t for t in rec.turns if t.phase == "sudden_death"][0]
-    assert sd.sd_guesser_seats == {1}
+    assert set(sd.sd_play_by_seat) == {1}
+    assert set(sd.sd_measurement_by_seat) == {1}
+    assert sd.sd_play_by_seat[1] is proposal
+    assert sd.sd_measurement_by_seat[1] is ranking
 
 
-def test_sd_records_accumulate_both_seats_for_writer_detection():
-    """When both seats reach SD on the one SD turn, the recorder retains both seat tags so the writer
-    can detect the (schema-blocked) two-seat case."""
+def test_sd_records_accumulate_both_seats_without_overwrite():
+    """When both seats reach SD on the one SD turn, each seat's play + measurement is retained under
+    its own key - no overwrite - so the writer can persist both."""
     rec = _recorder()
-    rec.record_sd_play_proposal(
-        _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=0, guesser_seat=0)
-    rec.record_sd_play_proposal(
-        _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=0, guesser_seat=1)
+    play0 = _guess_proposal(_call(role="guesser_sd"))
+    play1 = _guess_proposal(_call(role="guesser_sd"))
+    meas0 = ConfidenceRanking(rankings=[RankedCard(word="A", confidence=0.5)],
+                              llm_call=_call(role="measurement_sd"))
+    meas1 = ConfidenceRanking(rankings=[RankedCard(word="B", confidence=0.5)],
+                              llm_call=_call(role="measurement_sd"))
+    rec.record_sd_play_proposal(play0, clue_giver_seat=0, guesser_seat=0)
+    rec.record_sd_play_proposal(play1, clue_giver_seat=0, guesser_seat=1)
+    rec.record_sd_measurement(meas0, clue_giver_seat=0, guesser_seat=0)
+    rec.record_sd_measurement(meas1, clue_giver_seat=0, guesser_seat=1)
 
     sd = [t for t in rec.turns if t.phase == "sudden_death"][0]
-    assert sd.sd_guesser_seats == {0, 1}
+    assert sd.sd_play_by_seat == {0: play0, 1: play1}
+    assert sd.sd_measurement_by_seat == {0: meas0, 1: meas1}
 
 
 def test_sd_records_default_guesser_seat_is_llm():
@@ -237,7 +246,7 @@ def test_sd_records_default_guesser_seat_is_llm():
     rec.record_sd_play_proposal(
         _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=1)
     sd = [t for t in rec.turns if t.phase == "sudden_death"][0]
-    assert sd.sd_guesser_seats == {0}
+    assert set(sd.sd_play_by_seat) == {0}
 
 
 # outcome / flushed latch
