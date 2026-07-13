@@ -220,6 +220,68 @@ def test_persist_sudden_death_game():
         assert {p.kind for p in proposals} == {"play", "measurement"}
 
 
+def test_persist_single_seat_sd_attributes_guesser_seat():
+    """The SD play/measurement proposals are attributed to the recorded guesser seat, not a
+    hardcoded seat 0 (seat 1 here)."""
+    from backend.app.db import writer
+    from backend.app.db.models import GuessProposalModel, TurnModel
+    from backend.app.db.session import session_scope
+
+    with session_scope() as session:
+        board_id, _ = _insert_board(session)
+
+    rec = _recorder(board_id)
+    rec.record_sd_measurement(ConfidenceRanking(
+        rankings=[RankedCard(word="ALPHA", confidence=0.7)],
+        llm_call=_call("measurement_sd"),
+    ), clue_giver_seat=0, guesser_seat=1)
+    rec.record_sd_play_proposal(GuessProposal(
+        proposals=["ALPHA"], confidence=[0.9], reasoning="r", stop_reason="s",
+        llm_call=_call("guesser_sd"),
+    ), clue_giver_seat=0, guesser_seat=1)
+    rec.record_sd_reveal(clue_giver_seat=0, card_id=0, result_str="victory_sd",
+                         timer_tokens_after=0, ended_game=True, proposal_index=0, acting_seat=1)
+    rec.set_outcome("victory", 0)
+
+    writer.persist_game(rec, status="completed")
+
+    with session_scope() as session:
+        turn = session.execute(select(TurnModel).where(
+            TurnModel.game_id == rec.game_id)).scalar_one()
+        proposals = session.execute(select(GuessProposalModel).where(
+            GuessProposalModel.turn_id == turn.id)).scalars().all()
+        assert {p.kind for p in proposals} == {"play", "measurement"}
+        assert all(p.guesser_seat == 1 for p in proposals)
+
+
+def test_persist_two_seat_sd_raises_named_error():
+    """Two distinct SD guesser seats on the one SD turn cannot be represented under
+    UNIQUE(turn_id, kind): the writer raises a named error naming the migration seam and persists
+    nothing (transaction rolls back)."""
+    from backend.app.db import writer
+    from backend.app.db.models import GameModel
+    from backend.app.db.session import session_scope
+
+    with session_scope() as session:
+        board_id, _ = _insert_board(session)
+
+    rec = _recorder(board_id)
+    for seat in (0, 1):
+        rec.record_sd_play_proposal(GuessProposal(
+            proposals=["ALPHA"], confidence=[0.9], reasoning="r", stop_reason="s",
+            llm_call=_call("guesser_sd"),
+        ), clue_giver_seat=1, guesser_seat=seat)
+    rec.set_outcome("victory", 0)
+
+    with pytest.raises(ValueError, match="widening UNIQUE"):
+        writer.persist_game(rec, status="completed")
+
+    assert rec.flushed is False
+    with session_scope() as session:
+        assert session.execute(select(GameModel).where(
+            GameModel.id == rec.game_id)).first() is None
+
+
 def test_persist_raises_on_missing_board():
     from backend.app.db import writer
 

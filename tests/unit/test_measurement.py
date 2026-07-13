@@ -401,3 +401,146 @@ def test_switch_roles_sets_sd_pending_flag(valid_board_data):
     assert engine.state.current_phase in (
         GamePhase.SUDDEN_DEATH_LLM, GamePhase.SUDDEN_DEATH_HUMAN)
     assert engine.state.sd_measurement_pending is True
+
+
+# Seat symmetry: the guess/measurement/SD builders are driven by the guesser seat, using the
+# per-seat reveal predicate (player_id not in card.revealed_by) that mirrors resolve_guess's guard.
+
+def _seat1_guessing_engine(valid_board_data: dict) -> CodenamesDuetEngine:
+    """A guessing-phase engine with seat 1 as the guesser (the future LLM-vs-LLM seat)."""
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board)
+    engine.state.clue_giver = 0
+    engine.state.guesser = 1
+    engine.state.current_phase = GamePhase.GUESSING
+    engine.state.current_clue = ClueEntry(
+        clue="battle", count=3, clue_giver=0, turn_number=engine.state.turn_number)
+    return engine
+
+
+def _board_words_in(text: str, words: set[str]) -> set[str]:
+    """The board words listed (as '- WORD') in a rendered prompt."""
+    return {w for w in words if f"- {w}" in text}
+
+
+def test_seat1_guess_builder_uses_per_seat_reveal_predicate(valid_board_data):
+    """The seat-1 guess builder offers cards by seat 1's own revealed_by, mirroring the engine's
+    per-seat resolve_guess guard: a card revealed only by seat 0 is still shown to seat 1, and a
+    card seat 1 revealed is hidden. A shared `not card.revealed` reading would wrongly hide the
+    seat-0-only card (both are card.revealed here)."""
+    engine = _seat1_guessing_engine(valid_board_data)
+    cards = engine.state.board.cards
+    cards[0].revealed = True
+    cards[0].revealed_by = [1]   # BUCKET: seat-1 reveal -> hidden from seat 1
+    cards[1].revealed = True
+    # BRICK: seat-0-only reveal -> still shown to seat 1
+    cards[1].revealed_by = [0]
+
+    user_prompt = LLMService()._build_guess_request(
+        engine.state, "test_model", player_id=1).messages[-1].content
+
+    # discriminating card: per-seat keeps it; shared would drop it
+    assert "BRICK" in user_prompt
+    assert "BUCKET" not in user_prompt   # seat-1 reveal excluded
+
+
+def test_seat1_measurement_builder_matches_seat1_guess_words(valid_board_data):
+    """The seat-1 measurement builder observes the identical unrevealed board-word set as the seat-1
+    guess builder (the measurement must mirror the guess for the same seat)."""
+    engine = _seat1_guessing_engine(valid_board_data)
+    cards = engine.state.board.cards
+    cards[0].revealed = True
+    cards[0].revealed_by = [1]
+    cards[1].revealed = True
+    cards[1].revealed_by = [0]
+
+    svc = LLMService()
+    board_words = {c.text for c in cards}
+    guess = svc._build_guess_request(
+        engine.state, "m", player_id=1).messages[-1].content
+    meas = svc._build_measurement_request(
+        engine.state, "m", player_id=1).messages[-1].content
+
+    assert _board_words_in(
+        guess, board_words) == _board_words_in(meas, board_words)
+    assert "BRICK" in _board_words_in(meas, board_words)
+    assert "BUCKET" not in _board_words_in(meas, board_words)
+
+
+def test_seat1_sd_builders_use_seat1_agents_and_reveals(valid_board_data):
+    """The seat-1 SD guess + measurement builders both report seat 1's remaining agent count and the
+    same seat-1 unrevealed-word set (they mirror each other for the second SD seat)."""
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board)
+    engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
+    engine.state.agents_remaining = [3, 5]
+    cards = engine.state.board.cards
+    cards[0].revealed = True
+    cards[0].revealed_by = [1]   # hidden from seat 1
+    cards[1].revealed = True
+    cards[1].revealed_by = [0]   # shown to seat 1
+
+    svc = LLMService()
+    board_words = {c.text for c in cards}
+    guess = svc._build_guess_sd_request(
+        engine.state, "m", player_id=1).messages[-1].content
+    meas = svc._build_measurement_sd_request(
+        engine.state, "m", player_id=1).messages[-1].content
+
+    # agents_remaining[1], not seat 0's 3
+    assert "5 agent" in guess and "5 agent" in meas
+    assert "3 agent" not in guess
+    assert _board_words_in(
+        guess, board_words) == _board_words_in(meas, board_words)
+    assert "BRICK" in _board_words_in(guess, board_words)
+    assert "BUCKET" not in _board_words_in(guess, board_words)
+
+
+def test_both_seats_reach_sudden_death_hold_both_rankings(valid_board_data):
+    """A game where both seats reach sudden death holds BOTH seats' rankings, each captured at that
+    seat's own pre-first-selection instant: the pending flag is re-armed at the SUDDEN_DEATH_LLM ->
+    SUDDEN_DEATH_HUMAN handoff, and rankings_by_seat carries both."""
+    engine = CodenamesDuetEngine(Board(**valid_board_data))
+    engine.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
+    engine.state.agents_remaining = [1, 1]
+    engine.state.sd_measurement_pending = True
+
+    r0 = ConfidenceRanking(
+        rankings=[RankedCard(word="RUSSIA", confidence=0.8)])
+    engine.attach_sudden_death_ranking(r0, player_id=0)
+    assert engine.state.sd_measurement_pending is False
+
+    # Seat 0 reveals its last SD agent (CAVE id 5: human=AGENT, llm=CIVILIAN -> seat-0-only).
+    assert engine.resolve_guess(5, player_id=0) == "agent"
+    assert engine.state.agents_remaining[0] == 0
+    assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
+    # Re-armed at the handoff so seat 1 is measured at its own pre-first-selection instant.
+    assert engine.state.sd_measurement_pending is True
+
+    r1 = ConfidenceRanking(rankings=[RankedCard(word="BRICK", confidence=0.9)])
+    engine.attach_sudden_death_ranking(r1, player_id=1)
+    assert engine.state.sd_measurement_pending is False
+
+    sd = engine.state.sudden_death
+    assert sd.rankings_by_seat[0] is r0
+    assert sd.rankings_by_seat[1] is r1
+    assert sd.confidence_ranking is r1   # backward-compat mirror = most recent
+
+
+def test_targets_never_reach_seat1_measurement_prompt(valid_board_data):
+    """Guardrail holds for seat 1: the clue-giver's intended target set S never reaches the
+    seat-1 measurement prompt, from either the live clue or history."""
+    sentinel = "ZZ_SENTINEL_TARGET_ZZ"
+    engine = _seat1_guessing_engine(valid_board_data)
+    engine.state.current_clue.targets = [sentinel]
+    engine.state.current_clue.targets_resolved = [
+        ResolvedTarget(word=sentinel)]
+    engine.state.clue_history.insert(0, ClueEntry(
+        clue="ocean", count=2, clue_giver=0, turn_number=0,
+        targets=[sentinel], targets_resolved=[ResolvedTarget(word=sentinel)]))
+
+    request = LLMService()._build_measurement_request(
+        engine.state, "test_model", player_id=1)
+
+    for message in request.messages:
+        assert sentinel not in message.content

@@ -203,6 +203,43 @@ def test_ensure_sudden_death_turn_is_idempotent():
     assert len([t for t in rec.turns if t.phase == "sudden_death"]) == 1
 
 
+def test_sd_records_tag_explicit_guesser_seat():
+    """The SD record methods store the guesser seat (in SD both seats guess, so it is not derivable
+    from clue_giver_seat and must be carried explicitly)."""
+    rec = _recorder()
+    rec.record_sd_measurement(
+        ConfidenceRanking(rankings=[RankedCard(word="X", confidence=0.5)],
+                          llm_call=_call(role="measurement_sd")),
+        clue_giver_seat=0, guesser_seat=1)
+    rec.record_sd_play_proposal(
+        _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=0, guesser_seat=1)
+
+    sd = [t for t in rec.turns if t.phase == "sudden_death"][0]
+    assert sd.sd_guesser_seats == {1}
+
+
+def test_sd_records_accumulate_both_seats_for_writer_detection():
+    """When both seats reach SD on the one SD turn, the recorder retains both seat tags so the writer
+    can detect the (schema-blocked) two-seat case."""
+    rec = _recorder()
+    rec.record_sd_play_proposal(
+        _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=0, guesser_seat=0)
+    rec.record_sd_play_proposal(
+        _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=0, guesser_seat=1)
+
+    sd = [t for t in rec.turns if t.phase == "sudden_death"][0]
+    assert sd.sd_guesser_seats == {0, 1}
+
+
+def test_sd_records_default_guesser_seat_is_llm():
+    """The default guesser seat is the LLM (0), keeping the interactive path's positional calls."""
+    rec = _recorder()
+    rec.record_sd_play_proposal(
+        _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=1)
+    sd = [t for t in rec.turns if t.phase == "sudden_death"][0]
+    assert sd.sd_guesser_seats == {0}
+
+
 # outcome / flushed latch
 
 def test_set_outcome_and_flushed_latch():
