@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse
 from backend.app.core.loader import BoardLoader
 from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.core.llm_service import LLMService
+from backend.app.core.game_conductor import conduct_clue, conduct_guess, conduct_sd_guess
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.core.llm.client_openrouter import LLMClientOpenRouter
@@ -256,17 +257,7 @@ async def llm_give_clue(game_id: str):
 
     engine, llm_client, recorder = game
 
-    proposal = await _llm_service.propose_clue(llm_client, engine.state, engine.clue_validator)
-
-    engine.receive_clue(proposal.clue, proposal.count,
-                        player_id=0, raw_payload=proposal.raw_payload,
-                        targets=proposal.targets)
-
-    # Record the clue with all its model attempts (accepted + rejected) from the proposal.
-    recorder.record_clue(engine.state.current_clue, proposal=proposal)
-
-    print(
-        f"LLM proposed clue: {proposal.clue} ({proposal.count}) with reasoning: {proposal.reasoning}")
+    await conduct_clue(_llm_service, llm_client, engine, recorder, player_id=0)
 
     cards_html = _render_cards_oob(engine, game_id)
     log_html = templates.get_template("partials/_log_entry.html").render({
@@ -293,53 +284,10 @@ async def llm_make_guess(game_id: str):
 
     engine, llm_client, recorder = game
 
-    try:
-        proposal = await _llm_service.propose_guess(llm_client, engine.state, player_id=0)
-    except (ValueError, PermissionError) as e:
-        print(f"Error during LLM guess proposal: {str(e)}")
-
-    # Record the ordered play proposal (kind='play') for this turn.
-    recorder.record_play_proposal(proposal)
-
-    # Out-of-band measurement: elicit the confidence ranking over all unrevealed cards at the
-    # pre-resolution instant (same state as the play-guess request above), before the resolve loop.
-    # Strictly additive and side-effect-free; a failure here must never break game play.
-    try:
-        await _llm_service.measure_and_attach_confidence_ranking(llm_client, engine, player_id=0)
-    except (ValueError, PermissionError) as e:
-        print(f"Error during LLM confidence-ranking measurement: {str(e)}")
-
-    # Record the measurement (no-op if it failed above).
-    recorder.record_measurement(engine.state.current_clue.confidence_ranking)
-
     html = ""
-    for idx, word in enumerate(proposal.proposals):
-        card_id = engine.state.board.get_card_id_by_word(word)
-        if card_id is None:
-            # LLM hallucinated a word not on the board
-            continue
 
-        try:
-            result = engine.resolve_guess(card_id, player_id=0)
-        except (ValueError, PermissionError):
-            break
-
-        # Index-aligned reveal capture: idx is the position in the play proposal's items.
-        recorder.record_reveal(
-            card_id=card_id,
-            result_str=result,
-            timer_tokens_after=engine.state.timer_tokens,
-            ended_game=engine.state.is_game_over,
-            proposal_index=idx,
-            acting_seat=0,
-        )
-        _flush_if_over(engine, recorder)
-
-        print(
-            f"LLM proposed guess: {word}")
-
-        card = engine.state.board.cards[card_id]
-
+    def on_reveal(card_id: int, result: str, card) -> None:
+        nonlocal html
         html += templates.get_template("partials/_log_entry.html").render({
             "card": card, "result": result, "state": engine.state, "player": "LLM"
         })
@@ -349,18 +297,11 @@ async def llm_make_guess(game_id: str):
         html += templates.get_template("partials/_game_stats.html").render({
             "state": engine.state, "oob": True
         })
+        if result in ("civilian", "assassin", "victory", "victory_sd"):
+            html += _render_cards_oob(engine, game_id)
 
-        if result != "agent":
-            # civilian, assassin, or victory - turn or game ended
-            if result in ("civilian", "assassin", "victory", "victory_sd"):
-                html += _render_cards_oob(engine, game_id)
-            break
-    else:
-        # All proposals were correct agents - LLM has no more guesses, pass the turn
-        try:
-            engine.pass_turn(0)
-        except (ValueError, PermissionError):
-            pass
+    await conduct_guess(_llm_service, llm_client, engine, recorder,
+                        player_id=0, flush=_flush_if_over, on_reveal=on_reveal)
 
     html += templates.get_template("partials/_clue_banner.html").render({
         "state": engine.state, "game_id": game_id, "oob": True
@@ -384,58 +325,10 @@ async def llm_make_guess_sd(game_id: str):
     if engine.state.current_phase != GamePhase.SUDDEN_DEATH_LLM:
         return HTMLResponse("Not in LLM sudden death phase.", status_code=400)
 
-    # The sudden-death turn has no clue; record the clue_giver held at SD entry as its clue_giver_seat.
-    sd_clue_giver = engine.state.clue_giver
-
-    # Out-of-band measurement: on entry to the LLM's sudden-death turn, if the engine flagged the
-    # sudden-death transition, elicit and attach the confidence ranking once, before any selection.
-    # Strictly additive; a failure here must never break game play.
-    if engine.state.sd_measurement_pending:
-        try:
-            await _llm_service.measure_and_attach_confidence_ranking_sd(llm_client, engine, player_id=0)
-        except (ValueError, PermissionError) as e:
-            print(
-                f"Error during LLM sudden-death confidence-ranking measurement: {str(e)}")
-
-    # Record the SD measurement (no-op if it failed or was already taken this game).
-    if engine.state.sudden_death is not None:
-        recorder.record_sd_measurement(
-            engine.state.sudden_death.confidence_ranking, sd_clue_giver)
-
-    try:
-        proposal = await _llm_service.propose_guess_sd(llm_client, engine.state, player_id=0)
-    except (ValueError, PermissionError) as e:
-        print(f"Error during LLM sudden death guess proposal: {str(e)}")
-        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
-
-    # Record the SD play proposal (kind='play') on the sudden-death turn.
-    recorder.record_sd_play_proposal(proposal, sd_clue_giver)
-
     html = ""
-    for idx, word in enumerate(proposal.proposals):
-        card_id = engine.state.board.get_card_id_by_word(word)
-        if card_id is None:
-            continue
 
-        try:
-            result = engine.resolve_guess(card_id, player_id=0)
-        except (ValueError, PermissionError):
-            break
-
-        recorder.record_sd_reveal(
-            clue_giver_seat=sd_clue_giver,
-            card_id=card_id,
-            result_str=result,
-            timer_tokens_after=engine.state.timer_tokens,
-            ended_game=engine.state.is_game_over,
-            proposal_index=idx,
-            acting_seat=0,
-        )
-        _flush_if_over(engine, recorder)
-
-        print(f"LLM sudden death guess: {word}")
-
-        card = engine.state.board.cards[card_id]
+    def on_reveal(card_id: int, result: str, card) -> None:
+        nonlocal html
         html += templates.get_template("partials/_log_entry.html").render({
             "card": card, "result": result, "state": engine.state, "player": "LLM"
         })
@@ -445,11 +338,14 @@ async def llm_make_guess_sd(game_id: str):
         html += templates.get_template("partials/_game_stats.html").render({
             "state": engine.state, "oob": True
         })
+        if result in ("victory_sd", "victory"):
+            html += _render_cards_oob(engine, game_id)
 
-        if result != "agent":
-            if result in ("victory_sd", "victory"):
-                html += _render_cards_oob(engine, game_id)
-            break
+    try:
+        await conduct_sd_guess(_llm_service, llm_client, engine, recorder,
+                               player_id=0, flush=_flush_if_over, on_reveal=on_reveal)
+    except (ValueError, PermissionError) as e:
+        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
 
     html += templates.get_template("partials/_clue_banner.html").render({
         "state": engine.state, "game_id": game_id, "oob": True

@@ -10,6 +10,19 @@ if TYPE_CHECKING:
 
 MAX_CLUE_RETRIES = 3
 
+# The seat allowed to guess in each sudden-death phase, mirroring the engine's own invariant
+# (resolve_guess raises unless seat 1 acts in SUDDEN_DEATH_HUMAN / seat 0 in SUDDEN_DEATH_LLM).
+_SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM, 1: GamePhase.SUDDEN_DEATH_HUMAN}
+
+
+def _require_sd_seat_phase(game_state: GameState, player_id: int, action: str) -> None:
+    """Guard: seat 0 may act only in SUDDEN_DEATH_LLM, seat 1 only in SUDDEN_DEATH_HUMAN."""
+    expected = _SD_PHASE_BY_SEAT.get(player_id)
+    if expected is None or game_state.current_phase != expected:
+        raise ValueError(
+            f"Cannot {action} for seat {player_id} in phase {game_state.current_phase}: "
+            f"seat 0 is valid only in SUDDEN_DEATH_LLM and seat 1 only in SUDDEN_DEATH_HUMAN.")
+
 
 class LLMService:
     SYSTEM_TEMP_CG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_CLUE_GIVER.txt"
@@ -196,9 +209,7 @@ class LLMService:
 
         :return: An instance of GuessProposal containing the proposed guesses from the LLM.
         """
-        if game_state.current_phase != GamePhase.SUDDEN_DEATH_LLM:
-            raise ValueError(
-                "Cannot propose a sudden death guess outside of SUDDEN_DEATH_LLM phase.")
+        _require_sd_seat_phase(game_state, player_id, "propose a sudden death guess")
 
         request = self._build_guess_sd_request(
             game_state, llm_client.model_name, player_id)
@@ -250,9 +261,8 @@ class LLMService:
 
         :return: The parsed ConfidenceRanking over the unrevealed cards.
         """
-        if game_state.current_phase != GamePhase.SUDDEN_DEATH_LLM:
-            raise ValueError(
-                "Cannot elicit a sudden death confidence ranking outside of SUDDEN_DEATH_LLM phase.")
+        _require_sd_seat_phase(
+            game_state, player_id, "elicit a sudden death confidence ranking")
 
         request = self._build_measurement_sd_request(
             game_state, llm_client.model_name, player_id)
