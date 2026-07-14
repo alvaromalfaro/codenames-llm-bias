@@ -16,6 +16,7 @@ from backend.app.config import llm_models
 from backend.app.db import writer
 from backend.app.db.recorder import GameRecorder
 from backend.app.models.game_schemas import GamePhase
+from backend.app.models.llm_errors import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -300,8 +301,11 @@ async def llm_make_guess(game_id: str):
         if result in ("civilian", "assassin", "victory", "victory_sd"):
             html += _render_cards_oob(engine, game_id)
 
-    await conduct_guess(_llm_service, llm_client, engine, recorder,
-                        player_id=0, flush=_flush_if_over, on_reveal=on_reveal)
+    try:
+        await conduct_guess(_llm_service, llm_client, engine, recorder,
+                            player_id=0, flush=_flush_if_over, on_reveal=on_reveal)
+    except (ValueError, PermissionError, LLMError) as e:
+        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
 
     html += templates.get_template("partials/_clue_banner.html").render({
         "state": engine.state, "game_id": game_id, "oob": True

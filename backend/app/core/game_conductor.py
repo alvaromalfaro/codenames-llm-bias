@@ -50,10 +50,7 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
 
     Returns the ordered list of resolved ``(card_id, result, card)`` reveals.
     """
-    try:
-        proposal = await service.propose_guess(client, engine.state, player_id=player_id)
-    except (ValueError, PermissionError) as e:
-        print(f"Error during LLM guess proposal: {str(e)}")
+    proposal = await service.propose_guess(client, engine.state, player_id=player_id)
 
     # Record the ordered play proposal (kind='play') for this turn.
     recorder.record_play_proposal(proposal)
