@@ -19,7 +19,8 @@ def _mock_response(text, raw_payload=None):
     r.text = text
     r.model_used = "test_model"
     r.latency_ms = 3200
-    r.raw_payload = raw_payload if raw_payload is not None else json.loads(text)
+    r.raw_payload = raw_payload if raw_payload is not None else json.loads(
+        text)
     r.usage = None
     r.finish_reason = None
     r.provider = None
@@ -358,7 +359,8 @@ async def test_propose_clue_retries_on_invalid_clue(game_state_cg):
     assert [c.retry_index for c in result.llm_calls] == [0, 1]
     assert all(c.role == "clue_giver" for c in result.llm_calls)
     # The accepted (last) attempt's rendered prompt is the retry request (has the correction turns).
-    assert any("rejected" in m.content.lower() for m in result.llm_calls[1].rendered_prompt)
+    assert any("rejected" in m.content.lower()
+               for m in result.llm_calls[1].rendered_prompt)
 
 
 @pytest.mark.asyncio
@@ -510,3 +512,104 @@ async def test_targets_never_reach_guesser_prompt(game_state_guessing):
 
     for message in request.messages:
         assert sentinel not in message.content
+
+
+# An optional per-call seed flows method -> builder -> LLMRequest.seed.
+
+def _mock_client_seq(texts):
+    """A mock LLMClient whose ``generate`` returns the given canned responses in order."""
+    client = MagicMock(spec=LLMClient)
+    client.model_name = "test_model"
+    client.generate = AsyncMock(side_effect=[_mock_response(t) for t in texts])
+    return client
+
+
+def _sd_llm_state(game_state_guessing):
+    """Reshape the guessing fixture (guesser 0) into a valid SUDDEN_DEATH_LLM state for seat 0."""
+    game_state_guessing.current_phase = GamePhase.SUDDEN_DEATH_LLM
+    return game_state_guessing
+
+
+@pytest.mark.asyncio
+async def test_propose_guess_seed_reaches_request(game_state_guessing):
+    client = _mock_client_seq(
+        ['{"proposals": [{"word": "NAPOLEON", "confidence": 0.9}], '
+         '"reasoning": "r", "stop_reason": "s"}'])
+
+    await LLMService().propose_guess(client, game_state_guessing, player_id=0, seed=12345)
+
+    assert client.generate.await_args_list[0][0][0].seed == 12345
+
+
+@pytest.mark.asyncio
+async def test_propose_guess_sd_seed_reaches_request(game_state_guessing):
+    state = _sd_llm_state(game_state_guessing)
+    client = _mock_client_seq(
+        ['{"proposals": [{"word": "NAPOLEON", "confidence": 0.9}], '
+         '"reasoning": "r", "stop_reason": "s"}'])
+
+    await LLMService().propose_guess_sd(client, state, player_id=0, seed=777)
+
+    assert client.generate.await_args_list[0][0][0].seed == 777
+
+
+@pytest.mark.asyncio
+async def test_elicit_confidence_ranking_seed_reaches_request(game_state_guessing):
+    client = _mock_client_seq(
+        ['{"reasoning": "r", "rankings": [{"word": "NAPOLEON", "confidence": 0.5}]}'])
+
+    await LLMService().elicit_confidence_ranking(client, game_state_guessing, player_id=0, seed=42)
+
+    assert client.generate.await_args_list[0][0][0].seed == 42
+
+
+@pytest.mark.asyncio
+async def test_elicit_confidence_ranking_sd_seed_reaches_request(game_state_guessing):
+    state = _sd_llm_state(game_state_guessing)
+    client = _mock_client_seq(
+        ['{"reasoning": "r", "rankings": [{"word": "NAPOLEON", "confidence": 0.5}]}'])
+
+    await LLMService().elicit_confidence_ranking_sd(client, state, player_id=0, seed=99)
+
+    assert client.generate.await_args_list[0][0][0].seed == 99
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_seed_reaches_request(game_state_cg):
+    client = _mock_client_seq(
+        ['{"clue": "battle", "count": 2, "reasoning": "r"}'])
+
+    await LLMService().propose_clue(
+        client, game_state_cg, ClueValidator(game_state_cg.board.cards), seed=555)
+
+    assert client.generate.await_args_list[0][0][0].seed == 555
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_retry_preserves_seed(game_state_cg):
+    """A clue rejected once then accepted issues both generate calls with the same injected seed, so 
+    the retry (with a changed prompt) is drawn from the same seed."""
+    client = _mock_client_seq([
+        # rejected (board word)
+        '{"clue": "BUCKET", "count": 2, "reasoning": "r"}',
+        '{"clue": "battle", "count": 2, "reasoning": "r"}',   # accepted
+    ])
+
+    await LLMService().propose_clue(
+        client, game_state_cg, ClueValidator(game_state_cg.board.cards), seed=8080)
+
+    assert client.generate.await_count == 2
+    assert client.generate.await_args_list[0][0][0].seed == 8080
+    assert client.generate.await_args_list[1][0][0].seed == 8080
+
+
+@pytest.mark.asyncio
+async def test_no_seed_leaves_request_seed_none(game_state_guessing):
+    """Default-None equivalence: with no seed argument, the request seed is None."""
+    client = _mock_client_seq(
+        ['{"proposals": [{"word": "NAPOLEON", "confidence": 0.9}], '
+         '"reasoning": "r", "stop_reason": "s"}'])
+
+    await LLMService().propose_guess(client, game_state_guessing, player_id=0)
+
+    assert client.generate.await_args_list[0][0][0].seed is None

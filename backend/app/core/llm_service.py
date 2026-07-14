@@ -1,5 +1,5 @@
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.clue_validator import ClueValidator
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage, LLMCallRecord, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat
@@ -100,7 +100,7 @@ class LLMService:
             raw_payload=response.raw_payload,
         )
 
-    async def propose_clue(self, llm_client: LLMClient, game_state: GameState, validator: ClueValidator, player_id: int = 0) -> ClueProposal:
+    async def propose_clue(self, llm_client: LLMClient, game_state: GameState, validator: ClueValidator, player_id: int = 0, seed: Optional[int] = None) -> ClueProposal:
         """
         Proposes a clue for the current game state. This method checks that the game is in the 
         correct phase and that the LLM is the clue giver before building the request, sending it to
@@ -121,7 +121,7 @@ class LLMService:
                 "The player must be the clue giver to propose a clue.")
 
         request = self._build_clue_request(
-            game_state, llm_client.model_name, player_id)
+            game_state, llm_client.model_name, player_id, seed=seed)
 
         reason = ""
         # Audit every attempt (accepted + rejected), ordered by retry_index.
@@ -159,7 +159,7 @@ class LLMService:
             f"Last rejection: {reason}"
         )
 
-    async def propose_guess(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> GuessProposal:
+    async def propose_guess(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> GuessProposal:
         """
         Proposes guesses for the current game state. This method checks that the game is in the 
         correct phase and that the LLM is the guesser before building the request, sending it to
@@ -186,7 +186,7 @@ class LLMService:
 
         # Build the LLM request for proposing a guess
         request = self._build_guess_request(
-            game_state, llm_client.model_name, player_id)
+            game_state, llm_client.model_name, player_id, seed=seed)
 
         # Send the request to the LLM client and get the response.
         response = await llm_client.generate(request, expected_format=GuessJSONFormat)
@@ -198,7 +198,7 @@ class LLMService:
 
         return guess_proposal
 
-    async def propose_guess_sd(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> GuessProposal:
+    async def propose_guess_sd(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> GuessProposal:
         """
         Proposes guesses for the SUDDEN_DEATH_LLM phase. No clue is available; the LLM must
         identify its remaining agents from memory of the full game.
@@ -212,14 +212,14 @@ class LLMService:
         _require_sd_seat_phase(game_state, player_id, "propose a sudden death guess")
 
         request = self._build_guess_sd_request(
-            game_state, llm_client.model_name, player_id)
+            game_state, llm_client.model_name, player_id, seed=seed)
         response = await llm_client.generate(request, expected_format=GuessJSONFormat)
         guess_proposal = self._build_guess_proposal(response)
         guess_proposal.llm_call = self._call_record(
             request, response, "guesser_sd")
         return guess_proposal
 
-    async def elicit_confidence_ranking(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> ConfidenceRanking:
+    async def elicit_confidence_ranking(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> ConfidenceRanking:
         """
         Elicits an out-of-band confidence ranking over all unrevealed cards for the current clue,
         parallel to propose_guess but for measurement. This is a separate call that does not touch
@@ -243,13 +243,13 @@ class LLMService:
                 "The player must be the guesser to elicit a confidence ranking.")
 
         request = self._build_measurement_request(
-            game_state, llm_client.model_name, player_id)
+            game_state, llm_client.model_name, player_id, seed=seed)
         response = await llm_client.generate(request, expected_format=ConfidenceRankingJSONFormat)
         ranking = self._build_confidence_ranking(response)
         ranking.llm_call = self._call_record(request, response, "measurement")
         return ranking
 
-    async def elicit_confidence_ranking_sd(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0) -> ConfidenceRanking:
+    async def elicit_confidence_ranking_sd(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> ConfidenceRanking:
         """
         Elicits the out-of-band sudden-death confidence ranking over all unrevealed cards, parallel
         to propose_guess_sd. Measurement only; never sees S. Elicited on entry to the sudden-death
@@ -265,14 +265,14 @@ class LLMService:
             game_state, player_id, "elicit a sudden death confidence ranking")
 
         request = self._build_measurement_sd_request(
-            game_state, llm_client.model_name, player_id)
+            game_state, llm_client.model_name, player_id, seed=seed)
         response = await llm_client.generate(request, expected_format=ConfidenceRankingJSONFormat)
         ranking = self._build_confidence_ranking(response)
         ranking.llm_call = self._call_record(
             request, response, "measurement_sd")
         return ranking
 
-    async def measure_and_attach_confidence_ranking(self, llm_client: LLMClient, engine: "CodenamesDuetEngine", player_id: int = 0) -> ConfidenceRanking:
+    async def measure_and_attach_confidence_ranking(self, llm_client: LLMClient, engine: "CodenamesDuetEngine", player_id: int = 0, seed: Optional[int] = None) -> ConfidenceRanking:
         """
         Composed measurement entry point (headless-invocable, independent of routes.py): the service
         elicits the standard confidence ranking and the engine attaches it to the current turn's
@@ -285,11 +285,11 @@ class LLMService:
         :return: The parsed ConfidenceRanking that was attached.
         """
         ranking = await self.elicit_confidence_ranking(
-            llm_client, engine.state, player_id)
+            llm_client, engine.state, player_id, seed=seed)
         engine.attach_confidence_ranking(ranking)
         return ranking
 
-    async def measure_and_attach_confidence_ranking_sd(self, llm_client: LLMClient, engine: "CodenamesDuetEngine", player_id: int = 0) -> ConfidenceRanking:
+    async def measure_and_attach_confidence_ranking_sd(self, llm_client: LLMClient, engine: "CodenamesDuetEngine", player_id: int = 0, seed: Optional[int] = None) -> ConfidenceRanking:
         """
         Composed sudden-death measurement entry point (headless-invocable): the service elicits the
         sudden-death confidence ranking and the engine attaches it to the per-game SuddenDeathEntry,
@@ -302,11 +302,11 @@ class LLMService:
         :return: The parsed ConfidenceRanking that was attached.
         """
         ranking = await self.elicit_confidence_ranking_sd(
-            llm_client, engine.state, player_id)
+            llm_client, engine.state, player_id, seed=seed)
         engine.attach_sudden_death_ranking(ranking, player_id)
         return ranking
 
-    def _build_clue_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
+    def _build_clue_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
         """
         Builds an LLMRequest for proposing a clue based on the current game state. This method
         extracts relevant information from the game state, formats it into a user prompt, and
@@ -364,7 +364,7 @@ class LLMService:
         messages.append(LLMMessage(role="user", content=user_prompt))
 
         return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s)
+                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
 
     def _build_clue_proposal(self, response: LLMResponse) -> ClueProposal:
         """
@@ -427,9 +427,10 @@ class LLMService:
             temperature=original_request.temperature,
             max_tokens=original_request.max_tokens,
             timeout_s=original_request.timeout_s,
+            seed=original_request.seed,
         )
 
-    def _build_guess_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
+    def _build_guess_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
         """
         Builds an LLMRequest for proposing guesses based on the current game state. This method 
         extracts relevant information from the game state, formats it into a user prompt, and 
@@ -478,9 +479,9 @@ class LLMService:
         messages.append(LLMMessage(role="user", content=user_prompt))
 
         return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s)
+                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
 
-    def _build_guess_sd_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
+    def _build_guess_sd_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
         """
         Builds an LLMRequest for sudden death guessing. No current clue is available; the LLM
         receives full clue history and must identify all remaining agents from memory. Seat-
@@ -512,7 +513,7 @@ class LLMService:
             role="system", content=self._system_prompt_sd_gg)]
         messages.append(LLMMessage(role="user", content=user_prompt))
         return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s)
+                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
 
     def _build_guess_proposal(self, response: LLMResponse) -> GuessProposal:
         """
@@ -547,7 +548,7 @@ class LLMService:
             stop_reason=stop_reason.strip(), raw_payload=response.raw_payload
         )
 
-    def _build_measurement_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
+    def _build_measurement_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
         """
         Builds the out-of-band measurement request for the standard guessing phase. It mirrors
         _build_guess_request exactly for the public inputs the guesser sees - the current clue and
@@ -586,9 +587,9 @@ class LLMService:
         ]
 
         return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s)
+                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
 
-    def _build_measurement_sd_request(self, game_state: GameState, model: str, player_id: int) -> LLMRequest:
+    def _build_measurement_sd_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
         """
         Builds the out-of-band measurement request for the sudden-death phase. Mirrors
         _build_guess_sd_request but is seat-parameterized: it reports the guesser's own remaining
@@ -620,7 +621,7 @@ class LLMService:
             LLMMessage(role="user", content=user_prompt),
         ]
         return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s)
+                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
 
     def _build_confidence_ranking(self, response: LLMResponse) -> ConfidenceRanking:
         """

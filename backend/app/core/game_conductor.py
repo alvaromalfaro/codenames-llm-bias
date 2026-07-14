@@ -23,13 +23,14 @@ FlushHook = Callable[[object, object], None]
 RevealHook = Callable[[int, str, WordCard], None]
 
 
-async def conduct_clue(service, client, engine, recorder, *, player_id: int) -> ClueProposal:
+async def conduct_clue(service, client, engine, recorder, *, player_id: int,
+                       seed: Optional[int] = None) -> ClueProposal:
     """Conduct one LLM clue-giving turn for ``player_id``.
 
     Returns the ``ClueProposal`` (the interactive caller renders from ``engine.state`` instead).
     """
     proposal = await service.propose_clue(
-        client, engine.state, engine.clue_validator, player_id=player_id)
+        client, engine.state, engine.clue_validator, player_id=player_id, seed=seed)
 
     engine.receive_clue(proposal.clue, proposal.count,
                         player_id=player_id, raw_payload=proposal.raw_payload,
@@ -45,12 +46,14 @@ async def conduct_clue(service, client, engine, recorder, *, player_id: int) -> 
 
 
 async def conduct_guess(service, client, engine, recorder, *, player_id: int,
-                        flush: FlushHook, on_reveal: Optional[RevealHook] = None) -> list[Reveal]:
+                        flush: FlushHook, on_reveal: Optional[RevealHook] = None,
+                        seed: Optional[int] = None,
+                        measurement_seed: Optional[int] = None) -> list[Reveal]:
     """Conduct one LLM normal-play guessing turn for ``player_id``.
 
     Returns the ordered list of resolved ``(card_id, result, card)`` reveals.
     """
-    proposal = await service.propose_guess(client, engine.state, player_id=player_id)
+    proposal = await service.propose_guess(client, engine.state, player_id=player_id, seed=seed)
 
     # Record the ordered play proposal (kind='play') for this turn.
     recorder.record_play_proposal(proposal)
@@ -59,7 +62,8 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
     # pre-resolution instant (same state as the play-guess request above), before the resolve loop.
     # Strictly additive and side-effect-free; a failure here must never break game play.
     try:
-        await service.measure_and_attach_confidence_ranking(client, engine, player_id=player_id)
+        await service.measure_and_attach_confidence_ranking(
+            client, engine, player_id=player_id, seed=measurement_seed)
     except (ValueError, PermissionError) as e:
         print(f"Error during LLM confidence-ranking measurement: {str(e)}")
 
@@ -110,7 +114,9 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
 
 
 async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
-                           flush: FlushHook, on_reveal: Optional[RevealHook] = None) -> list[Reveal]:
+                           flush: FlushHook, on_reveal: Optional[RevealHook] = None,
+                           seed: Optional[int] = None,
+                           measurement_seed: Optional[int] = None) -> list[Reveal]:
     """Conduct one sudden-death guessing turn for ``player_id`` (either SD seat).
 
     Returns the ordered list of resolved ``(card_id, result, card)`` reveals.
@@ -123,7 +129,8 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
     # Strictly additive; a failure here must never break game play.
     if engine.state.sd_measurement_pending:
         try:
-            await service.measure_and_attach_confidence_ranking_sd(client, engine, player_id=player_id)
+            await service.measure_and_attach_confidence_ranking_sd(
+                client, engine, player_id=player_id, seed=measurement_seed)
         except (ValueError, PermissionError) as e:
             print(
                 f"Error during LLM sudden-death confidence-ranking measurement: {str(e)}")
@@ -136,7 +143,7 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
             sd_clue_giver, guesser_seat=player_id)
 
     try:
-        proposal = await service.propose_guess_sd(client, engine.state, player_id=player_id)
+        proposal = await service.propose_guess_sd(client, engine.state, player_id=player_id, seed=seed)
     except (ValueError, PermissionError) as e:
         print(f"Error during LLM sudden death guess proposal: {str(e)}")
         raise

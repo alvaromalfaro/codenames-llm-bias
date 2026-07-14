@@ -458,3 +458,55 @@ async def test_sd_gate_rejects_non_sd_phase():
         await service.propose_guess_sd(client, state, player_id=0)
     with pytest.raises(ValueError):
         await service.elicit_confidence_ranking_sd(client, state, player_id=1)
+
+
+# distinct play vs measurement seeds must route to their own requests.
+def _seed_by_format(client):
+    """Map each captured request's expected_format to the seed it carried."""
+    return {call.kwargs["expected_format"]: call.args[0].seed
+            for call in client.generate.call_args_list}
+
+
+@pytest.mark.asyncio
+async def test_conduct_guess_routes_distinct_play_and_measurement_seeds():
+    eng = _guessing_engine(guesser=0, agents=(5, 5))
+    client = _mock_client([_guess_json(["BRICK", "CAVE"]), _rankings_json()])
+    rec = _recorder(client)
+    rec.record_clue(eng.state.current_clue, proposal=None)
+
+    await conduct_guess(LLMService(), client, eng, rec, player_id=0,
+                        flush=MagicMock(), on_reveal=None, seed=111, measurement_seed=222)
+
+    seeds = _seed_by_format(client)
+    # play proposal carries the play seed
+    assert seeds[GuessJSONFormat] == 111
+    # measurement carries the measurement seed
+    assert seeds[ConfidenceRankingJSONFormat] == 222
+
+
+@pytest.mark.asyncio
+async def test_conduct_sd_guess_routes_distinct_play_and_measurement_seeds():
+    eng = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=1, agents=(2, 3))
+    client = _mock_client([_rankings_json(), _guess_json(["CAVE"])])
+    rec = _recorder(client)
+
+    await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0,
+                           flush=MagicMock(), on_reveal=None, seed=333, measurement_seed=444)
+
+    seeds = _seed_by_format(client)
+    assert seeds[GuessJSONFormat] == 333
+    assert seeds[ConfidenceRankingJSONFormat] == 444
+
+
+@pytest.mark.asyncio
+async def test_conduct_guess_default_none_leaves_all_request_seeds_none():
+    eng = _guessing_engine(guesser=0, agents=(5, 5))
+    client = _mock_client([_guess_json(["BRICK", "CAVE"]), _rankings_json()])
+    rec = _recorder(client)
+    rec.record_clue(eng.state.current_clue, proposal=None)
+
+    await conduct_guess(LLMService(), client, eng, rec, player_id=0,
+                        flush=MagicMock(), on_reveal=None)
+
+    assert all(
+        call.args[0].seed is None for call in client.generate.call_args_list)
