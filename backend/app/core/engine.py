@@ -17,7 +17,8 @@ class CodenamesDuetEngine:
     conditions.
     """
 
-    def __init__(self, board: Board, rng: random.Random | None = None):
+    def __init__(self, board: Board, rng: random.Random | None = None,
+                 game_id: str | None = None):
         """
         Initializes the CodenamesDuetEngine with a given board configuration and player identifiers.
 
@@ -26,12 +27,14 @@ class CodenamesDuetEngine:
             start-player pick). Injecting a seeded RNG makes the game reproducible and keeps the
             randomness per-instance, which is safe for concurrently interleaved games. When omitted,
             a fresh unseeded random.Random() is used, reproducing the previous behaviour.
+        :param game_id: Optional externally supplied game id. The headless runner injects a
+            deterministic id so seed derivation and persistence are reproducible; when omitted a fresh
+            uuid4 is generated, reproducing the previous (interactive) behaviour.
         """
         self._rng = rng if rng is not None else random.Random()
         start_player = self._rng.choice([0, 1])
         self.state = GameState(
-            # TODO: The game id will come from the database when it's implemented
-            game_id=str(uuid.uuid4()),
+            game_id=game_id if game_id is not None else str(uuid.uuid4()),
             board=board.model_copy(deep=True),
             clue_giver=start_player,
             guesser=1 - start_player
