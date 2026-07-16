@@ -77,7 +77,9 @@ class LLMClientLocal(LLMClient):
             return LLMResponse(
                 text=content,
                 model_used=self.model_name,
-                latency_ms=ollama_response.total_duration,
+                # Convert ns -> ms
+                latency_ms=(round(ollama_response.total_duration / 1_000_000)
+                            if ollama_response.total_duration is not None else 0),
                 usage=TokenUsage(
                     prompt_tokens=ollama_response.prompt_eval_count,
                     completion_tokens=ollama_response.eval_count,
