@@ -4,20 +4,32 @@ from json import JSONDecodeError
 import re
 from typing import Any
 from pydantic import BaseModel
-from backend.app.core.llm.client import LLMClient
+from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import LLMModelNotProvidedError, LLMRefusalError, LLMParseError
 from ollama import Client, RequestError, ResponseError
 
 
 class LLMClientLocal(LLMClient):
-    def __init__(self, model_name: str, think: bool = True):
+    def __init__(self, model_name: str, think: bool = True, max_retries: int = 0):
         self.model_name = model_name
         self.think = think
+        # Bounded same-request retry of retriable LLM errors (0 = one attempt, the interactive
+        # default). The headless driver passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
+        self.max_retries = max_retries
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
         self._client = Client(host=host)
 
     async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
+        """Generate a response, retrying transient (retriable) errors per ``self.max_retries``.
+
+        The retry re-sends the identical request (same seed/prompt) around the taxonomy mapping in
+        ``_generate_once``; see ``generate_with_retries``."""
+        return await generate_with_retries(
+            lambda: self._generate_once(request, expected_format),
+            max_retries=self.max_retries, provider="ollama", model=self.model_name)
+
+    async def _generate_once(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
         messages = [
             {"role": message.role, "content": message.content} for message in request.messages
         ]

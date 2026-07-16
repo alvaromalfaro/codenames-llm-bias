@@ -12,7 +12,6 @@ derivation lives here (see ``_derive`` and the seed scheme below).
 """
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
 import os
@@ -31,7 +30,6 @@ from backend.app.core.llm_service import LLMService
 from backend.app.db import writer
 from backend.app.db.recorder import GameRecorder, SeatRecord
 from backend.app.models.game_schemas import Board, GamePhase
-from backend.app.models.llm_errors import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +38,10 @@ logger = logging.getLogger(__name__)
 _GAME_NAMESPACE = uuid.UUID("6ba7b814-9dad-11d1-80b4-00c04fd430c8")
 
 _MASK64 = (1 << 64) - 1
-# k: total attempts of a retriable dispatch (1 initial + 2 retries)
-_RETRY_ATTEMPTS = 3
-_RETRY_BACKOFF_BASE_S = 0.5  # exponential backoff base: 0.5s, 1.0s between retries
+# The driver's transient-retry policy: each seat's client retries a retriable LLM error up to this
+# many times (re-sending the identical request, no reseed) before it surfaces as terminal. Retry
+# lives in the client, not the dispatch, so it is idempotent and loses no telemetry.
+_CLIENT_MAX_RETRIES = 3
 # safety cap so a non-progressing (mis-scripted) game cannot hang
 _MAX_DISPATCHES = 2000
 
@@ -124,10 +123,11 @@ class GameRunResult:
 
 # client construction / db gating
 def _default_client_factory(seat_index: int, spec: SeatSpec) -> LLMClient:
-    """Build one client for a seat from its spec. Tests inject a factory returning mock clients."""
+    """Build one client for a seat from its spec, wired with the driver's transient-retry budget."""
     if spec.provider == "openrouter":
-        return LLMClientOpenRouter(model_name=spec.model_name)
-    return LLMClientLocal(model_name=spec.model_name, think=spec.think)
+        return LLMClientOpenRouter(model_name=spec.model_name, max_retries=_CLIENT_MAX_RETRIES)
+    return LLMClientLocal(model_name=spec.model_name, think=spec.think,
+                          max_retries=_CLIENT_MAX_RETRIES)
 
 
 def _db_enabled() -> bool:
@@ -140,10 +140,17 @@ ClientFactory = Callable[[int, SeatSpec], LLMClient]
 
 
 # dispatch
-async def _dispatch_once(svc: LLMService, clients, engine: CodenamesDuetEngine,
-                         recorder: GameRecorder, seed_game: int, flush, phase, turn: int) -> None:
+async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
+                          recorder: GameRecorder, seed_game: int, flush) -> None:
     """Dispatch exactly one turn for the current phase to the acting seat's client, with the
-    per-(seat, turn) derived seeds. The engine is the single source of truth for whose turn it is."""
+    per-(seat, turn) derived seeds. The engine is the single source of truth for whose turn it is.
+
+    Transient retry note: this is a plain dispatch - the client owns the bounded same-request retry 
+    of retriable LLM errors, so no telemetry is lost and a succeeded call is never re-run. A
+    retriable error that exhausts the client's budget, and every deterministic error, propagates
+    straight to the game-level error boundary as terminal."""
+    phase = engine.state.current_phase
+    turn = engine.state.turn_number
     game_id = engine.state.game_id
     if phase == GamePhase.GIVING_CLUE:
         cg = engine.state.clue_giver
@@ -173,40 +180,6 @@ async def _dispatch_once(svc: LLMService, clients, engine: CodenamesDuetEngine,
     else:
         raise RuntimeError(
             f"Unexpected non-terminal phase {phase!r} in the dispatch loop.")
-
-
-async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
-                          recorder: GameRecorder, seed_game: int, flush) -> None:
-    """Dispatch one phase with a bounded, same-SEED retry of retriable LLM errors.
-
-    The phase and turn are captured once so retries re-issue the identical request (never reseed -
-    selection bias). Retriable classification is ``err.retriable`` on ``LLMError``; non-retriable 
-    LLM errors and all other exceptions (ValueError / PermissionError / engine invariants) propagate 
-    immediately to the game-level error boundary.
-
-    Granularity note: the conductor is off-limits, so a retry re-issues the whole ``conduct_*``
-    dispatch - the finest reachable unit. A retriable failure on the primary proposal call happens
-    before any engine mutation, so re-dispatch is deterministic; the rarer case of a retriable failure
-    inside the additive measurement sub-call (after the play proposal was already recorded) would, on
-    retry, re-record that proposal.
-    """
-    phase = engine.state.current_phase
-    turn = engine.state.turn_number
-    attempt = 0
-    while True:
-        try:
-            await _dispatch_once(svc, clients, engine, recorder, seed_game, flush, phase, turn)
-            return
-        except LLMError as exc:
-            if not exc.retriable or attempt >= _RETRY_ATTEMPTS - 1:
-                raise
-            backoff = _RETRY_BACKOFF_BASE_S * (2 ** attempt)
-            logger.warning(
-                "retriable LLM error: game_id=%s phase=%s turn=%s attempt=%s/%s: %s; "
-                "retrying SAME seed after %.2fs",
-                engine.state.game_id, phase, turn, attempt + 1, _RETRY_ATTEMPTS, exc, backoff)
-            attempt += 1
-            await asyncio.sleep(backoff)
 
 
 # entry point
@@ -319,8 +292,9 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
         return GameRunResult(game_id=game_id, run_id=run_id, seed_game=seed_game,
                              status="completed", result=engine.state.result)
     except Exception as exc:
-        # Deterministic error, or a retriable error whose bounded retries were exhausted: do not
-        # retry further. Flush the partial game as status='error', then return an error result.
+        # Terminal error: either deterministic, or a retriable error whose client-side retry budget
+        # was exhausted. The boundary sees only terminals - transient retry lives in the client.
+        # Flush the partial game as status='error', then return an error result.
         logger.error("run_single_game failed: game_id=%s run_id=%s error=%s",
                      game_id, run_id, exc, exc_info=True)
         _error_flush(engine, recorder, game_id, persist=persist)

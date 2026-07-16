@@ -1,6 +1,48 @@
+import asyncio
+import logging
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from pydantic import BaseModel
+from backend.app.models.llm_errors import LLMError
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse
+
+logger = logging.getLogger(__name__)
+
+# Exponential backoff base for the client-side transient retry: 0.5s, 1.0s, 2.0s, ...
+_RETRY_BACKOFF_BASE_S = 0.5
+
+
+async def generate_with_retries(
+    attempt: Callable[[], Awaitable[LLMResponse]], *,
+    max_retries: int, provider: str, model: str,
+) -> LLMResponse:
+    """Run a single provider attempt with a bounded, same-REQUEST retry of retriable LLM errors.
+
+    ``attempt`` is a zero-arg coroutine factory that performs one provider call and either returns an
+    ``LLMResponse`` or raises an ``LLMError`` from the taxonomy (the mapping already applied). This
+    helper classifies on the MAPPED error's ``retriable`` flag: a retriable error is retried after an
+    exponential backoff (re-invoking ``attempt``, which re-sends the identical request - never
+    reseed); a non-retriable ``LLMError`` or an exhausted budget re-raises; all other exceptions 
+    propagate untouched.
+
+    ``max_retries=0`` (the default for the interactive path) means exactly one attempt: the first
+    retriable error raises. ``max_retries=k`` allows up to ``k+1`` attempts. Transients produce no 
+    ``LLMResponse`` and hence no telemetry - they are logged, never persisted (a network failure is 
+    not model behavior, unlike clue-legality retries).
+    """
+    n = 0
+    while True:
+        try:
+            return await attempt()
+        except LLMError as exc:
+            if not exc.retriable or n >= max_retries:
+                raise
+            backoff = _RETRY_BACKOFF_BASE_S * (2 ** n)
+            logger.warning(
+                "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; retrying after %.2fs",
+                provider, model, n + 1, max_retries + 1, exc, backoff)
+            n += 1
+            await asyncio.sleep(backoff)
 
 
 class LLMClient(ABC):

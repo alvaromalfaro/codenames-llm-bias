@@ -2,7 +2,7 @@ import os
 import time
 from pydantic import BaseModel
 from openai import AsyncOpenAI, AuthenticationError, RateLimitError, APITimeoutError, APIConnectionError
-from backend.app.core.llm.client import LLMClient
+from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMProviderUnavailableError, LLMParseError
@@ -12,14 +12,26 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 class LLMClientOpenRouter(LLMClient):
-    def __init__(self, model_name: str):
+    def __init__(self, model_name: str, max_retries: int = 0):
         self.model_name = model_name
+        # Bounded same-request retry of retriable LLM errors (0 = one attempt, the interactive
+        # default). The headless driver passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
+        self.max_retries = max_retries
         self._client = AsyncOpenAI(
             base_url=_OPENROUTER_BASE_URL,
             api_key=os.environ.get("OPENROUTER_API_KEY", ""),
         )
 
     async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
+        """Generate a response, retrying transient (retriable) errors per ``self.max_retries``.
+
+        The retry re-sends the identical request (same seed/prompt) around the taxonomy mapping in
+        ``_generate_once``; see ``generate_with_retries``."""
+        return await generate_with_retries(
+            lambda: self._generate_once(request, expected_format),
+            max_retries=self.max_retries, provider="openrouter", model=self.model_name)
+
+    async def _generate_once(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
 
         if expected_format:
