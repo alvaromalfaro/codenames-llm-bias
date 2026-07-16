@@ -54,7 +54,8 @@ class RunModel(Base):
     temperature: Mapped[float] = mapped_column(Double, nullable=False)
     regime_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     code_version: Mapped[str | None] = mapped_column(Text, nullable=True)
-    prompt_template_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    prompt_template_version: Mapped[str |
+                                    None] = mapped_column(Text, nullable=True)
     model_registry_snapshot: Mapped[dict | None] = mapped_column(
         postgresql.JSONB, nullable=True
     )
@@ -261,6 +262,12 @@ class GameSeatModel(Base):
     requested_seed is stored per seat because it records the value actually sent to each provider, 
     which can differ from the canonical derived seed (for instance if a local backend narrows a 
     64-bit seed).
+
+    Note: requested_seed presupposes ONE seed per seat per game. The headless runner
+    (game_runner.run_single_game) instead derives a seed per (seat, turn), so a single per-seat seed
+    has no referent there - it is left NULL for runner games and llm_call.requested_seed is the
+    source of truth for the actual per-call value. requested_temperature does have a per-seat
+    referent (constant per game) and is populated on both seats by the runner.
     """
     __tablename__ = "game_seat"
     __table_args__ = (

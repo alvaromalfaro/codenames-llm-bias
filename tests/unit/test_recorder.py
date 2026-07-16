@@ -4,7 +4,7 @@ These run without a database: the recorder is pure in-memory and imports no DB m
 """
 import pytest
 
-from backend.app.db.recorder import GameRecorder, result_role_of
+from backend.app.db.recorder import GameRecorder, SeatRecord, result_role_of
 from backend.app.models.game_schemas import ClueEntry, ConfidenceRanking, RankedCard, ResolvedTarget
 from backend.app.models.llm_schemas import GuessProposal, LLMCallRecord, LLMMessage
 
@@ -170,6 +170,28 @@ def test_seat0_sampling_captured_on_first_observation():
     rec.record_clue(_clue_entry(), proposal=proposal)
     assert rec.seats[0].requested_temperature == 0.3
     assert rec.seats[0].requested_seed == 42
+
+
+def test_explicit_seats_are_not_mutated_by_recording():
+    """The runner path supplies both seat identities explicitly; recording must not overwrite them.
+    The runner seeds per (seat, turn), so requested_seed has no per-seat referent and stays as given
+    (NULL) even though the observed LLM call carries a seed."""
+    seats = [SeatRecord(0, "ollama", "m0", requested_temperature=0.4, requested_seed=None),
+             SeatRecord(1, "openrouter", "m1", requested_temperature=0.4, requested_seed=None)]
+    rec = GameRecorder(game_id="g", board_id="b", start_player=0, seats=seats)
+    from backend.app.models.llm_schemas import ClueProposal
+    # An observed call carrying a concrete seed/temp that would be captured on the interactive path.
+    proposal = ClueProposal(clue="battle", count=2,
+                            llm_calls=[_call(temperature=0.9, seed=12345)])
+    rec.record_clue(_clue_entry(), proposal=proposal)
+    rec.record_play_proposal(_guess_proposal(
+        _call(role="guesser", temperature=0.9, seed=999)))
+
+    # Seat identities are untouched: temperature stays the explicit T, seed stays NULL for both.
+    assert rec.seats[0].requested_temperature == 0.4
+    assert rec.seats[0].requested_seed is None
+    assert rec.seats[1].requested_temperature == 0.4
+    assert rec.seats[1].requested_seed is None
 
 
 # sudden death

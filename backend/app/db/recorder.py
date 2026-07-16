@@ -93,7 +93,8 @@ class TurnRecord:
 class GameRecorder:
     """Accumulates the per-game signals of one Codenames Duet play for a single terminal flush."""
 
-    def __init__(self, *, game_id: str, board_id: str, start_player: Optional[int], llm_client):
+    def __init__(self, *, game_id: str, board_id: str, start_player: Optional[int],
+                 llm_client=None, seats: Optional[list[SeatRecord]] = None):
         self.game_id = game_id
         self.board_id = board_id
         # Runner concepts, not written by the interactive path.
@@ -106,20 +107,41 @@ class GameRecorder:
         # One-use latch: a second flush of the same game is a no-op.
         self.flushed = False
 
-        # Seat 0 is the LLM (from the client); seat 1 is the human.
-        client_name = type(llm_client).__name__
-        provider0 = "openrouter" if "OpenRouter" in client_name else "ollama"
-        self.seats: list[SeatRecord] = [
-            SeatRecord(0, provider0, getattr(llm_client, "model_name", None)),
-            SeatRecord(1, "human", None),
-        ]
+        # Two-seat identities. The headless runner (LLM-vs-LLM) supplies both seats explicitly via
+        # ``seats``; the interactive path passes a single ``llm_client`` and we derive seat 0 from it
+        # while seat 1 is the human. Exactly one of ``seats`` / ``llm_client`` is expected.
+        #
+        # When seats are explicit the caller owns their sampling identities, so
+        # ``_observe_seat0_sampling`` must not overwrite them (see its docstring): the runner seeds
+        # per (seat, turn), giving ``requested_seed`` no per-seat referent.
+        self._explicit_seats: bool = seats is not None
+        if seats is not None:
+            self.seats: list[SeatRecord] = seats
+        else:
+            # Seat 0 is the LLM (from the client); seat 1 is the human.
+            client_name = type(llm_client).__name__
+            provider0 = "openrouter" if "OpenRouter" in client_name else "ollama"
+            self.seats = [
+                SeatRecord(0, provider0, getattr(
+                    llm_client, "model_name", None)),
+                SeatRecord(1, "human", None),
+            ]
 
         self.turns: list[TurnRecord] = []
         self._sd_turn: Optional[TurnRecord] = None
 
     # internal helpers
     def _observe_seat0_sampling(self, records) -> None:
-        """Record seat 0's requested temperature/seed on first observation of one of its calls."""
+        """Record seat 0's requested temperature/seed on first observation of one of its calls.
+
+        No-op when seats were supplied explicitly (the runner path): those identities are the source
+        of truth and must not be overwritten. The runner seeds per (seat, turn), so a single
+        ``requested_seed`` on the seat has no referent - it stays NULL and ``llm_call.requested_seed``
+        is authoritative. Only the interactive (``llm_client=``) path observes here, populating seat 0
+        from its first LLM call as before.
+        """
+        if self._explicit_seats:
+            return
         seat0 = self.seats[0]
         for rec in records:
             if rec is None:
