@@ -12,11 +12,13 @@ runner will not). ``recorder.flushed`` is set only after the transaction commits
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from backend.app.db.models import (
     LlmCallModel,
+    RunModel,
     TurnModel,
     ClueModel,
     ClueTargetModel,
@@ -324,3 +326,51 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
 
     # Only latch after the transaction has committed successfully.
     recorder.flushed = True
+
+
+@dataclass(frozen=True)
+class DeleteRunResult:
+    """Outcome of :func:`delete_run`.
+
+    :param found: whether a ``run`` row with the given id existed (and was deleted).
+    :param games_deleted: how many ``game`` rows belonged to that run (counted before the delete);
+        the whole game subtree goes with them via DB cascade.
+    """
+
+    found: bool
+    games_deleted: int
+
+
+def delete_run(run_id: str) -> DeleteRunResult:
+    """Delete a run and, via DB cascade, all its games and their entire subtree.
+
+    Removing a run is how a re-run gets unblocked: game identity is deterministic in
+    ``(master_seed, game_index)`` (a uuid5 ``game.id``), so re-persisting the same experiment
+    collides on the primary key; the run must be deleted first. It is also how throwaway pilot
+    batches are cleaned up. The delete leans entirely on ``ON DELETE CASCADE`` from ``game.run_id`` - 
+    deleting the ``run`` row tears down every ``game``, ``game_seat``, ``turn``,
+    ``clue``, ``clue_target``, ``llm_call``, ``guess_proposal``, ``guess_proposal_item`` and
+    ``reveal_event`` beneath it. Shared ingest data (``board`` / ``word_card``) is not run-owned and
+    is never touched.
+
+    Idempotent: deleting a run that does not exist is a no-op returning ``found=False`` (re-running
+    the pilot -> inspect -> delete -> re-run cycle stays safe to repeat). Genuine database errors
+    propagate - the writer does not swallow.
+
+    :returns: a :class:`DeleteRunResult` with ``found`` and the ``games_deleted`` count.
+    """
+    with session_scope() as session:
+        run_present = session.execute(
+            select(RunModel.id).where(RunModel.id == run_id)
+        ).first()
+        if run_present is None:
+            return DeleteRunResult(found=False, games_deleted=0)
+
+        games_deleted = session.execute(
+            select(func.count()).select_from(GameModel).where(
+                GameModel.run_id == run_id)
+        ).scalar_one()
+
+        session.execute(delete(RunModel).where(RunModel.id == run_id))
+
+    return DeleteRunResult(found=True, games_deleted=int(games_deleted))

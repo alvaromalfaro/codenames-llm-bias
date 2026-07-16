@@ -230,7 +230,9 @@ class GameModel(Base):
         postgresql.UUID(as_uuid=False), primary_key=True, default=_uuid_str
     )
     run_id: Mapped[str | None] = mapped_column(
-        postgresql.UUID(as_uuid=False), ForeignKey("run.id"), nullable=True
+        postgresql.UUID(as_uuid=False),
+        ForeignKey("run.id", ondelete="CASCADE"),
+        nullable=True,
     )
     board_id: Mapped[str] = mapped_column(
         Text, ForeignKey("board.board_id"), nullable=False
@@ -568,7 +570,7 @@ class GuessProposalItemModel(Base):
     resolved_card_id: Mapped[int | None] = mapped_column(
         SmallInteger, nullable=True)
     reveal_event_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("reveal_event.id"), nullable=True
+        BigInteger, ForeignKey("reveal_event.id", ondelete="SET NULL"), nullable=True
     )
 
 
