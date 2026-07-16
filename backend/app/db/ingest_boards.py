@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+import re
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -78,6 +79,10 @@ def ingest_boards_if_absent(
     inserted = 0
     for file_path in sorted(directory.glob("*.json")):
         try:
+            # skip the balance_report.json
+            if re.search(r"balance_report\.json$", str(file_path)):
+                logger.info("Skipping balance report file %s", file_path)
+                continue
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except (OSError, json.JSONDecodeError) as exc:
