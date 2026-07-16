@@ -306,16 +306,17 @@ def test_identity_is_master_seed_sensitive():
 
 # error boundary
 @pytest.mark.asyncio
-async def test_retriable_error_bounded_same_seed_retry(monkeypatch):
+async def test_retriable_error_propagates_without_dispatch_retry(monkeypatch):
+    """The dispatch no longer retries, retry lives in the client. A retriable error from a (mock) 
+    client - standing in for the real client's exhausted budget - propagates straight to the game 
+    boundary, and the conductor is dispatched exactly once (no re-dispatch)."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
-    monkeypatch.setattr(game_runner, "_RETRY_BACKOFF_BASE_S",
-                        0.0)  # no real sleeping
 
     def _raise_timeout():
         raise LLMTimeoutError()
 
-    # Both seats: clue succeeds, the guess always times out (retriable). Whichever seat guesses,
-    # the driver retries the same dispatch k times, then the boundary flushes as error.
+    # Both seats: clue succeeds, the guess times out (retriable). Whichever seat guesses, the error
+    # goes straight to the boundary without the dispatch retrying.
     clients = {0: _make_client("m0", _raise_timeout),
                1: _make_client("m1", _raise_timeout)}
     res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
@@ -324,14 +325,40 @@ async def test_retriable_error_bounded_same_seed_retry(monkeypatch):
 
     assert res.status == "error"
     assert "timed out" in (res.error or "")
-    # Exactly one seat guessed; its guess dispatch was attempted k times, all with the same seed.
-    guess_seeds = []
-    for c in clients.values():
-        for call in c.generate.call_args_list:
-            if call.kwargs.get("expected_format") is GuessJSONFormat:
-                guess_seeds.append(call.args[0].seed)
-    assert len(guess_seeds) == game_runner._RETRY_ATTEMPTS
-    assert len(set(guess_seeds)) == 1  # never reseeded
+    # Exactly one seat guessed, and its guess dispatch happened exactly once (no dispatch-level retry).
+    guess_calls = sum(
+        1 for c in clients.values() for call in c.generate.call_args_list
+        if call.kwargs.get("expected_format") is GuessJSONFormat)
+    assert guess_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_transient_failure_records_no_telemetry(monkeypatch):
+    """A transient failure produces no LLMResponse, hence no llm_call telemetry. When the FIRST
+    dispatch (the clue) fails, no turn is ever opened, so the recorder flushed at the error boundary
+    carries zero turns (zero llm_calls). Runs the persist path with a fake writer - no DB needed."""
+    monkeypatch.setattr(game_runner, "_db_enabled", lambda: True)
+    captured = {}
+    monkeypatch.setattr(game_runner.writer, "persist_game",
+                        lambda rec, status: captured.update(recorder=rec, status=status))
+
+    def _clue_times_out(request, expected_format=None):
+        raise LLMTimeoutError()
+
+    # A client whose very first call (the clue) times out: no turn is opened.
+    client = MagicMock(spec=LLMClient)
+    client.model_name = "m0"
+    client.generate = AsyncMock(side_effect=_clue_times_out)
+    client.close = AsyncMock()
+
+    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
+                                temperature=0.4, run_id="fixed-run-id",
+                                client_factory=lambda i, spec: client)
+
+    assert res.status == "error"
+    assert captured["status"] == "error"
+    # No turn opened -> zero recorded turns -> zero llm_call telemetry for the transient failure.
+    assert captured["recorder"].turns == []
 
 
 @pytest.mark.asyncio

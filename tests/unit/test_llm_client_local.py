@@ -2,8 +2,11 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 from ollama import RequestError, ResponseError
+from backend.app.core.llm import client as client_module
 from backend.app.core.llm.client_local import LLMClientLocal
-from backend.app.models.llm_errors import LLMModelNotProvidedError, LLMRefusalError, LLMParseError
+from backend.app.models.llm_errors import (
+    LLMModelNotProvidedError, LLMRefusalError, LLMParseError, LLMTimeoutError,
+)
 from backend.app.models.llm_schemas import LLMResponse, ClueJSONFormat
 
 
@@ -55,7 +58,8 @@ async def test_llm_client_local_raises_model_not_provided_error(llm_request_cg):
     RequestError indicating that the model was not provided.
     """
     with patch("backend.app.core.llm.client_local.Client") as MockClient:
-        MockClient.return_value.chat.side_effect = RequestError("Model not provided")
+        MockClient.return_value.chat.side_effect = RequestError(
+            "Model not provided")
         client = LLMClientLocal(None)
 
         with pytest.raises(LLMModelNotProvidedError):
@@ -69,7 +73,8 @@ async def test_llm_client_local_raises_llm_refusal_error(llm_request_cg):
     ResponseError indicating that the LLM refused to generate a response.
     """
     with patch("backend.app.core.llm.client_local.Client") as MockClient:
-        MockClient.return_value.chat.side_effect = ResponseError("LLM refused to generate a response")
+        MockClient.return_value.chat.side_effect = ResponseError(
+            "LLM refused to generate a response")
         client = LLMClientLocal('ollama3.2:latest')
 
         with pytest.raises(LLMRefusalError):
@@ -99,14 +104,16 @@ async def test_llm_client_local_generate_think_false(llm_request_cg):
     """
     Tests that when think=False, the chat() call is made without the think parameter.
     """
-    mock_content = json.dumps({"reasoning": "test reasoning", "clue": "battle", "count": 3})
+    mock_content = json.dumps(
+        {"reasoning": "test reasoning", "clue": "battle", "count": 3})
     mock_response = MagicMock()
     mock_response.message.content = mock_content
     mock_response.total_duration = 3200
     mock_response.prompt_eval_count = 10
     mock_response.eval_count = 20
     mock_response.done_reason = "stop"
-    mock_response.model_dump_json.return_value = json.dumps({"message": {"content": mock_content}})
+    mock_response.model_dump_json.return_value = json.dumps(
+        {"message": {"content": mock_content}})
 
     with patch("backend.app.core.llm.client_local.Client") as MockClient:
         mock_chat = MockClient.return_value.chat
@@ -126,10 +133,12 @@ async def test_llm_client_local_raises_parse_error_on_schema_mismatch(llm_reques
     Tests that the LLMClientLocal raises an LLMParseError when the response is valid JSON
     but does not match the expected schema (missing required fields).
     """
-    mock_content = json.dumps({"reasoning": "some reasoning", "clue": "battle"})  # missing "count"
+    mock_content = json.dumps(
+        {"reasoning": "some reasoning", "clue": "battle"})  # missing "count"
     mock_response = MagicMock()
     mock_response.message.content = mock_content
-    mock_response.model_dump_json.return_value = json.dumps({"message": {"content": mock_content}})
+    mock_response.model_dump_json.return_value = json.dumps(
+        {"message": {"content": mock_content}})
 
     with patch("backend.app.core.llm.client_local.Client") as MockClient:
         MockClient.return_value.chat.return_value = mock_response
@@ -145,14 +154,16 @@ async def test_llm_client_local_generate_without_expected_format(llm_request_cg)
     Tests that generate() succeeds without an expected_format, skipping schema validation
     and using format="json" as the fallback.
     """
-    mock_content = json.dumps({"reasoning": "test reasoning", "clue": "battle", "count": 3})
+    mock_content = json.dumps(
+        {"reasoning": "test reasoning", "clue": "battle", "count": 3})
     mock_response = MagicMock()
     mock_response.message.content = mock_content
     mock_response.total_duration = 3200
     mock_response.prompt_eval_count = 10
     mock_response.eval_count = 20
     mock_response.done_reason = "stop"
-    mock_response.model_dump_json.return_value = json.dumps({"message": {"content": mock_content}})
+    mock_response.model_dump_json.return_value = json.dumps(
+        {"message": {"content": mock_content}})
 
     with patch("backend.app.core.llm.client_local.Client") as MockClient:
         mock_chat = MockClient.return_value.chat
@@ -169,7 +180,8 @@ async def test_llm_client_local_generate_without_expected_format(llm_request_cg)
 
 def _mock_ollama_response(model: str | None = None) -> MagicMock:
     """Builds a MagicMock mimicking a successful Ollama chat response for the tests below."""
-    mock_content = json.dumps({"reasoning": "test reasoning", "clue": "battle", "count": 3})
+    mock_content = json.dumps(
+        {"reasoning": "test reasoning", "clue": "battle", "count": 3})
     mock_response = MagicMock()
     mock_response.message.content = mock_content
     mock_response.total_duration = 3200
@@ -249,7 +261,8 @@ async def test_llm_client_local_populates_sampling_telemetry(llm_request_cg):
     The returned LLMResponse must carry the requested sampling telemetry (temperature + seed), a
     None system_fingerprint (Ollama has none), and a resolved_model.
     """
-    request = llm_request_cg.model_copy(update={"seed": 99, "temperature": 0.3})
+    request = llm_request_cg.model_copy(
+        update={"seed": 99, "temperature": 0.3})
 
     with patch("backend.app.core.llm.client_local.Client") as MockClient:
         mock_chat = MockClient.return_value.chat
@@ -278,3 +291,56 @@ async def test_llm_client_local_resolved_model_falls_back_to_model_name(llm_requ
         result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
 
         assert result.resolved_model == "ollama3.2:latest"
+
+
+# transient retry
+@pytest.mark.asyncio
+async def test_llm_client_local_non_retriable_raises_immediately(llm_request_cg):
+    """A non-retriable error (refusal) raises on the first attempt even with a retry budget:
+    exactly one chat() call."""
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = ResponseError("refused")
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        with pytest.raises(LLMRefusalError):
+            await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+        assert mock_chat.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_default_no_retry(llm_request_cg):
+    """max_retries defaults to 0 (the interactive path): a single attempt."""
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = ResponseError("refused")
+        client = LLMClientLocal("ollama3.2:latest")  # no max_retries
+
+        with pytest.raises(LLMRefusalError):
+            await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+        assert mock_chat.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_retries_retriable_then_succeeds(llm_request_cg, monkeypatch):
+    """The local client's own mapping yields no retriable error, so we inject a retriable mapped
+    error (LLMTimeoutError) at the provider boundary to exercise the retry wiring: it propagates
+    uncaught through _generate_once and is retried by generate_with_retries. generate() returns after
+    exactly 3 attempts, each re-sending the identical request (same seed) - no reseed."""
+    monkeypatch.setattr(
+        client_module, "_RETRY_BACKOFF_BASE_S", 0.0)  # no real sleeping
+    request = llm_request_cg.model_copy(update={"seed": 123})
+
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = [
+            LLMTimeoutError(), LLMTimeoutError(), _mock_ollama_response()]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=2)
+
+        result = await client.generate(request, expected_format=ClueJSONFormat)
+
+        assert isinstance(result, LLMResponse)
+        assert mock_chat.call_count == 3
+        seeds = [call.kwargs["options"]["seed"]
+                 for call in mock_chat.call_args_list]
+        assert seeds == [123, 123, 123]  # same request re-sent, never reseeded
