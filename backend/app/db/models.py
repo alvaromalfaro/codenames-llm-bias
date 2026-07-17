@@ -540,10 +540,10 @@ class GuessProposalModel(Base):
 class GuessProposalItemModel(Base):
     """One ordered item of a guess proposal, with the model's self-reported confidence.
 
-    Crucially this includes items the engine never reached because an earlier guess ended the turn: 
-    reveal_event_id is null for those. That unreached tail (a confident intent toward a card that 
-    was never played) is exactly where a bias signal can hide, so it is preserved rather than 
-    discarded.
+    reveal_event_id is NULL in two distinct cases: (a) the item was never reached (the turn ended
+    first) - intent without play; (b) theoretically, if a reveal_event were deleted on its own,
+    the ON DELETE SET NULL would silently null a backfilled link. (b) does not occur today because
+    reveals are only deleted via the delete_run cascade, where the item dies immediately after.
     """
     __tablename__ = "guess_proposal_item"
     __table_args__ = (

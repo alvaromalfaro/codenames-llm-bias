@@ -33,7 +33,7 @@ def git_code_version() -> Optional[str]:
             logger.warning("git_code_version: empty HEAD; recording None.")
             return None
         porcelain = subprocess.run(
-            ["git", "status", "--porcelain"],
+            ["git", "status", "--porcelain", "--untracked-files=no"],
             cwd=_REPO_ROOT, capture_output=True, text=True, check=True,
         ).stdout
         return f"{head}-dirty" if porcelain.strip() else head
