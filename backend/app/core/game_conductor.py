@@ -178,8 +178,10 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
 
         try:
             result = engine.resolve_guess(card_id, player_id)
-        except (ValueError, PermissionError):
-            break
+        except (ValueError, PermissionError) as e:
+            logger.warning(
+                "Skipping unplayable SD guess %r (seat %s): %s", word, player_id, e)
+            continue
 
         # Per-seat proposal_index: idx is 0-based within THIS seat's own SD proposal (each seat
         # conducts its own loop), satisfying the writer's per-seat backfill contract.

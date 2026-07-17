@@ -532,8 +532,8 @@ class LLMService:
         Builds an LLMRequest for sudden death guessing. No current clue is available; the LLM
         receives full clue history and must identify all remaining agents from memory. Seat-
         parameterized: it reports the guesser's own remaining agent count and the SAME unrevealed-word
-        predicate (``player_id not in card.revealed_by``) as _build_measurement_sd_request, so it
-        generalizes to either seat in an LLM-vs-LLM run.
+        predicate (``player_id not in card.revealed_by and player_id not in card.time_marker_by``) 
+        as _build_measurement_sd_request, so it generalizes to either seat in an LLM-vs-LLM run.
 
         :param game_state: The current state of the game (sudden death).
         :param model: The LLM model to use.
@@ -650,7 +650,7 @@ class LLMService:
         """
         clue_history = "\n".join([
             f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
-            for e in game_state.clue_history
+            for e in game_state.clue_history if e.clue_giver != player_id
         ])
         words_remaining = "\n".join([
             f"- {card.text}" for card in game_state.board.cards
@@ -904,7 +904,7 @@ class LLMService:
             "strictly evaluate your top candidates against EVERY Assassin word to guarantee zero "
             "semantic proximity. Step 4: Evaluate against Civilian and Revealed words to minimize "
             "distraction. Step 5: Verify the final candidate violates no structural game rules "
-            "(e.g., substrings, homophones).\n"
+            "(e.g., substrings, homophones).\",\n"
             "   \"clue\": \"your_single_word_clue\",\n"
             "   \"count\": x,\n"
             "   \"targets\": [\"exact_board_word\", \"...\"]\n"

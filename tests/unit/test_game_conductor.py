@@ -448,6 +448,45 @@ async def test_conduct_sd_guess_reraises_proposal_error():
                                flush=MagicMock(), on_reveal=None)
 
 
+@pytest.mark.asyncio
+async def test_conduct_sd_guess_skips_unplayable_item_and_continues(caplog):
+    """An item the engine refuses (a card this seat already revealed) is skipped rather than
+    abandoning the rest of the sudden-death proposal - the seat keeps hunting the agents it still
+    needs. Mirrors conduct_guess's skip-and-continue. The legitimate SD break (a non-agent reveal =
+    immediate loss) is untouched: every item here resolves to an agent."""
+    eng = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=1, agents=(2, 3))
+    # TATTOO(8) is a seat-0 agent ALREADY revealed by seat 0 -> resolve_guess raises "already
+    # revealed". Models re-propose played cards because the guesser prompt carries the clue history.
+    eng.state.board.cards[8].revealed = True
+    eng.state.board.cards[8].revealed_by.append(0)
+    # SD order: measurement (pending) first, then the SD proposal - invalid FIRST, valid SECOND.
+    client = _mock_client([_rankings_json(), _guess_json(["TATTOO", "CAVE"])])
+    rec = _recorder(client)
+    service = LLMService()
+
+    with caplog.at_level("WARNING"):
+        reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0,
+                                         flush=MagicMock(), on_reveal=None)
+
+    # The unplayable TATTOO is skipped; the trailing valid CAVE(5) STILL resolves - the turn was not
+    # abandoned (a break would have returned an empty list and left that agent unfound).
+    assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
+    # Seat 0 had 2 agents and found one: the game continues in its own SD phase (no loss, no handoff).
+    assert eng.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
+    assert eng.state.is_game_over is False
+    assert eng.state.agents_remaining[0] == 1
+
+    # The whole ordered proposal is preserved on the single SD turn, but only the valid item produced
+    # a reveal - and at its OWN per-seat index 1, satisfying the writer's per-seat backfill contract.
+    # The invalid item (index 0) has no reveal, so its guess_proposal_item.reveal_event_id stays NULL.
+    sd = rec.turns[-1]
+    assert sd.phase == "sudden_death"
+    assert sd.sd_play_by_seat[0].proposals == ["TATTOO", "CAVE"]
+    assert [(rv.proposal_index, rv.acting_seat) for rv in sd.reveals] == [(1, 0)]
+
+    assert "Skipping unplayable SD guess" in caplog.text and "TATTOO" in caplog.text
+
+
 # LLMService seat-symmetric SD phase gate (direct)
 @pytest.mark.asyncio
 async def test_sd_gate_admits_seat0_in_sudden_death_llm():
