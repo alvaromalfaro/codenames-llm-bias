@@ -35,14 +35,8 @@ from backend.app.db.session import session_scope
 
 logger = logging.getLogger(__name__)
 
-# Default seat for an llm_call whose seat is not passed explicitly. Only the clue path relies on it
-# (interactive LLM clues are seat 0; a human clue emits no calls). Proposal seats are always derived
-# or carried (normal play: 1 - clue_giver_seat; sudden death: the per-seat map key) and never default
-# to this constant.
-_LLM_SEAT = 0
 
-
-def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int = _LLM_SEAT) -> LlmCallModel:
+def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int) -> LlmCallModel:
     """Map an in-memory ``LLMCallRecord`` to an ``llm_call`` row (rendered_prompt -> JSONB)."""
     return LlmCallModel(
         game_id=game_id,
@@ -176,7 +170,8 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
     # clue (+ its llm_call attempts)
     if turn.clue is not None:
         clue_calls = [
-            _new_llm_call(rec, game_id=game_id, turn_id=turn_row.id)
+            _new_llm_call(rec, game_id=game_id, turn_id=turn_row.id,
+                          seat_index=turn.clue_giver_seat)
             for rec in turn.clue.llm_calls
         ]
         if clue_calls:
