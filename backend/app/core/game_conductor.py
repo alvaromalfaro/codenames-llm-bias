@@ -12,10 +12,13 @@ This layer orchestrates the engine, service and recorder; it renders no HTML, im
 """
 from __future__ import annotations
 
+import logging
 from typing import Callable, Optional
 
 from backend.app.models.game_schemas import WordCard
 from backend.app.models.llm_schemas import ClueProposal
+
+logger = logging.getLogger(__name__)
 
 # A reveal, as returned to the caller: (card_id, resolve_guess result string, card).
 Reveal = tuple[int, str, WordCard]
@@ -52,6 +55,11 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
     """Conduct one LLM normal-play guessing turn for ``player_id``.
 
     Returns the ordered list of resolved ``(card_id, result, card)`` reveals.
+
+    This never returns with ``engine.state.current_phase == GUESSING``. Either the loop broke on a 
+    non-agent reveal (the engine advanced the phase), or the ``for/else`` passed the turn (the 
+    engine advanced the phase), or an exception propagated. This is what keeps the phase-driven
+    driver loop from re-dispatching GUESSING for the same turn and overwriting this turn's records.
     """
     proposal = await service.propose_guess(client, engine.state, player_id=player_id, seed=seed)
 
@@ -79,8 +87,16 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
 
         try:
             result = engine.resolve_guess(card_id, player_id)
-        except (ValueError, PermissionError):
-            break
+        except (ValueError, PermissionError) as e:
+            # The engine refused this item (an already-revealed / time-marked card - models re-propose
+            # played cards because the guesser prompt carries the clue history). Treat it like a
+            # hallucinated word: skip it (its proposal item keeps reveal_event_id NULL) and continue,
+            # so a malformed item never costs the turn and never leaves the loop before the for/else
+            # passes the turn. Breaking here would return with the phase still GUESSING and let the
+            # driver re-dispatch the same turn, silently overwriting this turn's proposal record.
+            logger.warning(
+                "Skipping unplayable guess %r (seat %s): %s", word, player_id, e)
+            continue
 
         # Index-aligned reveal capture: idx is the position in the play proposal's items.
         recorder.record_reveal(
@@ -104,11 +120,13 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
             # civilian, assassin, or victory - turn or game ended
             break
     else:
-        # All proposals were correct agents - LLM has no more guesses, pass the turn
-        try:
-            engine.pass_turn(player_id)
-        except (ValueError, PermissionError):
-            pass
+        # Loop exhausted with no turn-ending reveal: every item was an agent, unmappable, or
+        # unplayable. Pass the turn to advance the phase. If pass_turn raises here, the loop resolved
+        # zero guesses (guesses_made_this_turn == 0) - Duet requires >=1 guess before a pass, so this
+        # is a state the rules do not contemplate (a model that produced no playable card). Let the
+        # error propagate to the caller's boundary (headless: flush status='error'; web: 400) rather
+        # than swallow it, which would leave the phase at GUESSING and spin the driver.
+        engine.pass_turn(player_id)
 
     return reveals
 
