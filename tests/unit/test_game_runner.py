@@ -6,6 +6,7 @@ DATABASE_URL is unset."""
 import json
 import os
 import random
+import re
 import uuid
 
 import pytest
@@ -381,6 +382,28 @@ async def test_deterministic_error_not_retried(monkeypatch):
     assert guess_calls == 1
 
 
+@pytest.mark.asyncio
+async def test_all_unmappable_guess_errors_without_redispatch(monkeypatch):
+    """A guesser whose entire proposal is off-board resolves zero guesses, so conduct_guess's 
+    pass_turn raises and now propagates to the boundary as status='error' - the driver does not loop 
+    on the still-GUESSING phase (the guess dispatch happens exactly once)."""
+    monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
+    # Both seats propose only off-board words; whichever seat guesses first triggers the raise.
+    clients = {0: _make_client("m0", lambda: ["NONWORD1", "NONWORD2"]),
+               1: _make_client("m1", lambda: ["NONWORD1", "NONWORD2"])}
+    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
+                                temperature=0.4, persist=False,
+                                client_factory=lambda i, spec: clients[i])
+
+    assert res.status == "error"
+    assert "at least one guess" in (res.error or "")
+    # The guessing phase was dispatched exactly once - no re-dispatch spin on the unadvanced phase.
+    guess_calls = sum(
+        1 for c in clients.values() for call in c.generate.call_args_list
+        if call.kwargs.get("expected_format") is GuessJSONFormat)
+    assert guess_calls == 1
+
+
 # DB-gated end-to-end
 _db_required = pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database")
@@ -501,3 +524,86 @@ async def test_sudden_death_both_seats_persists():
             GuessProposalModel.turn_id == sd_turns[0].id)).scalars().all()
         assert {(p.kind, p.guesser_seat) for p in proposals} == {
             ("play", 0), ("play", 1), ("measurement", 0), ("measurement", 1)}
+
+
+# run provenance: the created run row records model snapshot, template fingerprint, code version
+async def _play_one_persisted_game(board_id, game_index, master_seed):
+    """Play the standard 2-turn loss game (start_player 0) and return its GameRunResult."""
+    clients = {0: _make_client("m0", _queue_supplier([["LEMONADE"]])),
+               1: _make_client("m1", _queue_supplier([["BRICK"]]))}
+    return await run_single_game(board=_board(board_id), seat_specs=_SPECS,
+                                 master_seed=master_seed, temperature=0.4,
+                                 game_index=game_index,
+                                 client_factory=lambda i, spec: clients[i])
+
+
+@_db_required
+@pytest.mark.asyncio
+async def test_created_run_records_provenance(monkeypatch):
+    """A persisted runner game creates a run row carrying all three provenance columns: a
+    model_registry_snapshot (both seats, ollama strong / openrouter best-effort), a prompt-template
+    fingerprint (64-hex), and a code_version (short SHA, maybe -dirty). The ollama digest is
+    monkeypatched to a fixed value so seat 0 is a strong identity without a live daemon."""
+    from sqlalchemy import select
+
+    from backend.app.core import provenance
+    from backend.app.core.llm_service import LLMService
+    from backend.app.db.models import RunModel
+    from backend.app.db.session import session_scope
+
+    monkeypatch.setattr(provenance, "resolve_ollama_digest",
+                        lambda model_name, host=None: f"sha256:{model_name}-fixed")
+
+    board_id = f"runner-prov-{uuid.uuid4()}"
+    with session_scope() as session:
+        _insert_board(session, board_id)
+    game_index = _unique_game_index()
+    master_seed = _seed_with_start_player(0, game_index=game_index)
+    res = await _play_one_persisted_game(board_id, game_index, master_seed)
+    assert res.status == "completed"
+
+    with session_scope() as session:
+        run = session.get(RunModel, res.run_id)
+        assert run is not None
+
+        snap = run.model_registry_snapshot
+        assert isinstance(snap, dict) and set(snap) == {"0", "1"}
+        assert snap["0"]["identity_kind"] == "ollama_digest"
+        assert snap["0"]["identity"] == "sha256:m0-fixed"
+        assert snap["1"]["identity_kind"] == "requested_model_string"
+        assert snap["1"]["identity"] == "m1"
+
+        assert run.prompt_template_version == LLMService().template_fingerprint()
+        assert re.fullmatch(r"[0-9a-f]{64}", run.prompt_template_version)
+
+        assert run.code_version is not None
+        assert re.fullmatch(r"[0-9a-f]{7,40}(-dirty)?", run.code_version)
+
+
+@_db_required
+@pytest.mark.asyncio
+async def test_provenance_is_record_only_digest_failure_does_not_abort(monkeypatch):
+    """Record-only proof end-to-end: with the ollama digest lookup raising, the game still completes
+    and the run row records seat 0 with a null identity + note (never aborts over provenance)."""
+    from backend.app.core import provenance
+    from backend.app.db.models import RunModel
+    from backend.app.db.session import session_scope
+
+    def boom(model_name, host=None):
+        raise RuntimeError("ollama daemon unreachable")
+
+    monkeypatch.setattr(provenance, "resolve_ollama_digest", boom)
+
+    board_id = f"runner-prov-fail-{uuid.uuid4()}"
+    with session_scope() as session:
+        _insert_board(session, board_id)
+    game_index = _unique_game_index()
+    master_seed = _seed_with_start_player(0, game_index=game_index)
+    res = await _play_one_persisted_game(board_id, game_index, master_seed)
+
+    assert res.status == "completed" and res.result == "loss_assassin"
+    with session_scope() as session:
+        run = session.get(RunModel, res.run_id)
+        assert run.model_registry_snapshot["0"]["identity"] is None
+        assert run.model_registry_snapshot["0"]["identity_kind"] == "ollama_digest_unavailable"
+        assert run.model_registry_snapshot["0"]["note"]

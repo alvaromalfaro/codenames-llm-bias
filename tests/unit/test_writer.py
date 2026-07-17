@@ -140,6 +140,8 @@ def test_persist_normal_game_maps_all_rows():
         calls = session.execute(select(LlmCallModel).where(
             LlmCallModel.turn_id == turn.id, LlmCallModel.role == "clue_giver")).scalars().all()
         assert {c.retry_index for c in calls} == {0, 1}
+        # Interactive path: the LLM clue-giver is seat 0, so all clue calls carry seat_index 0.
+        assert all(c.seat_index == 0 for c in calls)
         accepted = next(c for c in calls if c.retry_index == 1)
         rejected = next(c for c in calls if c.retry_index == 0)
         assert clue.llm_call_id == accepted.id
@@ -185,6 +187,48 @@ def test_persist_normal_game_maps_all_rows():
         ).order_by(RevealEventModel.position_in_turn)).scalars().all()
         assert [r.result_role for r in reveals] == ["agent", "civilian"]
         assert [r.ended_turn for r in reveals] == [False, True]
+
+
+def test_clue_llm_calls_carry_clue_giver_seat():
+    """Every clue_giver llm_call - including the rejected retry attempts, not just the accepted one -
+    is attributed to the seat that actually gave the clue (turn.clue_giver_seat), for either seat. In
+    LLM-vs-LLM seat 1 gives half the clues."""
+    from backend.app.db import writer
+    from backend.app.db.models import LlmCallModel, TurnModel
+    from backend.app.db.session import session_scope
+
+    for clue_giver in (0, 1):
+        with session_scope() as session:
+            board_id, _ = _insert_board(session)
+
+        rec = _recorder(board_id)
+        # Two attempts: retry_index 0 rejected, retry_index 1 accepted - both must carry the seat.
+        rec.record_clue(
+            ClueEntry(clue="battle", count=1, clue_giver=clue_giver, turn_number=0,
+                      targets=["ALPHA"],
+                      targets_resolved=[ResolvedTarget(
+                          word="ALPHA", card_id=0, giver_role=CardRole.AGENT,
+                          revealed_at_clue=False)]),
+            proposal=ClueProposal(
+                clue="battle", count=1, reasoning="r",
+                llm_calls=[_call("clue_giver", 0), _call("clue_giver", 1)]),
+        )
+        rec.record_play_proposal(GuessProposal(
+            proposals=["ALPHA"], confidence=[0.9], reasoning="r", stop_reason="s",
+            llm_call=_call("guesser")))
+        rec.set_outcome("loss_time", 0)
+
+        writer.persist_game(rec, status="completed")
+
+        with session_scope() as session:
+            turn = session.execute(select(TurnModel).where(
+                TurnModel.game_id == rec.game_id)).scalar_one()
+            clue_calls = session.execute(select(LlmCallModel).where(
+                LlmCallModel.turn_id == turn.id,
+                LlmCallModel.role == "clue_giver")).scalars().all()
+            # Both attempts persisted, and every one is attributed to the real clue-giver seat.
+            assert {c.retry_index for c in clue_calls} == {0, 1}
+            assert all(c.seat_index == clue_giver for c in clue_calls)
 
 
 def test_persist_sudden_death_game():

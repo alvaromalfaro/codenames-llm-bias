@@ -41,7 +41,9 @@ async def test_llm_client_local_generate_success(llm_request_cg):
         assert isinstance(result, LLMResponse)
         assert result.text == mock_response.message.content
         assert result.model_used == client.model_name
-        assert result.latency_ms == mock_response.total_duration
+        # Ollama reports nanoseconds; latency_ms is milliseconds (ns / 1e6).
+        assert result.latency_ms == round(
+            mock_response.total_duration / 1_000_000)
         assert result.usage.prompt_tokens == mock_response.prompt_eval_count
         assert result.usage.completion_tokens == mock_response.eval_count
         assert result.usage.total_tokens == mock_response.prompt_eval_count + \
@@ -291,6 +293,45 @@ async def test_llm_client_local_resolved_model_falls_back_to_model_name(llm_requ
         result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
 
         assert result.resolved_model == "ollama3.2:latest"
+
+
+# latency_ms unit conversion (nanoseconds -> milliseconds)
+_MAX_INT4 = 2_147_483_647  # llm_call.latency_ms is a 32-bit int column
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_latency_ms_converts_nanoseconds(llm_request_cg):
+    """Ollama reports total_duration in NANOSECONDS; latency_ms must be milliseconds.
+
+    A ~42.7s call reports total_duration ~4.27e10 ns, which as a raw value overflows the 32-bit 
+    llm_call.latency_ms column. After ns->ms it is ~42707 ms and fits comfortably.
+    """
+    mock_response = _mock_ollama_response()
+    mock_response.total_duration = 42_706_620_491  # ~42.7s in nanoseconds
+
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        MockClient.return_value.chat.return_value = mock_response
+        client = LLMClientLocal("ollama3.2:latest")
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+        assert result.latency_ms == 42707  # round(42_706_620_491 / 1e6)
+        assert result.latency_ms <= _MAX_INT4  # fits the int4 column, no overflow
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_latency_ms_none_duration_is_zero(llm_request_cg):
+    """total_duration is absent on some responses; latency_ms falls back to 0 (int, ge=0)."""
+    mock_response = _mock_ollama_response()
+    mock_response.total_duration = None
+
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        MockClient.return_value.chat.return_value = mock_response
+        client = LLMClientLocal("ollama3.2:latest")
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+        assert result.latency_ms == 0
 
 
 # transient retry

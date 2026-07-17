@@ -288,6 +288,65 @@ async def test_conduct_guess_measurement_failure_does_not_propagate():
     assert turn.measurement is None
 
 
+@pytest.mark.asyncio
+async def test_conduct_guess_skips_unplayable_item_and_continues(caplog):
+    """An item the engine refuses (an already-revealed card, positioned between valid agent words) 
+    is skipped like a hallucinated word - the turn is NOT abandoned, the later valid word still 
+    resolves, one conduct_guess call suffices, and the phase advances off GUESSING (so the driver 
+    never re-dispatches this turn and overwrites its single play proposal)."""
+    eng = _guessing_engine(guesser=0, agents=(5, 5))
+    # TATTOO(8) is a seat-0 agent already revealed by seat 0 -> resolve_guess raises "already revealed".
+    eng.state.board.cards[8].revealed = True
+    eng.state.board.cards[8].revealed_by.append(0)
+    client = _mock_client(
+        [_guess_json(["BRICK", "CAVE", "TATTOO", "RANCH"]), _rankings_json()])
+    rec = _recorder(client)
+    rec.record_clue(eng.state.current_clue, proposal=None)
+    service = LLMService()
+
+    with caplog.at_level("WARNING"):
+        reveals = await conduct_guess(service, client, eng, rec, player_id=0,
+                                      flush=MagicMock(), on_reveal=None)
+
+    # The unplayable TATTOO is skipped; the trailing valid RANCH(9) still resolves.
+    assert [(cid, r) for cid, r, _ in reveals] == [
+        (1, "agent"), (5, "agent"), (9, "agent")]
+    # The phase advanced (all resolved agents -> for/else passed the turn); no re-dispatch.
+    assert eng.state.current_phase == GamePhase.GIVING_CLUE
+
+    # Exactly one turn with exactly one play proposal (no overwrite), and the invalid item (index 2)
+    # has NO reveal recorded, so its reveal_event_id stays NULL at backfill; the valid ones map by
+    # their own proposal index.
+    assert len(rec.turns) == 1
+    turn = rec.turns[-1]
+    assert turn.play_proposal.proposals == ["BRICK", "CAVE", "TATTOO", "RANCH"]
+    assert [rv.proposal_index for rv in turn.reveals] == [0, 1, 3]
+
+    # One conduct_guess call: one play proposal + one measurement request (no re-dispatch).
+    assert client.generate.call_count == 2
+    assert "Skipping unplayable guess" in caplog.text and "TATTOO" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_conduct_guess_all_unmappable_raises_on_pass(caplog):
+    """Every proposed word is off-board, so no guess resolves (guesses_made_this_turn == 0) and the 
+    for/else pass_turn raises - the raise now PROPAGATES (no longer swallowed), leaving the phase at
+    GUESSING for the caller's error boundary rather than spinning the driver."""
+    eng = _guessing_engine(guesser=0, agents=(5, 5))
+    client = _mock_client(
+        [_guess_json(["NONWORD1", "NONWORD2"]), _rankings_json()])
+    rec = _recorder(client)
+    rec.record_clue(eng.state.current_clue, proposal=None)
+    service = LLMService()
+
+    with pytest.raises(ValueError, match="at least one guess"):
+        await conduct_guess(service, client, eng, rec, player_id=0,
+                            flush=MagicMock(), on_reveal=None)
+
+    # Nothing was resolved; the phase is untouched (the boundary, not conduct_guess, advances it).
+    assert eng.state.current_phase == GamePhase.GUESSING
+
+
 # conduct_sd_guess
 @pytest.mark.asyncio
 async def test_conduct_sd_guess_seat0_records_measurement_and_reveal():
