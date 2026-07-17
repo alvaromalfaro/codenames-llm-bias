@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Callable, Optional
 
+from backend.app.core import provenance
 from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.core.game_conductor import conduct_clue, conduct_guess, conduct_sd_guess
 from backend.app.core.llm.client import LLMClient
@@ -224,14 +225,26 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     # deterministic game id + game/engine seeds (independent of any DB-minted run_id).
     game_id, seed_game, seed_engine = _game_identity(master_seed, game_index)
 
-    # minimal run row, committed first in its own short-lived session (FK: run before game).
+    # The service carries the explicit temperature into every request (overriding its 0.7 default).
+    # Built here (before the run row) so its template fingerprint can seed the run's provenance
+    # without loading the templates twice.
+    svc = LLMService(temperature=temperature)
+
+    # minimal run row, committed first in its own short-lived session (FK: run before game). When a
+    # run row is created here we also fill its provenance (which models served, which prompt texts
+    # were sent, which code ran); an existing run_id is left untouched - the batch owns its
+    # provenance. Provenance is record-only: no lookup may abort the game (see backend...provenance).
     if run_id is None:
         if persist:
             from backend.app.db.models import RunModel
             from backend.app.db.session import session_scope
             with session_scope() as session:
-                run = RunModel(master_seed=Decimal(
-                    int(master_seed)), temperature=temperature)
+                run = RunModel(
+                    master_seed=Decimal(int(master_seed)), temperature=temperature,
+                    model_registry_snapshot=provenance.build_model_registry_snapshot(seat_specs),
+                    prompt_template_version=svc.template_fingerprint(),
+                    code_version=provenance.git_code_version(),
+                )
                 session.add(run)
                 session.flush()
                 run_id = run.id
@@ -260,9 +273,6 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     )
     recorder.run_id = run_id
     recorder.derived_seed = seed_game
-
-    # The service carries the explicit temperature into every request (overriding its 0.7 default).
-    svc = LLMService(temperature=temperature)
 
     def _flush_if_over(eng: CodenamesDuetEngine, rec: GameRecorder) -> None:
         """Terminal flush trigger passed to the conductors. Persists once at game-over (idempotent
