@@ -258,7 +258,10 @@ async def llm_give_clue(game_id: str):
 
     engine, llm_client, recorder = game
 
-    await conduct_clue(_llm_service, llm_client, engine, recorder, player_id=0)
+    try:
+        await conduct_clue(_llm_service, llm_client, engine, recorder, player_id=0)
+    except (ValueError, PermissionError, LLMError) as e:
+        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
 
     cards_html = _render_cards_oob(engine, game_id)
     log_html = templates.get_template("partials/_log_entry.html").render({
@@ -348,7 +351,7 @@ async def llm_make_guess_sd(game_id: str):
     try:
         await conduct_sd_guess(_llm_service, llm_client, engine, recorder,
                                player_id=0, flush=_flush_if_over, on_reveal=on_reveal)
-    except (ValueError, PermissionError) as e:
+    except (ValueError, PermissionError, LLMError) as e:
         return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
 
     html += templates.get_template("partials/_clue_banner.html").render({
