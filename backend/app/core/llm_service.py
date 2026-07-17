@@ -1,3 +1,4 @@
+import hashlib
 import json
 from typing import TYPE_CHECKING, Optional
 from backend.app.core.llm.client import LLMClient
@@ -12,7 +13,8 @@ MAX_CLUE_RETRIES = 3
 
 # The seat allowed to guess in each sudden-death phase, mirroring the engine's own invariant
 # (resolve_guess raises unless seat 1 acts in SUDDEN_DEATH_HUMAN / seat 0 in SUDDEN_DEATH_LLM).
-_SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM, 1: GamePhase.SUDDEN_DEATH_HUMAN}
+_SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM,
+                     1: GamePhase.SUDDEN_DEATH_HUMAN}
 
 
 def _require_sd_seat_phase(game_state: GameState, player_id: int, action: str) -> None:
@@ -72,6 +74,49 @@ class LLMService:
             self.ONE_SHOT_USER_GG_PATH, 2)
         self._one_shot_assistant_gg = self._load_one_shot(
             self.ONE_SHOT_ASSISTANT_GG_PATH, 3)
+
+    def _loaded_template_texts(self) -> dict[str, str]:
+        """Read-only accessor: stable template key -> the text the service actually holds in memory.
+
+        Covers every template text the service loads and sends - the 10 prompt templates AND the 4
+        one-shot example texts - so the fingerprint reflects the real payloads, including any
+        ``_default_*`` fallback that was active because a file was missing.
+        """
+        return {
+            "system_prompt_cg": self._system_prompt_cg,
+            "user_prompt_cg": self._user_prompt_cg,
+            "system_prompt_gg": self._system_prompt_gg,
+            "user_prompt_gg": self._user_prompt_gg,
+            "system_prompt_sd_gg": self._system_prompt_sd_gg,
+            "user_prompt_sd_gg": self._user_prompt_sd_gg,
+            "system_prompt_meas_gg": self._system_prompt_meas_gg,
+            "user_prompt_meas_gg": self._user_prompt_meas_gg,
+            "system_prompt_meas_sd": self._system_prompt_meas_sd,
+            "user_prompt_meas_sd": self._user_prompt_meas_sd,
+            "one_shot_user_cg": self._one_shot_user_cg,
+            "one_shot_assistant_cg": self._one_shot_assistant_cg,
+            "one_shot_user_gg": self._one_shot_user_gg,
+            "one_shot_assistant_gg": self._one_shot_assistant_gg,
+        }
+
+    def template_fingerprint(self) -> str:
+        """Deterministic SHA-256 hex fingerprint of the LOADED template texts (not the directory).
+
+        Hashing the loaded texts - rather than the files on disk - means a ``_default_*`` fallback
+        produces a different fingerprint than the real file, which is the whole point: the run row
+        records exactly which prompt texts were sent. Stable across processes: templates are sorted
+        by key and each contributes ``key\\0text\\0`` to the digest.
+        """
+        h = hashlib.sha256()
+        for key, text in sorted(self._loaded_template_texts().items()):
+            h.update(key.encode("utf-8"))
+            h.update(b"\0")
+            # ``str(text)`` defensively: a loaded text is normally a str, but a malformed hardcoded
+            # ``_default_*`` fallback can hold a non-str. Coercing keeps the fingerprint deterministic
+            # and content-sensitive without ever raising - provenance must never abort a run.
+            h.update(str(text).encode("utf-8"))
+            h.update(b"\0")
+        return h.hexdigest()
 
     @staticmethod
     def _call_record(request: LLMRequest, response: LLMResponse, role: str, retry_index: int = 0) -> LLMCallRecord:
@@ -209,7 +254,8 @@ class LLMService:
 
         :return: An instance of GuessProposal containing the proposed guesses from the LLM.
         """
-        _require_sd_seat_phase(game_state, player_id, "propose a sudden death guess")
+        _require_sd_seat_phase(game_state, player_id,
+                               "propose a sudden death guess")
 
         request = self._build_guess_sd_request(
             game_state, llm_client.model_name, player_id, seed=seed)
@@ -858,7 +904,7 @@ class LLMService:
             "strictly evaluate your top candidates against EVERY Assassin word to guarantee zero "
             "semantic proximity. Step 4: Evaluate against Civilian and Revealed words to minimize "
             "distraction. Step 5: Verify the final candidate violates no structural game rules "
-            "(e.g., substrings, homophones).\n",
+            "(e.g., substrings, homophones).\n"
             "   \"clue\": \"your_single_word_clue\",\n"
             "   \"count\": x,\n"
             "   \"targets\": [\"exact_board_word\", \"...\"]\n"
