@@ -25,6 +25,26 @@ def test_valid_board_passes(valid_board_data):
         assert card.human_perspective_role == valid_cards[i]["human_perspective_role"]
 
 
+def test_measurement_frame_id_absent_defaults_to_none(valid_board_data):
+    """Today's unsealed artifacts carry no ``measurement_frame_id`` key and must still
+    validate (regression guard), resolving the optional field to ``None``.
+    """
+    board = Board(**valid_board_data)
+
+    assert board.measurement_frame_id is None
+
+
+def test_measurement_frame_id_present_is_carried(valid_board_data):
+    """A future sealed artifact carrying ``measurement_frame_id`` validates and keeps the
+    value (the new capability).
+    """
+    data = {**valid_board_data, "measurement_frame_id": "test-frame-abc"}
+
+    board = Board(**data)
+
+    assert board.measurement_frame_id == "test-frame-abc"
+
+
 @pytest.mark.parametrize("modification, expected_error", [
     ("less_llm_agents", "There must be exactly 9 agent cards for both LLM and human players (3 shared between them)."),
     ("less_human_agents", "There must be exactly 9 agent cards for both LLM and human players (3 shared between them)."),

@@ -28,7 +28,8 @@ def test_probe_mapping_flattens_covariates_and_weat():
 
     assert board.board_id == data["board_id"]
     assert board.type == "probe"
-    assert board.measurement_frame_id is None
+    # The sealed artifact's measurement_frame_id (A.4) flows through unchanged onto the ORM model.
+    assert board.measurement_frame_id == data.get("measurement_frame_id")
     assert board.grid_rows == data["grid"]["rows"] == 5
     assert board.grid_cols == data["grid"]["cols"] == 5
     assert board.dilemma is not None  # probe boards carry a dilemma
@@ -93,12 +94,51 @@ def test_missing_covariates_are_nullable():
     assert card.weat_set == []
 
 
+def _minimal_artifact(**overrides: object) -> dict:
+    """A minimal control artifact for exercising the pure mapping in isolation."""
+    return {
+        "board_id": "synthetic-frame-000",
+        "type": "control",
+        "grid": {"rows": 5, "cols": 5},
+        "cards": [
+            {
+                "id": 0,
+                "text": "WORD",
+                "llm_perspective_role": "civilian",
+                "human_perspective_role": "civilian",
+            }
+        ],
+        **overrides,
+    }
+
+
+def test_measurement_frame_id_absent_maps_to_none():
+    """An artifact without the key yields ``None`` on the ORM model (unchanged today)."""
+    board, _ = board_artifact_to_orm(_minimal_artifact())
+
+    assert board.measurement_frame_id is None
+
+
+def test_measurement_frame_id_present_is_carried():
+    """A sealed artifact's ``measurement_frame_id`` flows through onto the ORM model."""
+    board, _ = board_artifact_to_orm(
+        _minimal_artifact(measurement_frame_id="test-frame-abc")
+    )
+
+    assert board.measurement_frame_id == "test-frame-abc"
+
+
 @pytest.mark.skipif(
     not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
 )
 def test_ingest_is_idempotent():
+    from backend.app.db.ingest_frame import ingest_frame_if_absent
     from backend.app.db.session import session_scope
 
+    # The sealed boards (A.4) carry a measurement_frame_id whose FK is enforced, so the frame row
+    # must exist first (the real startup order, A.5).
+    with session_scope() as session:
+        ingest_frame_if_absent(session, _BOARDS_DIR / "measurement_frame.json")
     with session_scope() as session:
         first = ingest_boards_if_absent(session, _BOARDS_DIR)
     with session_scope() as session:

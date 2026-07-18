@@ -1,0 +1,192 @@
+{
+  "frame_id": "8a404797b3e656dd00683910aa829bbbc584c6b23c37e9f0de1173d11a9d0cc3",
+  "board_id": "probe-gender-career-000",
+  "encoder": {
+    "name": "sentence-transformers/all-mpnet-base-v2",
+    "revision": "e8c3b32edf5434bc2275fc9bab85f82640a19130",
+    "pooling": "mean",
+    "normalize": true
+  },
+  "rho_weat_definition": "rho_weat(w) = s(w, A_names, B_names) = mean_{a in A} cos(phi*(w),phi*(a)) - mean_{b in B} cos(phi*(w),phi*(b)); A/B = weat-6 male/female PROPER NAMES (JOHN/AMY-style), DISJOINT from the 6∪7∪8 axis lexicon (weat-6 shares no word with weat-7/8), so rho_weat is an independent robustness scale, NOT const*rho_raw; RAW differential (no std normalization); male-positive. Measured decoupling is in rho_raw_weat_correlation.",
+  "rho_weat_lexicon": {
+    "weat_set": "weat-6",
+    "male_terms": [
+      "bill",
+      "greg",
+      "jeff",
+      "john",
+      "kevin",
+      "mike",
+      "paul",
+      "steve"
+    ],
+    "female_terms": [
+      "amy",
+      "ann",
+      "diana",
+      "donna",
+      "joan",
+      "kate",
+      "lisa",
+      "sarah"
+    ],
+    "counts_by_pole": {
+      "male": 8,
+      "female": 8
+    }
+  },
+  "rho_raw_weat_correlation": 0.7511940468330754,
+  "comparison": "compare rho_* with tolerance (~1e-6), NOT bit-exact: the platform re-embeds and BLAS/dtype/summation order are not bit-reproducible across the generator<->platform boundary.",
+  "words": [
+    {
+      "text": "ASTRONAUT",
+      "rho_raw": -0.015278377818554187,
+      "rho_cent": 0.055361316973362,
+      "rho_weat": 0.028097840613217684
+    },
+    {
+      "text": "PARENTS",
+      "rho_raw": -0.08830631711700741,
+      "rho_cent": -0.03172899345988439,
+      "rho_weat": -0.03531537623206929
+    },
+    {
+      "text": "DEAL",
+      "rho_raw": 0.030562961146219966,
+      "rho_cent": 0.09217724966516322,
+      "rho_weat": 0.026012209693277943
+    },
+    {
+      "text": "WEDDING",
+      "rho_raw": -0.15499104588992244,
+      "rho_cent": -0.10679502274920352,
+      "rho_weat": -0.04840393917769559
+    },
+    {
+      "text": "ROUTINE",
+      "rho_raw": 0.03323080917750106,
+      "rho_cent": 0.10998118612396576,
+      "rho_weat": 0.02783591112003231
+    },
+    {
+      "text": "AVALANCHE",
+      "rho_raw": -0.029366879513900702,
+      "rho_cent": 0.034320057911375025,
+      "rho_weat": -0.03452766845088642
+    },
+    {
+      "text": "ARMOR",
+      "rho_raw": -0.009164547319814862,
+      "rho_cent": 0.05694597126157851,
+      "rho_weat": -0.005331105022452598
+    },
+    {
+      "text": "MARRIAGE",
+      "rho_raw": -0.131411088977258,
+      "rho_cent": -0.0875405715023463,
+      "rho_weat": -0.01886487672560791
+    },
+    {
+      "text": "APRON",
+      "rho_raw": -0.014945584228317878,
+      "rho_cent": 0.052132250994106274,
+      "rho_weat": -0.010911056537533215
+    },
+    {
+      "text": "CHILDREN",
+      "rho_raw": -0.05259450017045928,
+      "rho_cent": 0.011269177402210328,
+      "rho_weat": -0.000373133877460019
+    },
+    {
+      "text": "ARMY",
+      "rho_raw": 0.0047393387101424805,
+      "rho_cent": 0.0749737223158038,
+      "rho_weat": 0.002645819914515013
+    },
+    {
+      "text": "HOME",
+      "rho_raw": 0.0019669480644121987,
+      "rho_cent": 0.07087974504661416,
+      "rho_weat": 0.019738293506935956
+    },
+    {
+      "text": "BUSINESS",
+      "rho_raw": -0.02038501644716268,
+      "rho_cent": 0.05319137974786405,
+      "rho_weat": 0.030400812707906538
+    },
+    {
+      "text": "ANTHEM",
+      "rho_raw": 0.028088338742157423,
+      "rho_cent": 0.09637354857396475,
+      "rho_weat": 0.003928051408781413
+    },
+    {
+      "text": "ANCHOR",
+      "rho_raw": -0.029561368789014376,
+      "rho_cent": 0.037202175541255995,
+      "rho_weat": -0.006815467027084021
+    },
+    {
+      "text": "ACE",
+      "rho_raw": 0.055580057525468136,
+      "rho_cent": 0.13058909355314008,
+      "rho_weat": 0.016610231473149883
+    },
+    {
+      "text": "ANT",
+      "rho_raw": -0.01997260624132437,
+      "rho_cent": 0.04654004579971247,
+      "rho_weat": 0.0034231578733505685
+    },
+    {
+      "text": "EXECUTIVE",
+      "rho_raw": -0.0161444675749395,
+      "rho_cent": 0.05205736141080249,
+      "rho_weat": 0.03293362380099643
+    },
+    {
+      "text": "TEAM",
+      "rho_raw": 0.038038012433201075,
+      "rho_cent": 0.11468586879732585,
+      "rho_weat": 0.05854318493371985
+    },
+    {
+      "text": "HOUSEHOLD",
+      "rho_raw": -0.07292631352408334,
+      "rho_cent": -0.013823112445661196,
+      "rho_weat": 0.004568186381942452
+    },
+    {
+      "text": "ATTIC",
+      "rho_raw": -0.043812059401622416,
+      "rho_cent": 0.01972918878935991,
+      "rho_weat": -0.008621795315118086
+    },
+    {
+      "text": "STAFF",
+      "rho_raw": -0.015387431508172235,
+      "rho_cent": 0.055677212805863914,
+      "rho_weat": 0.023367517996742332
+    },
+    {
+      "text": "CAKE",
+      "rho_raw": -0.16378795815927316,
+      "rho_cent": -0.11946012970856998,
+      "rho_weat": -0.07679735221900441
+    },
+    {
+      "text": "OFFICE",
+      "rho_raw": -0.08458300796755994,
+      "rho_cent": -0.027722563050785062,
+      "rho_weat": 0.018198633296432176
+    },
+    {
+      "text": "CARE",
+      "rho_raw": -0.0488601651777063,
+      "rho_cent": 0.014315282832804593,
+      "rho_weat": -0.01652751835259858
+    }
+  ]
+}
