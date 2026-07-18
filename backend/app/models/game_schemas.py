@@ -136,6 +136,8 @@ class Board(BaseModel):
     arbiters: Optional[Arbiters] = None
     dilemma: Optional[Dilemma] = None  # present on probe, null on control
     keycard_audit: Optional[KeycardAudit] = None
+    # Optional association to a measurement frame.
+    measurement_frame_id: Optional[str] = None
 
     def get_card_id_by_word(self, text: str) -> Optional[int]:
         for card in self.cards:

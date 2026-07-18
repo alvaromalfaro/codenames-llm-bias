@@ -1,8 +1,9 @@
 """Idempotent ingestion of board artifacts into the persistence layer.
 
 Split into a pure mapping function (no DB dependency, unit-testable) and a commit function that 
-skips boards already present. ``measurement_frame_id`` is left NULL for now - frame association 
-belongs to the separate measurement frontend (deferred).
+skips boards already present. ``measurement_frame_id`` is passed through from the artifact when
+present and left NULL otherwise; populating the frame association itself remains deferred to the
+separate measurement frontend.
 """
 
 from __future__ import annotations
@@ -27,13 +28,14 @@ def board_artifact_to_orm(
 
     Pure: constructs (but does not persist) a ``BoardModel`` and its ``WordCardModel`` rows. 
     Covariates are flattened into ``subtlex_freq``/``length``/``wordnet_polysemy`` and ``weat_set`` 
-    is mapped to the array column. ``dilemma`` stays ``None`` for control boards. 
-    ``measurement_frame_id`` is left ``None``.
+    is mapped to the array column. ``dilemma`` stays ``None`` for control boards.
+    ``measurement_frame_id`` is read from the artifact, falling back to ``None`` when the
+    key is absent (today's unsealed artifacts).
     """
     grid = data.get("grid") or {}
     board = BoardModel(
         board_id=data["board_id"],
-        measurement_frame_id=None,
+        measurement_frame_id=data.get("measurement_frame_id"),
         type=data.get("type"),
         category=data.get("category"),
         specification=data.get("specification"),
