@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Callable, Optional
 
+from backend.app import config
 from backend.app.core import provenance
 from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.core.game_conductor import conduct_clue, conduct_guess, conduct_sd_guess
@@ -122,6 +123,65 @@ class GameRunResult:
     error: Optional[str] = None    # error message when status == "error"
 
 
+# digest enforcement (reproducibility gate)
+class ModelDigestMismatchError(RuntimeError):
+    """The served local-model weights are not the ones the batch is validated against.
+
+    Raised once, at run-row creation, when digest enforcement is on and a local seat's served ollama
+    digest differs from ``config.EXPECTED_LOCAL_DIGESTS`` - or cannot be certified: no expected
+    digest is configured for the model, or the served digest is unavailable. Aborts before the run
+    row is created and before any game is dispatched."""
+
+
+def _normalize_digest(d: str) -> str:
+    """Canonical form for comparing ollama digests: lowercased, with any ``sha256:``/``sha256-``
+    algorithm prefix stripped. The daemon's /api/tags reports a bare hex digest (what
+    ``resolve_ollama_digest`` returns verbatim) while manifests and the config constants may carry
+    the ``sha256:`` prefix; normalising both sides makes the gate prefix-agnostic."""
+    d = d.strip().lower()
+    for prefix in ("sha256:", "sha256-"):
+        if d.startswith(prefix):
+            return d[len(prefix):]
+    return d
+
+
+def _enforce_local_digests(snapshot: dict, *, enforce: bool) -> None:
+    """Reproducibility gate over the already-resolved ``model_registry_snapshot``.
+
+    For each local (ollama) seat, compare its served digest - resolved into ``snapshot`` by
+    ``provenance.build_model_registry_snapshot`` and prefix-normalised - against
+    ``config.EXPECTED_LOCAL_DIGESTS``. ``enforce=False`` (interactive / the default) is a no-op: the
+    snapshot stays the record-only witness it is today. ``enforce=True`` (the batch path) aborts via
+    ``ModelDigestMismatchError`` on any of: a served digest that differs from the expected one; a
+    local model with no expected digest configured; or an unavailable digest (daemon unreachable or
+    model not pulled) - none of which can certify reproducibility. API (openrouter) seats carry no
+    local digest and are skipped. Runs exactly once, at run-row creation, never per game."""
+    if not enforce:
+        return
+    for seat_index in sorted(snapshot):
+        entry = snapshot[seat_index]
+        if entry.get("provider") == "openrouter":
+            continue  # API seat: no local weights to pin
+        model_name = entry.get("model_name")
+        expected = config.EXPECTED_LOCAL_DIGESTS.get(model_name)
+        if expected is None:
+            raise ModelDigestMismatchError(
+                f"seat {seat_index}: local model {model_name!r} has no expected digest in "
+                f"config.EXPECTED_LOCAL_DIGESTS; cannot certify reproducibility with digest "
+                f"enforcement on. Add its pinned digest, or run without enforcement.")
+        served = entry.get("identity")
+        if entry.get("identity_kind") != "ollama_digest" or not served:
+            raise ModelDigestMismatchError(
+                f"seat {seat_index}: served digest for local model {model_name!r} is unavailable "
+                f"({entry.get('identity_kind')}); cannot certify it matches expected {expected}. "
+                f"Is the ollama daemon reachable and the model pulled?")
+        if _normalize_digest(served) != _normalize_digest(expected):
+            raise ModelDigestMismatchError(
+                f"seat {seat_index}: served digest for local model {model_name!r} is {served}, "
+                f"expected {expected}. The batch is validated against the expected weights; "
+                f"aborting before any game runs.")
+
+
 # client construction / db gating
 def _default_client_factory(seat_index: int, spec: SeatSpec) -> LLMClient:
     """Build one client for a seat from its spec, wired with the driver's transient-retry budget."""
@@ -186,7 +246,8 @@ async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
 # entry point
 async def run_single_game(*, board: Board, seat_specs, master_seed: int, temperature: float,
                           run_id: Optional[str] = None, game_index: int = 0, persist: bool = True,
-                          client_factory: ClientFactory = _default_client_factory) -> GameRunResult:
+                          client_factory: ClientFactory = _default_client_factory,
+                          enforce_digests: bool = False) -> GameRunResult:
     """Play ONE complete LLM-vs-LLM Codenames Duet game and persist it.
 
     Game identity is deterministic in ``master_seed + game_index`` only (see ``_game_identity``);
@@ -206,6 +267,12 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
             is a hard error raised up front - refusing to burn provider calls on an unpersistable
             game. Pass False for a dry run (mock / reproducibility tests) that touches no database.
         client_factory: builds a client per (seat_index, spec); overridden by tests with mocks.
+        enforce_digests: the reproducibility gate. False (default) keeps ``model_registry_snapshot``
+            a record-only witness (interactive parity). True (the batch path) compares each local 
+            seat's served ollama digest against ``config.EXPECTED_LOCAL_DIGESTS`` at run-row creation
+            and ABORTS (``ModelDigestMismatchError``) on a mismatch / unavailable digest, before the
+            run row exists and before any game is dispatched. Only meaningful when this call mints 
+            the run row (``run_id`` is None); games 1..N-1 reuse the vetted run.
     """
     # temperature must be explicit; do not fall back to any default.
     if temperature is None:
@@ -215,7 +282,7 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
         raise ValueError(
             "seat_specs must have exactly two entries (one per seat).")
 
-    # 1fail loud before any client/engine work so a missing DATABASE_URL wastes zero provider calls.
+    # fail loud before any client/engine work so a missing DATABASE_URL wastes zero provider calls.
     # persist=False opts out entirely (no DB touched).
     if persist and not _db_enabled():
         raise RuntimeError(
@@ -235,13 +302,22 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     # were sent, which code ran); an existing run_id is left untouched - the batch owns its
     # provenance. Provenance is record-only: no lookup may abort the game (see backend...provenance).
     if run_id is None:
+        # Resolve the served-model snapshot (and run the digest gate) once, at run creation, before
+        # any game is dispatched. Built only when it will be used - persisted into the run row, or
+        # required by the enforcement gate - so the default dry-run path adds no daemon call.
+        snapshot = None
+        if persist or enforce_digests:
+            snapshot = provenance.build_model_registry_snapshot(seat_specs)
+            # Reproducibility gate: abort here (before the run row exists, before any dispatch) if a
+            # served local digest is not the one the batch is validated against. No-op when off.
+            _enforce_local_digests(snapshot, enforce=enforce_digests)
         if persist:
             from backend.app.db.models import RunModel
             from backend.app.db.session import session_scope
             with session_scope() as session:
                 run = RunModel(
                     master_seed=Decimal(int(master_seed)), temperature=temperature,
-                    model_registry_snapshot=provenance.build_model_registry_snapshot(seat_specs),
+                    model_registry_snapshot=snapshot,
                     prompt_template_version=svc.template_fingerprint(),
                     code_version=provenance.git_code_version(),
                 )
