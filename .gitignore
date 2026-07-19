@@ -15,5 +15,4 @@ uv.lock
 .coverage
 
 # database files
-data/db_postgres/
-data/db_mongo/
+docker_volumes/

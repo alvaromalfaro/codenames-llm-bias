@@ -11,7 +11,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./docker_volumes/postgres_data:/var/lib/postgresql/data
 
   # Local LLM inference via Ollama
   ollama:
@@ -21,7 +21,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ollama_data:/root/.ollama # Persists downloaded models and configurations across restarts
+      - ./docker_volumes/ollama_data:/root/.ollama
       - ./ollama_entrypoint.sh:/ollama_entrypoint.sh:ro
       - ./backend/app/config.py:/llm_models.py:ro
     deploy:
@@ -52,7 +52,3 @@ services:
     depends_on:
       - db
       - ollama
-
-volumes:
-  postgres_data:
-  ollama_data:
