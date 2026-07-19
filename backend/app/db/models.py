@@ -126,12 +126,7 @@ class BoardModel(Base):
     __table_args__ = (
         CheckConstraint(
             "type IN ('probe','control')", name="ck_board_type"
-        ),
-        # DEFERRED: couples board probe/control to a frame.
-        # CheckConstraint(
-        #     "type IS NULL OR measurement_frame_id IS NOT NULL",
-        #     name="ck_board_type_requires_frame",
-        # ),
+        )
     )
 
     board_id: Mapped[str] = mapped_column(Text, primary_key=True)

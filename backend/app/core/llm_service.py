@@ -185,7 +185,8 @@ class LLMService:
                 clue_giver=player_id,
                 turn_number=game_state.turn_number,
             )
-            valid, reason = validator.is_valid(clue_entry)
+            valid, reason = validator.is_valid(
+                clue_entry, game_state.clue_history)
             if valid:
                 proposal.llm_calls = llm_calls
                 return proposal

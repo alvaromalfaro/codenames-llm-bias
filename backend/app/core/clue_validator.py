@@ -29,7 +29,7 @@ class ClueValidator:
             word: self._word_lemmas(word) for word in self.visible_words
         }
 
-    def is_valid(self, clue: ClueEntry) -> tuple[bool, str]:
+    def is_valid(self, clue: ClueEntry, clue_history: list[ClueEntry] = None) -> tuple[bool, str]:
         """
         Validates the given clue against the visible words on the board.
 
@@ -47,6 +47,10 @@ class ClueValidator:
         # Direct match
         if normalized_clue in self.visible_words:
             return False, f"'{clue.clue}' is a visible word on the board."
+
+        # Clue has already been used in this game
+        if clue_history is not None and clue.clue in [c.clue for c in clue_history]:
+            return False, f"'{clue.clue}' has already been used as a clue in this game."
 
         # Lemma match
         clue_lemmas = self._word_lemmas(normalized_clue)
