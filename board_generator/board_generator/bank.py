@@ -111,6 +111,19 @@ def build_bank(
     neutral_pool = [w for w in words if w.gender_category == "neutral"]
     loaded_index = {w.text: w for w in words}
 
+    # One permutation of the neutral pool for the whole bank. Domain-separated from the per-board
+    # seeds by a tag that is not a legal board_id, so it can never collide with derive_board_seed's
+    # (master_seed, board_id) space. Two properties are load-bearing:
+    #   - it derives from master_seed, so a different bank gets a different neutral ordering (a
+    #     board-index-only seed would fix the ordering across all banks forever);
+    #   - it is NOT a board seed, so the neutral pick draws from a stream disjoint from the
+    #     Random(seed) that assemble_board uses for roles and grid positions. Sharing that integer
+    #     would correlate word selection with key-card assignment.
+    # Every compose_* call gets a FRESH Random(pool_seed): identical state per board means one
+    # shared permutation, which is what keeps the cyclic window consuming the pool near-
+    # exhaustively instead of degenerating into independent per-board sampling.
+    pool_seed = derive_board_seed(manifest.master_seed, "neutral-pool")
+
     boards: list[Board] = []
 
     # Probe boards: one per record, in manifest order, indexed within their specification.
@@ -132,7 +145,7 @@ def build_bank(
         seed = derive_board_seed(manifest.master_seed, board_id)
         try:
             words_25 = compose_probe_words(
-                record, matched[spec], neutral_pool, idx, loaded_index, n_pairs=n_pairs
+                record, matched[spec], neutral_pool, idx, loaded_index, rng=Random(pool_seed), n_pairs=n_pairs,
             )
             board = assemble_board(
                 board_id, "probe", spec, seed, words_25, DEFAULT_CONSENSUS, record.accepted
@@ -149,7 +162,7 @@ def build_bank(
         board_id = f"control-{i:03d}"
         seed = derive_board_seed(manifest.master_seed, board_id)
         words_25 = compose_control_words(
-            neutral_pool, board_index=i, rng=Random(seed))
+            neutral_pool, board_index=i, rng=Random(pool_seed))
         boards.append(
             assemble_board(
                 board_id,

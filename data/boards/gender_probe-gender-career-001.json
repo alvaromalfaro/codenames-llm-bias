@@ -68,30 +68,30 @@
     },
     {
       "id": 1,
-      "text": "BATTLESHIP",
+      "text": "PENNY",
       "human_perspective_role": "assassin",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.2363,
-        "length": 10,
-        "wordnet_polysemy": 1
+        "subtlex_freq": 4.3853,
+        "length": 5,
+        "wordnet_polysemy": 2
       }
     },
     {
       "id": 2,
-      "text": "BEAM",
+      "text": "SALOON",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.9412,
-        "length": 4,
-        "wordnet_polysemy": 13
+        "subtlex_freq": 3.7118,
+        "length": 6,
+        "wordnet_polysemy": 3
       }
     },
     {
@@ -140,30 +140,30 @@
     },
     {
       "id": 6,
-      "text": "BASS",
+      "text": "ZOMBIE",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.8784,
-        "length": 4,
-        "wordnet_polysemy": 9
+        "subtlex_freq": 3.559,
+        "length": 6,
+        "wordnet_polysemy": 5
       }
     },
     {
       "id": 7,
-      "text": "BACON",
+      "text": "MESS",
       "human_perspective_role": "agent",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.0743,
-        "length": 5,
-        "wordnet_polysemy": 3
+        "subtlex_freq": 4.8924,
+        "length": 4,
+        "wordnet_polysemy": 8
       }
     },
     {
@@ -212,16 +212,16 @@
     },
     {
       "id": 11,
-      "text": "BATH",
+      "text": "DRYER",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.4927,
-        "length": 4,
-        "wordnet_polysemy": 7
+        "subtlex_freq": 3.6573,
+        "length": 5,
+        "wordnet_polysemy": 17
       }
     },
     {
@@ -258,16 +258,16 @@
     },
     {
       "id": 14,
-      "text": "AXE",
+      "text": "VOLUME",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.6898,
-        "length": 3,
-        "wordnet_polysemy": 3
+        "subtlex_freq": 3.8421,
+        "length": 6,
+        "wordnet_polysemy": 6
       }
     },
     {
@@ -316,58 +316,58 @@
     },
     {
       "id": 18,
-      "text": "BANANA",
+      "text": "FLOOR",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.0306,
-        "length": 6,
-        "wordnet_polysemy": 2
+        "subtlex_freq": 5.0022,
+        "length": 5,
+        "wordnet_polysemy": 12
       }
     },
     {
       "id": 19,
-      "text": "BARBECUE",
+      "text": "BLIND",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.9518,
-        "length": 8,
-        "wordnet_polysemy": 4
+        "subtlex_freq": 4.6607,
+        "length": 5,
+        "wordnet_polysemy": 10
       }
     },
     {
       "id": 20,
-      "text": "BALLOON",
+      "text": "TUNNEL",
       "human_perspective_role": "agent",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.9382,
-        "length": 7,
+        "subtlex_freq": 4.2523,
+        "length": 6,
         "wordnet_polysemy": 4
       }
     },
     {
       "id": 21,
-      "text": "BAY",
+      "text": "TASTE",
       "human_perspective_role": "assassin",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.3842,
-        "length": 3,
-        "wordnet_polysemy": 10
+        "subtlex_freq": 4.7098,
+        "length": 5,
+        "wordnet_polysemy": 13
       }
     },
     {

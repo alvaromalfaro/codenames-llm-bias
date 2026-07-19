@@ -11,11 +11,18 @@ Two board types are composed:
   neutral fill - 3 + 12 + 10 = 25 words.
 - Control (:func:compose_control_words): 25 distinct neutral words, no dilemma.
 
-Selection is index-derived and every candidate pool is sorted by text before selection, so the
-output never depends on set/dict iteration order. The loaded PSM pairs are chosen by a per-board
-deterministic permutation (see :func:_permutation_pick / :func:pair_selection_overlap); the neutral
-fill still uses a cyclic window. Same inputs + same board index -> identical 25-word list, in
-identical order.
+Every candidate pool is sorted by text before selection, so the output never depends on set/dict
+iteration order. Sorting is the canonical starting order, never the selection order: the loaded PSM
+pairs are chosen by a per-board deterministic permutation (see :func:_permutation_pick /
+:func:pair_selection_overlap), and the neutral pool is permuted by :func:shuffled_neutral_pool
+before the cyclic window is taken. Same inputs + same board index + same rng seed -> identical
+25-word list, in identical order.
+
+Why the neutral pool is shuffled: the window is contiguous, so windowing a TEXT-SORTED pool made a
+board's neutral words a contiguous alphabetical run (control-000 got the A words, control-001 the B
+words, ...), correlating board composition with alphabetical position. Shuffling the pool once
+breaks that correlation while leaving the window - and therefore the near-exhaustive coverage the
+window guarantees - intact.
 """
 
 from __future__ import annotations
@@ -40,6 +47,7 @@ def compose_probe_words(
     board_index_in_spec: int,
     loaded_index: Mapping[str, Word],
     *,
+    rng: Random,
     n_pairs: int = 6,
 ) -> list[Word]:
     """Compose the 25 words of a probe board.
@@ -60,6 +68,10 @@ def compose_probe_words(
         loaded_index: {w.text: w} over the full loaded-word pool. The dilemma's loaded words
             (target / stereo) may be absent from matched_subset under the lax inclusion policy,
             so they are resolved through this index rather than the matched subset.
+        rng: seeded RNG fixing the neutral-fill pool permutation, exactly as for control boards
+            (:func:compose_control_words). The neutral fill is only 10 of 25 cards here, so the
+            alphabetical run it used to produce was diluted by the 15 loaded/dilemma words rather
+            than absent.
         n_pairs: number of whole PSM pairs to place (default 6 -> 12 loaded words).
 
     Pair selection: let eligible be the PSM pair indices whose treatment and control words are both
@@ -112,11 +124,13 @@ def compose_probe_words(
         loaded_fill.append(control[i])
 
     neutral_count = BOARD_WORD_COUNT - DILEMMA_WORD_COUNT - 2 * len(selected)
-    neutral_sorted = sorted(
-        (w for w in neutral_pool if w.text != neutral_bridge.text), key=lambda w: w.text
-    )
+    # Permute the whole pool, then drop the bridge: filtering first would make the permutation
+    # depend on which word the bridge is, so probe boards would no longer share one ordering.
+    neutral_shuffled = [
+        w for w in shuffled_neutral_pool(neutral_pool, rng) if w.text != neutral_bridge.text
+    ]
     neutral_fill = _cyclic_window(
-        neutral_sorted, board_index_in_spec, neutral_count)
+        neutral_shuffled, board_index_in_spec, neutral_count)
 
     words = dilemma_block + loaded_fill + neutral_fill
     _assert_board_words(words)
@@ -135,24 +149,26 @@ def compose_control_words(
 ) -> list[Word]:
     """Compose the 25 words of a control board: 25 distinct neutral words, no dilemma.
 
-    Selection is a cyclic window of 25 words over the text-sorted neutral pool, keyed by
-    board_index - deterministic and independent of dict/set iteration order. Reuse of neutral words
-    across the 15 control boards is expected and allowed (≈332 neutrals vs 15x25 = 375 slots); only
-    each single board's 25 words must be distinct.
+    Selection is a cyclic window of 25 words over the shuffled neutral pool
+    (:func:shuffled_neutral_pool), keyed by board_index. Deterministic and independent of dict/set
+    iteration order, but no longer correlated with alphabetical position: windowing the text-sorted
+    pool directly gave each board a contiguous alphabetical run. Reuse of neutral words across the
+    control boards is expected and allowed (≈332 neutrals vs 14x25 = 350 slots); only each single
+    board's 25 words must be distinct.
 
     Args:
         neutral_pool: the gender-neutral words. OOV neutrals (subtlex_freq=None) are kept.
         board_index: 0-based index of this control board; keys the cyclic window.
-        rng: seeded RNG, accepted for interface symmetry with the future caller and reserved for any
-            residual tie-break. The window itself is index-derived, so the output does not depend on
-            rng today; it is kept to match the planned call site, not dead by oversight.
+        rng: seeded RNG that fixes the pool permutation. Load-bearing: the same rng state yields the
+            same permutation and hence the same board. Every board in a bank must be handed an rng
+            at the same state (a fresh Random(pool_seed)) so they share one permutation and the
+            window keeps consuming the pool near-exhaustively.
 
     Returns:
         Exactly 25 :class:Word objects, all with distinct text.
     """
-    del rng  # reserved; window is index-derived for byte-reproducibility
-    pool_sorted = sorted(neutral_pool, key=lambda w: w.text)
-    words = _cyclic_window(pool_sorted, board_index, BOARD_WORD_COUNT)
+    pool_shuffled = shuffled_neutral_pool(neutral_pool, rng)
+    words = _cyclic_window(pool_shuffled, board_index, BOARD_WORD_COUNT)
     assert len(
         words) == BOARD_WORD_COUNT, f"expected {BOARD_WORD_COUNT} words, got {len(words)}"
     assert len({w.text for w in words}) == len(
@@ -235,10 +251,35 @@ def pair_selection_overlap(
     }
 
 
+def shuffled_neutral_pool(neutral_pool: Sequence[Word], rng: Random) -> list[Word]:
+    """The neutral pool in a reproducible pseudo-random order: sort by text, then permute.
+
+    Sorting first is load-bearing, not redundant with the shuffle. random.Random.shuffle permutes
+    whatever order it is handed, so an input whose order varied with dict/set iteration would yield
+    a different permutation from the same seed. Sorting pins the canonical starting order, which is
+    what makes the permutation reproducible.
+
+    The caller owns the rng and must hand every board an rng at the SAME state (a fresh
+    Random(pool_seed) per call), so all boards share one permutation of the pool. That shared
+    permutation is what preserves the cyclic window's coverage guarantee: consecutive boards take
+    disjoint windows of one ordering, so the pool is consumed near-exhaustively. Seeding this
+    per-board instead would give each board its own permutation, making the window offset
+    meaningless and degenerating selection into independent per-board sampling - which strands a
+    large fraction of the pool and is exactly what this scheme avoids.
+
+    The rng must NOT be the board's role/position stream (board.assemble_board's Random(seed)); see
+    bank.build_bank for the derivation that keeps the two disjoint.
+    """
+    pool_sorted = sorted(neutral_pool, key=lambda w: w.text)
+    rng.shuffle(pool_sorted)
+    return pool_sorted
+
+
 def _cyclic_window(pool: Sequence[Word], board_index: int, count: int) -> list[Word]:
     """Take count consecutive words from pool (wrapping), offset by board_index.
 
-    pool must already be text-sorted. The words are distinct as long as count <= len(pool).
+    pool must already be in its canonical selection order (see :func:shuffled_neutral_pool for the
+    neutral pools). The words are distinct as long as count <= len(pool).
     """
     length = len(pool)
     assert count <= length, f"cannot take {count} distinct words from a pool of {length}"

@@ -54,29 +54,29 @@
   "cards": [
     {
       "id": 0,
-      "text": "CABLE",
+      "text": "MUD",
       "human_perspective_role": "assassin",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.3368,
-        "length": 5,
-        "wordnet_polysemy": 8
+        "subtlex_freq": 4.1709,
+        "length": 3,
+        "wordnet_polysemy": 4
       }
     },
     {
       "id": 1,
-      "text": "CASTLE",
+      "text": "TEA",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.3332,
-        "length": 6,
+        "subtlex_freq": 4.7677,
+        "length": 3,
         "wordnet_polysemy": 5
       }
     },
@@ -188,16 +188,16 @@
     },
     {
       "id": 9,
-      "text": "CHAIN",
+      "text": "FIDDLE",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.3265,
-        "length": 5,
-        "wordnet_polysemy": 12
+        "subtlex_freq": 3.5613,
+        "length": 6,
+        "wordnet_polysemy": 8
       }
     },
     {
@@ -248,16 +248,16 @@
     },
     {
       "id": 13,
-      "text": "CAPTAIN",
+      "text": "BREAD",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 5.3181,
-        "length": 7,
-        "wordnet_polysemy": 8
+        "subtlex_freq": 4.452,
+        "length": 5,
+        "wordnet_polysemy": 3
       }
     },
     {
@@ -292,57 +292,57 @@
     },
     {
       "id": 16,
-      "text": "CAMP",
+      "text": "RAM",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.709,
-        "length": 4,
-        "wordnet_polysemy": 12
+        "subtlex_freq": 3.809,
+        "length": 3,
+        "wordnet_polysemy": 9
       }
     },
     {
       "id": 17,
-      "text": "BUTTER",
+      "text": "SKATES",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.3101,
+        "subtlex_freq": 3.6263,
         "length": 6,
         "wordnet_polysemy": 3
       }
     },
     {
       "id": 18,
-      "text": "CANE",
+      "text": "FLAG",
       "human_perspective_role": "agent",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.9212,
+        "subtlex_freq": 4.2427,
         "length": 4,
-        "wordnet_polysemy": 4
+        "wordnet_polysemy": 12
       }
     },
     {
       "id": 19,
-      "text": "CAVE",
+      "text": "ONION",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.1455,
-        "length": 4,
+        "subtlex_freq": 3.6283,
+        "length": 5,
         "wordnet_polysemy": 3
       }
     },
@@ -396,30 +396,30 @@
     },
     {
       "id": 23,
-      "text": "CAKE",
+      "text": "BEARD",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.6534,
-        "length": 4,
-        "wordnet_polysemy": 4
+        "subtlex_freq": 4.1007,
+        "length": 5,
+        "wordnet_polysemy": 6
       }
     },
     {
       "id": 24,
-      "text": "BUTTERFLY",
+      "text": "GYMNAST",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.7421,
-        "length": 9,
-        "wordnet_polysemy": 5
+        "subtlex_freq": 2.7832,
+        "length": 7,
+        "wordnet_polysemy": 1
       }
     }
   ],

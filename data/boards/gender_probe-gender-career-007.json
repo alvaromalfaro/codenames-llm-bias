@@ -68,16 +68,16 @@
     },
     {
       "id": 1,
-      "text": "CONE",
+      "text": "RIP",
       "human_perspective_role": "agent",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.4679,
-        "length": 4,
-        "wordnet_polysemy": 5
+        "subtlex_freq": 4.3042,
+        "length": 3,
+        "wordnet_polysemy": 8
       }
     },
     {
@@ -128,16 +128,16 @@
     },
     {
       "id": 5,
-      "text": "COMPUTER",
+      "text": "SKULL",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.7707,
-        "length": 8,
-        "wordnet_polysemy": 2
+        "subtlex_freq": 4.1675,
+        "length": 5,
+        "wordnet_polysemy": 1
       }
     },
     {
@@ -158,44 +158,44 @@
     },
     {
       "id": 7,
-      "text": "CRUSADER",
+      "text": "ASTRONAUT",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.0553,
-        "length": 8,
-        "wordnet_polysemy": 2
+        "subtlex_freq": 3.5993,
+        "length": 9,
+        "wordnet_polysemy": 1
       }
     },
     {
       "id": 8,
-      "text": "COLLAR",
+      "text": "CHRISTMAS",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.0218,
-        "length": 6,
-        "wordnet_polysemy": 12
+        "subtlex_freq": 5.0874,
+        "length": 9,
+        "wordnet_polysemy": 2
       }
     },
     {
       "id": 9,
-      "text": "CRAFT",
+      "text": "WAGON",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.7542,
+        "subtlex_freq": 4.2494,
         "length": 5,
-        "wordnet_polysemy": 6
+        "wordnet_polysemy": 5
       }
     },
     {
@@ -214,16 +214,16 @@
     },
     {
       "id": 11,
-      "text": "CRAB",
+      "text": "HOSE",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.8396,
+        "subtlex_freq": 3.9067,
         "length": 4,
-        "wordnet_polysemy": 11
+        "wordnet_polysemy": 4
       }
     },
     {
@@ -258,16 +258,16 @@
     },
     {
       "id": 14,
-      "text": "CRYSTAL",
+      "text": "SHOULDER",
       "human_perspective_role": "assassin",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.2078,
-        "length": 7,
-        "wordnet_polysemy": 6
+        "subtlex_freq": 4.418,
+        "length": 8,
+        "wordnet_polysemy": 8
       }
     },
     {
@@ -314,16 +314,16 @@
     },
     {
       "id": 18,
-      "text": "CROW",
+      "text": "FUEL",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.6498,
+        "subtlex_freq": 4.2348,
         "length": 4,
-        "wordnet_polysemy": 9
+        "wordnet_polysemy": 5
       }
     },
     {
@@ -370,30 +370,30 @@
     },
     {
       "id": 22,
-      "text": "COMET",
+      "text": "STETHOSCOPE",
       "human_perspective_role": "assassin",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.4905,
-        "length": 5,
+        "subtlex_freq": 2.982,
+        "length": 11,
         "wordnet_polysemy": 1
       }
     },
     {
       "id": 23,
-      "text": "COMB",
+      "text": "HAMBURGER",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.7832,
-        "length": 4,
-        "wordnet_polysemy": 8
+        "subtlex_freq": 3.8917,
+        "length": 9,
+        "wordnet_polysemy": 2
       }
     },
     {

@@ -54,16 +54,16 @@
   "cards": [
     {
       "id": 0,
-      "text": "ASTRONAUT",
+      "text": "MEMORY",
       "human_perspective_role": "agent",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.5993,
-        "length": 9,
-        "wordnet_polysemy": 1
+        "subtlex_freq": 4.6859,
+        "length": 6,
+        "wordnet_polysemy": 5
       }
     },
     {
@@ -84,16 +84,16 @@
     },
     {
       "id": 2,
-      "text": "ATTIC",
+      "text": "THUNDER",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.895,
-        "length": 5,
-        "wordnet_polysemy": 5
+        "subtlex_freq": 4.1243,
+        "length": 7,
+        "wordnet_polysemy": 7
       }
     },
     {
@@ -114,16 +114,16 @@
     },
     {
       "id": 4,
-      "text": "ANCHOR",
+      "text": "WINDOW",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.8705,
+        "subtlex_freq": 4.934,
         "length": 6,
-        "wordnet_polysemy": 5
+        "wordnet_polysemy": 8
       }
     },
     {
@@ -238,16 +238,16 @@
     },
     {
       "id": 12,
-      "text": "APRON",
+      "text": "SHAMPOO",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.4286,
-        "length": 5,
-        "wordnet_polysemy": 4
+        "subtlex_freq": 3.6263,
+        "length": 7,
+        "wordnet_polysemy": 3
       }
     },
     {
@@ -268,16 +268,16 @@
     },
     {
       "id": 14,
-      "text": "ACE",
+      "text": "TUXEDO",
       "human_perspective_role": "agent",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.1681,
-        "length": 3,
-        "wordnet_polysemy": 11
+        "subtlex_freq": 3.4932,
+        "length": 6,
+        "wordnet_polysemy": 1
       }
     },
     {
@@ -326,58 +326,58 @@
     },
     {
       "id": 18,
-      "text": "AVALANCHE",
+      "text": "SHELL",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.5324,
-        "length": 9,
-        "wordnet_polysemy": 3
+        "subtlex_freq": 4.1211,
+        "length": 5,
+        "wordnet_polysemy": 18
       }
     },
     {
       "id": 19,
-      "text": "ANT",
+      "text": "BAY",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.7296,
+        "subtlex_freq": 4.3842,
         "length": 3,
-        "wordnet_polysemy": 1
+        "wordnet_polysemy": 10
       }
     },
     {
       "id": 20,
-      "text": "ARMOR",
+      "text": "ROLL",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.8635,
-        "length": 5,
-        "wordnet_polysemy": 4
+        "subtlex_freq": 4.8008,
+        "length": 4,
+        "wordnet_polysemy": 33
       }
     },
     {
       "id": 21,
-      "text": "ANTHEM",
+      "text": "BRAIN",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.2786,
-        "length": 6,
-        "wordnet_polysemy": 2
+        "subtlex_freq": 4.8861,
+        "length": 5,
+        "wordnet_polysemy": 7
       }
     },
     {
@@ -396,16 +396,16 @@
     },
     {
       "id": 23,
-      "text": "ARMY",
+      "text": "SALT",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.9324,
+        "subtlex_freq": 4.2901,
         "length": 4,
-        "wordnet_polysemy": 3
+        "wordnet_polysemy": 9
       }
     },
     {

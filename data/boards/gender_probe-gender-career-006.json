@@ -68,30 +68,30 @@
     },
     {
       "id": 1,
-      "text": "COFFEE",
+      "text": "PURSE",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 5.1594,
-        "length": 6,
-        "wordnet_polysemy": 4
+        "subtlex_freq": 4.2957,
+        "length": 5,
+        "wordnet_polysemy": 6
       }
     },
     {
       "id": 2,
-      "text": "COAST",
+      "text": "LOCUST",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.426,
-        "length": 5,
-        "wordnet_polysemy": 5
+        "subtlex_freq": 2.945,
+        "length": 6,
+        "wordnet_polysemy": 3
       }
     },
     {
@@ -158,16 +158,16 @@
     },
     {
       "id": 7,
-      "text": "CLOUD",
+      "text": "TROLL",
       "human_perspective_role": "assassin",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.07,
+        "subtlex_freq": 3.4348,
         "length": 5,
-        "wordnet_polysemy": 14
+        "wordnet_polysemy": 11
       }
     },
     {
@@ -188,16 +188,16 @@
     },
     {
       "id": 9,
-      "text": "CHIP",
+      "text": "SUMO",
       "human_perspective_role": "agent",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.3138,
+        "subtlex_freq": 2.9253,
         "length": 4,
-        "wordnet_polysemy": 14
+        "wordnet_polysemy": 1
       }
     },
     {
@@ -216,14 +216,14 @@
     },
     {
       "id": 11,
-      "text": "CHEESE",
+      "text": "DOLLAR",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.5911,
+        "subtlex_freq": 4.4414,
         "length": 6,
         "wordnet_polysemy": 4
       }
@@ -286,16 +286,16 @@
     },
     {
       "id": 16,
-      "text": "CHERRY",
+      "text": "STORY",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.1332,
-        "length": 6,
-        "wordnet_polysemy": 5
+        "subtlex_freq": 5.3434,
+        "length": 5,
+        "wordnet_polysemy": 6
       }
     },
     {
@@ -330,58 +330,58 @@
     },
     {
       "id": 19,
-      "text": "CHRISTMAS",
+      "text": "ROAD",
       "human_perspective_role": "assassin",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 5.0874,
-        "length": 9,
+        "subtlex_freq": 5.0485,
+        "length": 4,
         "wordnet_polysemy": 2
       }
     },
     {
       "id": 20,
-      "text": "CLOCK",
+      "text": "CRAFT",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.7677,
+        "subtlex_freq": 3.7542,
         "length": 5,
-        "wordnet_polysemy": 2
+        "wordnet_polysemy": 6
       }
     },
     {
       "id": 21,
-      "text": "COACH",
+      "text": "BUTTER",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.6774,
-        "length": 5,
-        "wordnet_polysemy": 7
+        "subtlex_freq": 4.3101,
+        "length": 6,
+        "wordnet_polysemy": 3
       }
     },
     {
       "id": 22,
-      "text": "CHALK",
+      "text": "TIGER",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.5567,
+        "subtlex_freq": 4.2677,
         "length": 5,
-        "wordnet_polysemy": 5
+        "wordnet_polysemy": 2
       }
     },
     {

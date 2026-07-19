@@ -84,16 +84,16 @@
     },
     {
       "id": 2,
-      "text": "BICYCLE",
+      "text": "SPRAY",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.8208,
-        "length": 7,
-        "wordnet_polysemy": 2
+        "subtlex_freq": 3.9847,
+        "length": 5,
+        "wordnet_polysemy": 9
       }
     },
     {
@@ -142,16 +142,16 @@
     },
     {
       "id": 6,
-      "text": "BENCH",
+      "text": "SWAMP",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.9856,
+        "subtlex_freq": 3.9536,
         "length": 5,
-        "wordnet_polysemy": 9
+        "wordnet_polysemy": 4
       }
     },
     {
@@ -170,44 +170,44 @@
     },
     {
       "id": 8,
-      "text": "BEARD",
+      "text": "ARMY",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.1007,
-        "length": 5,
-        "wordnet_polysemy": 6
+        "subtlex_freq": 4.9324,
+        "length": 4,
+        "wordnet_polysemy": 3
       }
     },
     {
       "id": 9,
-      "text": "BEAN",
+      "text": "STREET",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.8359,
-        "length": 4,
+        "subtlex_freq": 5.1702,
+        "length": 6,
         "wordnet_polysemy": 5
       }
     },
     {
       "id": 10,
-      "text": "BEAM",
+      "text": "STAMP",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.9412,
-        "length": 4,
-        "wordnet_polysemy": 13
+        "subtlex_freq": 3.7733,
+        "length": 5,
+        "wordnet_polysemy": 18
       }
     },
     {
@@ -270,44 +270,44 @@
     },
     {
       "id": 15,
-      "text": "BEER",
+      "text": "GOAT",
       "human_perspective_role": "agent",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.8774,
+        "subtlex_freq": 4.0226,
         "length": 4,
-        "wordnet_polysemy": 1
+        "wordnet_polysemy": 4
       }
     },
     {
       "id": 16,
-      "text": "BEE",
+      "text": "BLACKSMITH",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.0153,
-        "length": 3,
-        "wordnet_polysemy": 2
+        "subtlex_freq": 3.3253,
+        "length": 10,
+        "wordnet_polysemy": 1
       }
     },
     {
       "id": 17,
-      "text": "BISCUIT",
+      "text": "POLISH",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.5751,
-        "length": 7,
-        "wordnet_polysemy": 2
+        "subtlex_freq": 3.9856,
+        "length": 6,
+        "wordnet_polysemy": 8
       }
     },
     {
@@ -386,30 +386,30 @@
     },
     {
       "id": 23,
-      "text": "BIKINI",
+      "text": "DREAM",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.5683,
-        "length": 6,
-        "wordnet_polysemy": 2
+        "subtlex_freq": 5.1243,
+        "length": 5,
+        "wordnet_polysemy": 8
       }
     },
     {
       "id": 24,
-      "text": "BLACKSMITH",
+      "text": "SQUIRREL",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.3253,
-        "length": 10,
-        "wordnet_polysemy": 1
+        "subtlex_freq": 3.739,
+        "length": 8,
+        "wordnet_polysemy": 2
       }
     }
   ],

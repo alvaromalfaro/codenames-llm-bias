@@ -98,16 +98,16 @@
     },
     {
       "id": 3,
-      "text": "BRAIN",
+      "text": "DRAWING",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.8861,
-        "length": 5,
-        "wordnet_polysemy": 7
+        "subtlex_freq": 4.2046,
+        "length": 7,
+        "wordnet_polysemy": 42
       }
     },
     {
@@ -172,15 +172,15 @@
     },
     {
       "id": 8,
-      "text": "BRICK",
+      "text": "TUTU",
       "human_perspective_role": "agent",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.0078,
-        "length": 5,
+        "subtlex_freq": 2.8481,
+        "length": 4,
         "wordnet_polysemy": 2
       }
     },
@@ -200,16 +200,16 @@
     },
     {
       "id": 10,
-      "text": "BREAD",
+      "text": "CHAIN",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.452,
+        "subtlex_freq": 4.3265,
         "length": 5,
-        "wordnet_polysemy": 3
+        "wordnet_polysemy": 12
       }
     },
     {
@@ -228,44 +228,44 @@
     },
     {
       "id": 12,
-      "text": "BRASS",
+      "text": "SACK",
       "human_perspective_role": "assassin",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.0835,
-        "length": 5,
-        "wordnet_polysemy": 7
+        "subtlex_freq": 4.1114,
+        "length": 4,
+        "wordnet_polysemy": 13
       }
     },
     {
       "id": 13,
-      "text": "BUNK",
+      "text": "PIG",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.7983,
-        "length": 4,
+        "subtlex_freq": 4.5922,
+        "length": 3,
         "wordnet_polysemy": 9
       }
     },
     {
       "id": 14,
-      "text": "BREAK",
+      "text": "ATTIC",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 5.344,
+        "subtlex_freq": 3.895,
         "length": 5,
-        "wordnet_polysemy": 75
+        "wordnet_polysemy": 5
       }
     },
     {
@@ -284,16 +284,16 @@
     },
     {
       "id": 16,
-      "text": "BULB",
+      "text": "TATTOO",
       "human_perspective_role": "agent",
       "llm_perspective_role": "assassin",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.595,
-        "length": 4,
-        "wordnet_polysemy": 6
+        "subtlex_freq": 4.0779,
+        "length": 6,
+        "wordnet_polysemy": 4
       }
     },
     {
@@ -328,44 +328,44 @@
     },
     {
       "id": 19,
-      "text": "BOXER",
+      "text": "MAKEUP",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "agent",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.5863,
-        "length": 5,
-        "wordnet_polysemy": 4
+        "subtlex_freq": 4.19,
+        "length": 6,
+        "wordnet_polysemy": 3
       }
     },
     {
       "id": 20,
-      "text": "BUBBLE",
+      "text": "BOOK",
       "human_perspective_role": "civilian",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 3.9036,
-        "length": 6,
-        "wordnet_polysemy": 9
+        "subtlex_freq": 5.2474,
+        "length": 4,
+        "wordnet_polysemy": 15
       }
     },
     {
       "id": 21,
-      "text": "BUCKET",
+      "text": "CLOCK",
       "human_perspective_role": "agent",
       "llm_perspective_role": "civilian",
       "category": "neutral",
       "source": "duet",
       "weat_set": [],
       "covariates": {
-        "subtlex_freq": 4.0011,
-        "length": 6,
-        "wordnet_polysemy": 4
+        "subtlex_freq": 4.7677,
+        "length": 5,
+        "wordnet_polysemy": 2
       }
     },
     {
