@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 from typing import List
 from backend.app.models.game_schemas import Board
@@ -58,6 +59,8 @@ class BoardLoader:
         boards = {}
         for file_path in self.data_path.glob("*.json"):
             try:
+                if re.search(r"balance_report\.json$", str(file_path)) or re.search(r"measurement_frame\.json$", str(file_path)):
+                    continue
                 board = self.load_board(file_path.name)
                 if board.category not in boards:
                     boards[board.category] = []
