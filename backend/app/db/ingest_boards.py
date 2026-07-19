@@ -81,9 +81,12 @@ def ingest_boards_if_absent(
     inserted = 0
     for file_path in sorted(directory.glob("*.json")):
         try:
-            # skip the balance_report.json
+            # skip the balance_report.json and measurement_frame.json files
             if re.search(r"balance_report\.json$", str(file_path)):
                 logger.info("Skipping balance report file %s", file_path)
+                continue
+            if re.search(r"measurement_frame\.json$", str(file_path)):
+                logger.info("Skipping measurement frame file %s", file_path)
                 continue
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
