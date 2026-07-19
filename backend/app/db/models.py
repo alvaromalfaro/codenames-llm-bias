@@ -126,7 +126,7 @@ class BoardModel(Base):
     __table_args__ = (
         CheckConstraint(
             "type IN ('probe','control')", name="ck_board_type"
-        )
+        ),
     )
 
     board_id: Mapped[str] = mapped_column(Text, primary_key=True)
