@@ -200,6 +200,48 @@ def _db_enabled() -> bool:
 ClientFactory = Callable[[int, SeatSpec], LLMClient]
 
 
+# run minting (identity + provenance + gate)
+def create_run(*, seat_specs, master_seed: int, temperature: float,
+               template_fingerprint: str, persist: bool = True,
+               enforce_digests: bool = False) -> tuple[str, Optional[dict]]:
+    """Mint one run: run the digest gate (once), build provenance, create the run row.
+
+    Returns ``(run_id, model_registry_snapshot)``. Takes ``template_fingerprint`` as a plain string
+    (the caller builds the ``LLMService`` and passes ``svc.template_fingerprint()``) so this stays
+    free of service/template concerns and owns only run identity + provenance + the gate - the lower-
+    coupling option.
+
+    The served-model snapshot is built only when it will be used - persisted into the run row, or
+    required by the enforcement gate - so the default dry-run path adds no daemon call. The gate
+    aborts (``ModelDigestMismatchError``) before any run row exists when ``enforce_digests`` and a
+    served local digest is not vetted; it is a no-op when ``enforce_digests=False``.
+    ``persist=False`` synthesizes a deterministic ``run_id`` and touches no DB (snapshot may be None).
+    """
+    snapshot = None
+    if persist or enforce_digests:
+        snapshot = provenance.build_model_registry_snapshot(seat_specs)
+        # Abort here (before the run row exists, before any dispatch) if a served local digest is
+        # not the one the batch is validated against. No-op when off.
+        _enforce_local_digests(snapshot, enforce=enforce_digests)
+    if persist:
+        from backend.app.db.models import RunModel
+        from backend.app.db.session import session_scope
+        with session_scope() as session:
+            run = RunModel(
+                master_seed=Decimal(int(master_seed)), temperature=temperature,
+                model_registry_snapshot=snapshot,
+                prompt_template_version=template_fingerprint,
+                code_version=provenance.git_code_version(),
+            )
+            session.add(run)
+            session.flush()
+            run_id = run.id
+    else:
+        # No DB: synthesize a deterministic run id so results/tests are still reproducible.
+        run_id = str(uuid.uuid5(_GAME_NAMESPACE, f"run:{master_seed}"))
+    return run_id, snapshot
+
+
 # dispatch
 async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
                           recorder: GameRecorder, seed_game: int, flush) -> None:
@@ -300,33 +342,13 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     # minimal run row, committed first in its own short-lived session (FK: run before game). When a
     # run row is created here we also fill its provenance (which models served, which prompt texts
     # were sent, which code ran); an existing run_id is left untouched - the batch owns its
-    # provenance. Provenance is record-only: no lookup may abort the game (see backend...provenance).
+    # provenance and mints the run itself so the gate runs once, not per game. Provenance is
+    # record-only: no lookup may abort the game (see backend...provenance).
     if run_id is None:
-        # Resolve the served-model snapshot (and run the digest gate) once, at run creation, before
-        # any game is dispatched. Built only when it will be used - persisted into the run row, or
-        # required by the enforcement gate - so the default dry-run path adds no daemon call.
-        snapshot = None
-        if persist or enforce_digests:
-            snapshot = provenance.build_model_registry_snapshot(seat_specs)
-            # Reproducibility gate: abort here (before the run row exists, before any dispatch) if a
-            # served local digest is not the one the batch is validated against. No-op when off.
-            _enforce_local_digests(snapshot, enforce=enforce_digests)
-        if persist:
-            from backend.app.db.models import RunModel
-            from backend.app.db.session import session_scope
-            with session_scope() as session:
-                run = RunModel(
-                    master_seed=Decimal(int(master_seed)), temperature=temperature,
-                    model_registry_snapshot=snapshot,
-                    prompt_template_version=svc.template_fingerprint(),
-                    code_version=provenance.git_code_version(),
-                )
-                session.add(run)
-                session.flush()
-                run_id = run.id
-        else:
-            # No DB: synthesize a deterministic run id so results/tests are still reproducible.
-            run_id = str(uuid.uuid5(_GAME_NAMESPACE, f"run:{master_seed}"))
+        run_id, _ = create_run(
+            seat_specs=seat_specs, master_seed=master_seed, temperature=temperature,
+            template_fingerprint=svc.template_fingerprint(), persist=persist,
+            enforce_digests=enforce_digests)
 
     logger.info(
         "run_single_game start: run_id=%s game_id=%s master_seed=%s temperature=%s seats=%s",
