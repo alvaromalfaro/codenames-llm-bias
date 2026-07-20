@@ -19,18 +19,26 @@
 llm_models = {
     "Ollama": {
         # LLaMA
-        "llama3.1:latest": {
+        "llama3.1:8b": {
+            "think": False
+        },
+        # Gemma
+        "gemma4:12b": {
+            "think": False
+        },
+        # Qwen
+        "qwen2.5:14b": {
             "think": False
         },
         # Mistral
-        "mistral-small3.2:latest": {
+        "mistral-small3.2:24b": {
             "think": False
         },
     },
-    "OpenRouter": {
-        "x-ai/grok-4.3": {},
-        "google/gemini-3.5-flash": {},
-    },
+    # "OpenRouter": {
+    #     "x-ai/grok-4.3": {},
+    #     "google/gemini-3.5-flash": {},
+    # },
 }
 
 # The exact local (Ollama) weights this batch is validated against, keyed by the model tag as it
@@ -41,8 +49,12 @@ llm_models = {
 # before any game is dispatched (see game_runner._enforce_local_digests / ModelDigestMismatchError).
 # Human-readable: llama3.1 = 8B Q4_K_M; mistral-small3.2 = 24B Q4_K_M.
 EXPECTED_LOCAL_DIGESTS = {
-    "llama3.1:latest":
+    "llama3.1:8b":
         "sha256:46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
-    "mistral-small3.2:latest":
+    "gemma4:12b":
+        "sha256:4eb23ef187e2c5462566d6a1d3bbbc2f1346d0b4327cbb66d58fffbcc9b2b05c",
+    "qwen2.5:14b":
+        "sha256:7cdf5a0187d5c58cc5d369b255592f7841d1c4696d45a8c8a9489440385b22f6",
+    "mistral-small3.2:24b":
         "sha256:5a408ab55df5c1b5cf46533c368813b30bf9e4d8fc39263bf2a3338cfa3b895b",
 }
