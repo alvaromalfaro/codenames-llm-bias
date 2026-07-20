@@ -44,9 +44,11 @@ llm_models = {
 # The exact local (Ollama) weights this batch is validated against, keyed by the model tag as it
 # appears in `llm_models["Ollama"]` (and in a seat's `model_name`). These are the full manifest
 # digests captured from the running daemon's /api/tags; the daemon rejects a digest-as-model tag,
-# so the tag stays `:latest` and this map is the reproducibility anchor. When digest enforcement is
-# on (the batch path), a served digest that differs from the expected one below ABORTS the run
-# before any game is dispatched (see game_runner._enforce_local_digests / ModelDigestMismatchError).
+# so the tag stays the PLAYED tag (the exact key in `llm_models["Ollama"]`, e.g. `llama3.1:8b` -
+# never a bare `:latest`, which would not match what is played) and this map is the reproducibility
+# anchor. When digest enforcement is on (the batch path), a served digest that differs from the
+# expected one below ABORTS the run before any game is dispatched (see game_runner._enforce_local_digests /
+# ModelDigestMismatchError).
 # Human-readable: llama3.1 = 8B Q4_K_M; mistral-small3.2 = 24B Q4_K_M.
 EXPECTED_LOCAL_DIGESTS = {
     "llama3.1:8b":

@@ -24,7 +24,7 @@ from test_game_runner import _board, _make_client
 # A local model that is pinned in config, plus the digest the daemon would serve for it. The served
 # form is the bare hex (what resolve_ollama_digest returns verbatim from /api/tags); the config
 # constant carries the `sha256:` prefix - so a passing match also exercises prefix-normalisation.
-_LOCAL_MODEL = "llama3.1:latest"
+_LOCAL_MODEL = "llama3.1:8b"
 _EXPECTED = config.EXPECTED_LOCAL_DIGESTS[_LOCAL_MODEL]
 # bare hex, no prefix
 _SERVED_OK = _EXPECTED.split(":", 1)[1]
@@ -37,9 +37,12 @@ _SPECS = (_LOCAL, _API)
 
 
 # config sanity: the pinned constants are well-formed
-def test_expected_digests_cover_both_local_models_and_are_wellformed():
-    assert set(config.EXPECTED_LOCAL_DIGESTS) == {
-        "llama3.1:latest", "mistral-small3.2:latest"}
+def test_expected_digests_cover_every_local_roster_model_and_are_wellformed():
+    # The pinned map must cover exactly the local roster in config.llm_models, keyed by the same tag
+    # that is actually played - a tag that drifts from the roster (e.g. a stale `:latest`) makes the
+    # gate abort the batch at run-row creation.
+    assert set(config.EXPECTED_LOCAL_DIGESTS) == set(
+        config.llm_models["Ollama"])
     for tag, digest in config.EXPECTED_LOCAL_DIGESTS.items():
         assert re.fullmatch(r"sha256:[0-9a-f]{64}", digest), (tag, digest)
 

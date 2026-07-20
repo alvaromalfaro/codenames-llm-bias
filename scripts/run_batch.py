@@ -68,12 +68,12 @@ def _parse_model(arg: str) -> SeatSpec:
     colons). Mirrors run_pilot._parse_seat's validation."""
     if ":" not in arg:
         raise SystemExit(
-            f"--model {arg!r} must be provider:model (e.g. ollama:llama3.1:latest).")
+            f"--model {arg!r} must be provider:model (e.g. ollama:llama3.1:8b).")
     provider, model_name = arg.split(":", 1)
     provider, model_name = provider.strip().lower(), model_name.strip()
     if not provider or not model_name:
         raise SystemExit(
-            f"--model {arg!r} must be provider:model (e.g. ollama:llama3.1:latest).")
+            f"--model {arg!r} must be provider:model (e.g. ollama:llama3.1:8b).")
     if provider not in _KNOWN_PROVIDERS:
         raise SystemExit(
             f"--model {arg!r} has unknown provider {provider!r}; one of {_KNOWN_PROVIDERS}.")

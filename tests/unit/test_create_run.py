@@ -12,7 +12,7 @@ from backend.app.core.game_runner import (
 )
 
 # A local model pinned in config plus the (bare-hex) digest the daemon would serve for a match.
-_LOCAL_MODEL = "llama3.1:latest"
+_LOCAL_MODEL = "llama3.1:8b"
 _SERVED_OK = config.EXPECTED_LOCAL_DIGESTS[_LOCAL_MODEL].split(":", 1)[1]
 _SERVED_WRONG = "a" * 64
 

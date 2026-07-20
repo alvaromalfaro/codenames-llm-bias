@@ -130,6 +130,57 @@ class LLMParseError(LLMError):
                          cause=cause, execution_mode=execution_mode)
 
 
+class LLMEmptyResponseError(LLMParseError):
+    """
+    A specific parse error for when the provider returns empty or whitespace-only content. Unlike its
+    parent, this error is retriable: an empty draw is not malformed model output that re-sending
+    would reproduce, it is a stochastic non-answer (observed intermittently from ollama at
+    temperature > 0), and re-sampling the identical request usually succeeds. It stays a subclass of
+    LLMParseError so existing ``except LLMParseError`` handlers keep catching it, while narrowly
+    scoping retriability to the empty case - genuinely malformed NON-empty output remains
+    non-retriable, since re-sending it would only reproduce the same bad parse.
+    """
+
+    def __init__(self, message: str = "The LLM returned an empty response.",
+                 provider: str | None = None, http_status: int | None = None,
+                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
+                 cause: Exception | None = None, execution_mode: str | None = None):
+        # Bypass LLMParseError.__init__ (which hardcodes retriable=False) to set the code and the
+        # retriable flag that distinguish this case.
+        LLMError.__init__(self, code="empty_response", message=message, retriable=True,
+                          provider=provider, http_status=http_status, request_id=request_id,
+                          raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+
+
+class LLMDegenerateResponseError(LLMParseError):
+    """
+    A specific parse error for a well-formed response whose content is degenerate: it satisfies the
+    (deliberately permissive) LLM-facing schema but cannot produce a legal domain object - e.g. an
+    empty ``proposals`` list, which parses fine against ``GuessJSONFormat`` but violates
+    ``GuessProposal.proposals`` (``min_length=1``).
+
+    Retriable for the same reason as an empty response: the model produced a non-answer, not
+    malformed output, and re-sampling the identical request usually yields a usable one. This is
+    tracked separately from ``LLMEmptyResponseError`` because the two describe different model
+    behaviours - "returned nothing" versus "returned a well-formed refusal to guess" - and the
+    experiment wants to count them apart.
+
+    It stays a subclass of ``LLMParseError`` so existing handlers keep catching it. Note the domain
+    constraint it protects (``min_length=1``) is not loosened: an empty guess list is illegal by game
+    rules, so after the retry budget is exhausted this still errors out.
+    """
+
+    def __init__(self, message: str = "The LLM returned a well-formed but degenerate response.",
+                 provider: str | None = None, http_status: int | None = None,
+                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
+                 cause: Exception | None = None, execution_mode: str | None = None):
+        # Bypass LLMParseError.__init__ (which hardcodes retriable=False) to set the code and the
+        # retriable flag that distinguish this case.
+        LLMError.__init__(self, code="degenerate_response", message=message, retriable=True,
+                          provider=provider, http_status=http_status, request_id=request_id,
+                          raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+
+
 class LLMProviderUnavailableError(LLMError):
     """
     A specific error class for LLM provider unavailability, indicating that the LLM provider is 

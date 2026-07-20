@@ -1,8 +1,11 @@
 import pytest
 import json
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from backend.app.core.llm_service import LLMService
+from backend.app.core.llm import client as client_module
 from backend.app.core.llm.client import LLMClient
+from backend.app.core.llm.client_local import LLMClientLocal
+from backend.app.models.llm_errors import LLMEmptyResponseError
 from backend.app.core.clue_validator import ClueValidator
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal
 from backend.app.models.game_schemas import GamePhase, ClueEntry, ResolvedTarget
@@ -613,3 +616,67 @@ async def test_no_seed_leaves_request_seed_none(game_state_guessing):
     await LLMService().propose_guess(client, game_state_guessing, player_id=0)
 
     assert client.generate.await_args_list[0][0][0].seed is None
+
+
+# empty-response re-sample, end to end through the service
+def _mock_ollama_chat_response(content: str) -> MagicMock:
+    """A MagicMock mimicking a raw ollama chat() return carrying exactly ``content``."""
+    r = MagicMock()
+    r.message.content = content
+    r.total_duration = 3200
+    r.prompt_eval_count = 10
+    r.eval_count = 20
+    r.done_reason = "stop"
+    r.model_dump_json.return_value = json.dumps(
+        {"message": {"content": content}})
+    return r
+
+
+_VALID_CLUE_JSON = json.dumps(
+    {"reasoning": "military theme", "clue": "battle", "count": 3})
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_survives_empty_draw_and_audits_the_resample(game_state_cg):
+    """An intermittent empty draw must not kill the game.
+
+    Driving the real LLMClientLocal (only the ollama transport mocked): attempt 1 returns '',
+    attempt 2 returns valid JSON. propose_clue must return a usable clue, and the audit carrier for
+    that call must record exactly 1 empty-response re-sample.
+    """
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = [
+            _mock_ollama_chat_response(""),
+            _mock_ollama_chat_response(_VALID_CLUE_JSON),
+        ]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+        service = LLMService()
+
+        result = await service.propose_clue(
+            client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+
+        assert isinstance(result, ClueProposal)
+        assert result.clue == "battle"
+        assert mock_chat.call_count == 2
+        # One clue-legality attempt (retry_index 0) that internally absorbed one empty draw. The two
+        # counters are distinct axes and must not be conflated.
+        assert len(result.llm_calls) == 1
+        assert result.llm_calls[0].retry_index == 0
+        assert result.llm_calls[0].raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 1
+
+
+@pytest.mark.asyncio
+async def test_propose_clue_still_fails_when_every_draw_is_empty(game_state_cg):
+    """The re-sample is bounded: when every draw is empty the budget is exhausted and the error
+    surfaces rather than looping forever."""
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = _mock_ollama_chat_response("")
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+        service = LLMService()
+
+        with pytest.raises(LLMEmptyResponseError):
+            await service.propose_clue(
+                client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+        assert mock_chat.call_count == 4  # max_retries=3 -> 4 attempts, then raise
