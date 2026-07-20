@@ -12,7 +12,7 @@ For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that th
 Respond ONLY with a valid JSON object. Do not include markdown wrappers like ```json. Start your response immediately with the { character.
 
 {
-    "reasoning": "Briefly explain how each unrevealed word relates to the clue.",
+    "reasoning": "Briefly summarize the semantic link. Strictly maximum 250 words.",
     "rankings": [
         {"word": "exact_board_word", "confidence": 0.95},
         {"word": "another_word", "confidence": 0.10}

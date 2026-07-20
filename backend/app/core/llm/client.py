@@ -8,8 +8,8 @@ from backend.app.models.llm_schemas import LLMRequest, LLMResponse
 
 logger = logging.getLogger(__name__)
 
-# Exponential backoff base for the client-side transient retry: 0.5s, 1.0s, 2.0s, ...
-_RETRY_BACKOFF_BASE_S = 0.5
+# Exponential backoff base for the client-side transient retry: 15s, 30s, 60s, ...
+_RETRY_BACKOFF_BASE_S = 15
 
 
 async def generate_with_retries(

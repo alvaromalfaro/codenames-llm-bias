@@ -32,7 +32,8 @@ class LLMClientOpenRouter(LLMClient):
             max_retries=self.max_retries, provider="openrouter", model=self.model_name)
 
     async def _generate_once(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
-        messages = [{"role": m.role, "content": m.content} for m in request.messages]
+        messages = [{"role": m.role, "content": m.content}
+                    for m in request.messages]
 
         if expected_format:
             response_format = {
@@ -48,11 +49,16 @@ class LLMClientOpenRouter(LLMClient):
 
         try:
             start = time.monotonic()
+
+            # The OpenRouter API uses a 32-bit signed integer for the seed, so we need to mask it to
+            # ensure it's within that range.
+            safe_seed = request.seed & 0x7FFFFFFF if request.seed is not None else None
+
             response = await self._client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
                 temperature=request.temperature,
-                seed=request.seed,
+                seed=safe_seed,
                 max_tokens=request.max_tokens,
                 timeout=request.timeout_s,
                 response_format=response_format,
@@ -65,7 +71,8 @@ class LLMClientOpenRouter(LLMClient):
                 try:
                     expected_format.model_validate_json(content)
                 except Exception as e:
-                    raise LLMParseError(provider="openrouter", cause=e, execution_mode="api")
+                    raise LLMParseError(
+                        provider="openrouter", cause=e, execution_mode="api")
 
             usage = response.usage
             raw_payload = response.model_dump()
@@ -86,18 +93,23 @@ class LLMClientOpenRouter(LLMClient):
                 provider="openrouter",
                 requested_temperature=request.temperature,
                 requested_seed=request.seed,
-                system_fingerprint=getattr(response, "system_fingerprint", None),
+                system_fingerprint=getattr(
+                    response, "system_fingerprint", None),
                 resolved_model=response.model,
             )
 
         except AuthenticationError as e:
-            raise LLMAuthError(provider="openrouter", cause=e, execution_mode="api")
+            raise LLMAuthError(provider="openrouter",
+                               cause=e, execution_mode="api")
         except RateLimitError as e:
-            raise LLMRateLimitError(provider="openrouter", cause=e, execution_mode="api")
+            raise LLMRateLimitError(
+                provider="openrouter", cause=e, execution_mode="api")
         except APITimeoutError as e:
-            raise LLMTimeoutError(provider="openrouter", cause=e, execution_mode="api")
+            raise LLMTimeoutError(provider="openrouter",
+                                  cause=e, execution_mode="api")
         except APIConnectionError as e:
-            raise LLMProviderUnavailableError(provider="openrouter", cause=e, execution_mode="api")
+            raise LLMProviderUnavailableError(
+                provider="openrouter", cause=e, execution_mode="api")
 
     async def close(self) -> None:
         await self._client.close()

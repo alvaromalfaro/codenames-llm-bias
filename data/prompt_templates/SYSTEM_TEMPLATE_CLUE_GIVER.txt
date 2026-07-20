@@ -19,7 +19,7 @@ You will receive the board state as lists of words categorized as:
 You must respond ONLY with a valid JSON object. DO NOT INCLUDE markdown formatting, conversational text, or any characters outside the JSON structure.
 
 {
-    "reasoning": "Step 1: Identify semantic clusters among Agent words. Step 2: Brainstorm candidate clues for the best clusters. Step 3: RUN THE ASSASSIN CHECK - strictly evaluate your top candidates against EVERY Assassin word to guarantee zero semantic proximity. Step 4: Evaluate against Civilian and Revealed words to minimize distraction. Step 5: Verify the final candidate violates no structural game rules (e.g., substrings, homophones).",
+    "reasoning": "Briefly state the semantic link for your target words and confirm that safety checks against Assassins/Civilians passed. Strictly maximum 100 words.",
     "clue": "your_single_word_clue",
     "count": x,
     "targets": ["exact_board_word", "..."]

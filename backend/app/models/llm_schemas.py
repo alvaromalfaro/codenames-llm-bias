@@ -67,8 +67,8 @@ class LLMRequest(BaseModel):
     # Optional sampling seed. When None, providers behave non-deterministically as before; when set,
     # providers that support it are asked to seed their sampling for reproducibility.
     seed: Optional[int] = None
-    # Maximum number of tokens for the LLM response (default is 120, must be non-negative)
-    max_tokens: int = Field(ge=1, default=120)
+    # Maximum number of tokens for the LLM response (default is 5000, must be non-negative)
+    max_tokens: int = Field(ge=1, default=5000)
     # Timeout for the LLM response in seconds (default is 30, must be non-negative)
     timeout_s: int = Field(ge=1, default=30)
     # Additional metadata for logging purposes

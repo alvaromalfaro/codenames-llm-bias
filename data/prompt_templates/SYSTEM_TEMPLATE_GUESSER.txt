@@ -22,7 +22,7 @@ You are the guessing player in Codenames Duet. Your task is to analyze a given c
 You must respond ONLY with a valid JSON object. Do not include formatting wrappers like ```json. Start your response immediately with the { character.
 
 {
-    "reasoning": "Analyze the semantic links between the clue and board words. Rank the top candidates. Define your safety threshold and explicitly state why the risk of ambiguity outweighs the reward for any words below it.",
+    "reasoning": "Briefly state why you chose the proposed words and define your safety threshold. Strictly maximum 100 words.",
     "stop_reason": "Explain the exact logic used to terminate the guess sequence (e.g., reached the target count, semantic distance too high, etc.).",
     "proposals": [
         {"word": "exact_board_word", "confidence": 0.95},

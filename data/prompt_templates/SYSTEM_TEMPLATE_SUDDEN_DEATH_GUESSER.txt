@@ -10,7 +10,7 @@ You are the guessing player in Codenames Duet. The game has entered SUDDEN DEATH
 Respond ONLY with a valid JSON object. No markdown wrappers.
 
 {
-    "reasoning": "Recall which unrevealed words your partner's clues pointed to. For each candidate, state your confidence that it is one of your agents.",
+    "reasoning": "Briefly state which past clues led you to your proposed agents. Strictly maximum 100 words.",
     "stop_reason": "Explain why you stopped proposing guesses.",
     "proposals": [
         {"word": "exact_board_word", "confidence": 0.95}

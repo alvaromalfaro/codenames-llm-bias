@@ -42,7 +42,7 @@ class LLMService:
     SYSTEM_TEMP_MEAS_SD_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_MEASUREMENT_SD.txt"
     USER_TEMP_MEAS_SD_PATH = "data/prompt_templates/USER_TEMPLATE_MEASUREMENT_SD.txt"
 
-    def __init__(self, temperature: float = 0.7, max_tokens: int = 1000, timeout_s: int = 30):
+    def __init__(self, temperature: float = 0.7, max_tokens: int = 5000, timeout_s: int = 30):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_s = timeout_s
