@@ -28,6 +28,12 @@ dev = [
     "pytest",
     "pytest-asyncio",
 ]
+# Offline phi* embedding backfill only (scripts/backfill_embeddings.py). Deliberately not a default
+# dependency: it pulls torch, which has no business in the FastAPI image. Pinned to the exact version
+# in board_generator/uv.lock so platform-side vectors stay comparable to the generator's.
+embeddings = [
+    "sentence-transformers==5.5.1",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
