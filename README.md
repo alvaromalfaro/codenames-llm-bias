@@ -385,7 +385,7 @@ stderr. Bootstrap defaults are `B = 2000` replicates, seed `2026`, percentile CI
 
 **What each metric is**
 
-* **IAE** — *implicit association effect*, clue-giver role. On a dilemma turn the giver can bridge to
+* **IAE** — clue-giver role. On a dilemma turn the giver can bridge to
   its target through a stereotypical or a neutral word; IAE is the share of **resolved** dilemmas
   taken stereotypically. Dilemmas the giver neither resolves nor separates are excluded, and the
   exclusion rate is printed next to the ratio rather than hidden inside it. Reference point: 0.5
