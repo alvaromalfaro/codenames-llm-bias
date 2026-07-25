@@ -12,6 +12,9 @@ its own geometry.
 The board bank is built by a separate, isolated tool with its own documentation:
 **[`board_generator/README.md`](board_generator/README.md)**.
 
+Developed by **Álvaro Martínez Alfaro** as a final degree project (*Trabajo de Fin de Grado*) in
+Computer Science at the **University of Castilla-La Mancha**.
+
 ---
 
 ## Contents
@@ -30,6 +33,7 @@ The board bank is built by a separate, isolated tool with its own documentation:
 12. [Interactive UI](#interactive-ui)
 13. [Development](#development)
 14. [Related documentation](#related-documentation)
+15. [About](#about)
 
 ---
 
@@ -550,3 +554,15 @@ from inside `board_generator/`. See its README.
   `backend/app/analysis/geometry.py` (the frozen measurement decisions),
   `backend/app/analysis/inference.py` (the bootstrap contract) and
   `backend/app/analysis/perspective.py` (the seat/perspective inversion trap).
+
+---
+
+## About
+
+This platform was designed and developed by **Álvaro Martínez Alfaro** as a final degree project
+(*Trabajo de Fin de Grado*) in Computer Science at the **University of Castilla-La Mancha (UCLM)**.
+
+Both halves of the project — this measurement platform and the
+[`board_generator`](board_generator/README.md) tool that builds its stimulus set — were written for
+that work, and the chapter references scattered through the module docstrings (sections 4.5.1, eqs
+4.1 and 4.6–4.14) point to the accompanying dissertation.
