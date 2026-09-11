@@ -37,7 +37,9 @@ services:
       dockerfile: backend/Dockerfile
     container_name: codenames-backend
     working_dir: /workspace
-    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Watch only the app code: the repo root also holds docker_volumes/postgres_data, which this
+    # user cannot read and which would crash the reloader
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend
     volumes:
       - ./:/workspace # Backend source code
       - ./data:/workspace/data # External files for words and biases
