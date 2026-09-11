@@ -17,7 +17,11 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: codenames-ollama
-    entrypoint: [ "/bin/bash", "/ollama_entrypoint.sh" ]
+    # Strip any CR before running, so a CRLF checkout on Windows still works
+    entrypoint:
+      - /bin/bash
+      - -c
+      - sed 's/\r$$//' /ollama_entrypoint.sh > /tmp/ollama_entrypoint.sh && exec /bin/bash /tmp/ollama_entrypoint.sh
     ports:
       - "11434:11434"
     volumes:
