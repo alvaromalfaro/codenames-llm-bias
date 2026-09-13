@@ -1,0 +1,7 @@
+# Keep the build context small and free of secrets. docker_volumes/ holds the Ollama weights
+# (tens of GB) and the Postgres data directory, which is not readable by the builder.
+docker_volumes/
+.env
+.venv/
+venv/
+**/__pycache__/

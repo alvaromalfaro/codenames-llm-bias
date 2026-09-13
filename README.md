@@ -23,17 +23,18 @@ Computer Science at the **University of Castilla-La Mancha**.
 2. [Repository layout](#repository-layout)
 3. [Prerequisites](#prerequisites)
 4. [Quick start with Docker](#quick-start-with-docker)
-5. [The board bank](#the-board-bank)
-6. [The experiment](#the-experiment)
-7. [Running the batch unattended](#running-the-batch-unattended)
-8. [Post-batch embedding backfill](#post-batch-embedding-backfill)
-9. [Analysis scripts](#analysis-scripts)
-10. [Reproducing the shipped results](#reproducing-the-shipped-results)
-11. [Data model](#data-model)
-12. [Interactive UI](#interactive-ui)
-13. [Development](#development)
-14. [Related documentation](#related-documentation)
-15. [About](#about)
+5. [Running on Windows](#running-on-windows)
+6. [The board bank](#the-board-bank)
+7. [The experiment](#the-experiment)
+8. [Running the batch unattended](#running-the-batch-unattended)
+9. [Post-batch embedding backfill](#post-batch-embedding-backfill)
+10. [Analysis scripts](#analysis-scripts)
+11. [Reproducing the shipped results](#reproducing-the-shipped-results)
+12. [Data model](#data-model)
+13. [Interactive UI](#interactive-ui)
+14. [Development](#development)
+15. [Related documentation](#related-documentation)
+16. [About](#about)
 
 ---
 
@@ -100,8 +101,11 @@ codenames-llm-bias/
 │   └── prompt_templates/      system / user / one-shot templates, incl. the measurement prompts
 ├── scripts/                   batch orchestrator CLI, analysis CLIs, embedding backfill
 ├── tests/unit/                platform test suite (DB-backed tests gated on DATABASE_URL)
-├── docker-compose.yml         db (pgvector) + ollama (GPU) + app (FastAPI)
+├── docker-compose.yml         db (pgvector) + ollama + app (FastAPI)
+├── docker-compose.gpu.yml     optional override: reserves an NVIDIA GPU for ollama
 ├── ollama_entrypoint.sh       pulls every model named in backend/app/config.py
+├── .gitattributes             forces LF on *.sh / Dockerfile (Windows checkouts)
+├── .dockerignore              keeps docker_volumes/ and .env out of the app image
 ├── exp_data.sql               pg_dump of the completed experiment (see Reproducing)
 ├── pyproject.toml             runtime deps + `dev` and `embeddings` extras
 └── .env.example               environment template
@@ -111,10 +115,13 @@ codenames-llm-bias/
 
 ## Prerequisites
 
-* **Docker** with Compose v2.
-* An **NVIDIA GPU** plus the NVIDIA Container Toolkit — the `ollama` service reserves one GPU device
-  in `docker-compose.yml`. Without it, drop that `deploy:` block (inference then runs on CPU and a
-  full batch becomes impractical) or point `OLLAMA_HOST` at an external daemon.
+* **Docker** with Compose v2 — Docker Engine on Linux, Docker Desktop (WSL 2 backend) on Windows.
+  See [Running on Windows](#running-on-windows) for what changes there.
+* An **NVIDIA GPU** for any serious run. The base `docker-compose.yml` runs Ollama on CPU, which is
+  enough to try the UI but makes a full batch impractical; the `docker-compose.gpu.yml` override
+  reserves one GPU device (see the quick start). It needs the NVIDIA Container Toolkit on Linux, or
+  just the NVIDIA Windows driver with Docker Desktop. Alternatively, point `OLLAMA_HOST` at an
+  external daemon.
 * **Python 3.12+** on the host for the batch and analysis CLIs. [`uv`](https://docs.astral.sh/uv/)
   is recommended; plain `pip install -e .` works too.
 * Disk: the four default models are ~35 GB of weights under `docker_volumes/ollama_data/`.
@@ -126,12 +133,16 @@ codenames-llm-bias/
 
 ```sh
 # 1. Environment. Fill in the Postgres credentials; the rest can stay as-is.
+#    With an NVIDIA GPU, also uncomment the two COMPOSE_* lines at the end, so that every
+#    `docker compose` command below includes docker-compose.gpu.yml.
 cp .env.example .env
 $EDITOR .env
 
 # 2. Bring the stack up. First run pulls the pgvector image and every model in config.llm_models,
 #    so it takes a while — the ollama container logs each pull.
 docker compose up -d
+#    (equivalent without COMPOSE_FILE in .env:
+#     docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d)
 docker compose logs -f ollama          # watch the model pulls
 docker compose ps                      # db, ollama, app
 
@@ -150,7 +161,7 @@ The UI is then at **<http://localhost:8000>** (`/about` explains the game, `/con
 | Service | Container | Port | Notes |
 |---|---|---|---|
 | `db` | `codenames-db` | 5432 | `ankane/pgvector`. Data in `./docker_volumes/postgres_data` (root-owned, gitignored). |
-| `ollama` | `codenames-ollama` | 11434 | Runs `ollama_entrypoint.sh`, which greps `"name:tag"` strings out of the bind-mounted `backend/app/config.py` and `ollama pull`s each one. **The roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. |
+| `ollama` | `codenames-ollama` | 11434 | Runs `ollama_entrypoint.sh`, which greps `"name:tag"` strings out of the bind-mounted `backend/app/config.py` and `ollama pull`s each one. **The roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. CPU unless `docker-compose.gpu.yml` is included. |
 | `app` | `codenames-backend` | 8000 | `uvicorn --reload` over the repo bind-mounted at `/workspace`. Reads `.env`. |
 
 **Startup ingestion.** `backend/app/main.py` ingests `data/boards/measurement_frame.json` first (the
@@ -163,7 +174,8 @@ can be persisted; `writer.persist_game` refuses to write a game whose board row 
 > `codenames-ollama:11434` — that is what `.env` holds. The batch and analysis CLIs are normally run
 > **from the host**, where the same services are `localhost:5432` and `localhost:11434`. Every
 > host-side snippet below overrides those two variables accordingly; forgetting to do so is the most
-> common failure.
+> common failure. The host-side snippets are bash; on Windows see
+> [Running on Windows](#running-on-windows) for the PowerShell equivalents.
 
 **Host-side Python environment**
 
@@ -171,6 +183,107 @@ can be persisted; `writer.persist_game` refuses to write a game whose board row 
 uv sync                     # or: python -m venv .venv && .venv/bin/pip install -e .
 uv sync --extra dev         # + pytest
 uv sync --extra embeddings  # + sentence-transformers 5.5.1, only for the embedding backfill
+```
+
+---
+
+## Running on Windows
+
+The Docker stack runs unchanged: all three services are Linux containers, and
+`ollama_entrypoint.sh` executes *inside* the `ollama` container, never on the Windows host. The one
+trap is line endings — Git for Windows (`core.autocrlf=true`) checks text files out with CRLF, and
+bash then fails on the script with ``syntax error near unexpected token `$'do\r'``. Two safeguards
+cover it:
+
+* **`.gitattributes`** forces LF on `*.sh` and `Dockerfile` in every checkout;
+* the **compose entrypoint** strips any `\r` from the script before running it, so a copy re-saved
+  with CRLF by an editor still works.
+
+A clone made before `.gitattributes` existed keeps its CRLF copies until they are checked out again:
+
+```powershell
+Remove-Item ollama_entrypoint.sh, backend\Dockerfile
+git checkout -- ollama_entrypoint.sh backend/Dockerfile
+```
+
+**Requirements.** Docker Desktop with the WSL 2 backend. For the GPU override, an up-to-date NVIDIA
+driver on Windows is all it takes — Docker Desktop hands the GPU to containers through WSL 2, so there
+is no Container Toolkit to install. Check it with:
+
+```powershell
+docker run --rm --gpus=all nvcr.io/nvidia/k8s/cuda-sample:nbody nbody -gpu -benchmark
+```
+
+**Docker commands are identical.** Every `docker compose` line in the quick start works in PowerShell
+as written (the `COMPOSE_*` lines in `.env` use an explicit `:` separator precisely so they are
+portable). Only the first step differs:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+> **Paths after `docker compose exec` are container paths** — write them with `/`, never `\`.
+> PowerShell's tab completion produces `.\backend\alembic.ini`, which inside the Linux container is a
+> single nonexistent filename; Alembic then reads an empty config and fails with the misleading
+> `No 'script_location' key found in configuration`. Use `backend/alembic.ini`.
+
+**Host side, easy route: WSL 2.** The batch, backfill and analysis snippets in the rest of this
+README are bash. Cloning and working inside a WSL 2 distribution (e.g. Ubuntu) runs them verbatim,
+and bind mounts from the WSL filesystem are also noticeably faster than from `C:\`. A clone on `C:\`
+works too, `uvicorn --reload` included.
+
+**Host side, native PowerShell.** Load `.env` into the session and point at the services as seen
+from the host — this replaces every `set -a; source .env; set +a` + `export …` prelude:
+
+```powershell
+Get-Content .env | Where-Object { $_ -match '^\s*[A-Za-z_][A-Za-z0-9_]*=' } | ForEach-Object {
+    $name, $value = $_ -split '=', 2
+    Set-Item -Path "env:$($name.Trim())" -Value $value.Trim()
+}
+$env:OLLAMA_HOST  = "http://localhost:11434"
+$env:DATABASE_URL = "postgresql+psycopg2://$($env:POSTGRES_USER):$($env:POSTGRES_PASSWORD)@localhost:5432/$($env:POSTGRES_DB)"
+```
+
+`.env`'s own `DATABASE_URL` holds `${...}` references that PowerShell does not expand, so always
+override it as above. The rest translates one-for-one:
+
+| bash | PowerShell |
+|---|---|
+| `VAR=value command` | `$env:VAR = "value"; command` |
+| `.venv/bin/pip install -e .` | `.venv\Scripts\pip install -e .` |
+| activate the venv | `.venv\Scripts\Activate.ps1` (or prefix commands with `uv run`) |
+| `python3` | `python` (or `py`) |
+| `curl -s localhost:11434/api/tags \| python3 -m json.tool` | `(Invoke-RestMethod http://localhost:11434/api/tags).models \| Select-Object name, digest` |
+| `mkdir -p logs` | `New-Item -ItemType Directory -Force logs` |
+| `tail -f logs/batch_2026.log` | `Get-Content logs\batch_2026.log -Wait -Tail 20` |
+| `grep -c "dispatch clue" logs/batch_2026.log` | `(Select-String "dispatch clue" logs\batch_2026.log).Count` |
+
+To launch the batch detached (the `nohup` equivalent), with `.env` loaded and the virtualenv active:
+
+```powershell
+New-Item -ItemType Directory -Force logs | Out-Null
+$p = Start-Process cmd -WindowStyle Hidden -PassThru -ArgumentList '/c',
+  'python scripts\run_batch.py --master-seed 2026 --temperature 0.8 > logs\batch_2026.log 2>&1'
+$p.Id | Set-Content logs\batch_2026.pid
+```
+
+The process inherits the session's environment and keeps running after the PowerShell window is
+closed — but not through sleep or hibernation, so disable those for the length of the run.
+
+**Postgres client.** `psql` and `createdb` are rarely installed on Windows; run them inside the `db`
+container instead (this works on Linux too). They connect through the local socket, so no password is
+asked:
+
+```powershell
+# pre-flight counts
+docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB `
+  -c "select count(*) as boards from board; select count(*) as frames from measurement_frame;"
+
+# restoring exp_data.sql (see "Reproducing the shipped results")
+docker compose exec db createdb -U $env:POSTGRES_USER codenames_exp
+docker compose cp exp_data.sql db:/tmp/exp_data.sql
+docker compose exec db psql -U $env:POSTGRES_USER -d codenames_exp -v ON_ERROR_STOP=1 -f /tmp/exp_data.sql
 ```
 
 ---

@@ -1,0 +1,13 @@
+# GPU override: reserves one NVIDIA GPU for the ollama service.
+# Use it on top of the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# or set COMPOSE_FILE in .env (see .env.example) so every command picks it up.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]

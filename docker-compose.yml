@@ -13,24 +13,22 @@ services:
     volumes:
       - ./docker_volumes/postgres_data:/var/lib/postgresql/data
 
-  # Local LLM inference via Ollama
+  # Local LLM inference via Ollama. Runs on CPU by default; add docker-compose.gpu.yml
+  # to reserve an NVIDIA GPU (see README).
   ollama:
     image: ollama/ollama:latest
     container_name: codenames-ollama
-    entrypoint: [ "/bin/bash", "/ollama_entrypoint.sh" ]
+    # Strip any CR before running, so a CRLF checkout on Windows still works
+    entrypoint:
+      - /bin/bash
+      - -c
+      - sed 's/\r$$//' /ollama_entrypoint.sh > /tmp/ollama_entrypoint.sh && exec /bin/bash /tmp/ollama_entrypoint.sh
     ports:
       - "11434:11434"
     volumes:
       - ./docker_volumes/ollama_data:/root/.ollama
       - ./ollama_entrypoint.sh:/ollama_entrypoint.sh:ro
       - ./backend/app/config.py:/llm_models.py:ro
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
 
   # Backend with FastAPI
   app:
@@ -39,7 +37,9 @@ services:
       dockerfile: backend/Dockerfile
     container_name: codenames-backend
     working_dir: /workspace
-    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Watch only the app code: the repo root also holds docker_volumes/postgres_data, which this
+    # user cannot read and which would crash the reloader
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend
     volumes:
       - ./:/workspace # Backend source code
       - ./data:/workspace/data # External files for words and biases
