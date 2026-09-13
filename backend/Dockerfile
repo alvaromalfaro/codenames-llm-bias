@@ -20,7 +20,9 @@ RUN chown -R appuser:appuser /app
 COPY pyproject.toml .
 RUN pip install --upgrade pip setuptools && python3 -c "import tomllib,subprocess,sys;deps=tomllib.load(open('pyproject.toml','rb'))['project']['dependencies'];subprocess.check_call([sys.executable,'-m','pip','install','--no-cache-dir']+deps)"
 
-RUN python3 -c "import nltk; nltk.download('wordnet', download_dir='/usr/local/share/nltk_data'); nltk.download('omw-1.4', download_dir='/usr/local/share/nltk_data')"
+# WordNet backs the clue validator. nltk.download writes the corpora 0600-root, which the
+# non-root runtime user cannot read, so widen the permissions in the same layer.
+RUN python3 -c "import nltk; nltk.download('wordnet', download_dir='/usr/local/share/nltk_data'); nltk.download('omw-1.4', download_dir='/usr/local/share/nltk_data')"     && chmod -R a+rX /usr/local/share/nltk_data
 
 USER appuser
 
