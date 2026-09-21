@@ -111,7 +111,7 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
 
         print(f"LLM proposed guess: {word}")
 
-        card = engine.state.board.cards[card_id]
+        card = engine.state.board.get_card_by_id(card_id)
         if on_reveal is not None:
             on_reveal(card_id, result, card)
         reveals.append((card_id, result, card))
@@ -198,7 +198,7 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
 
         print(f"LLM sudden death guess: {word}")
 
-        card = engine.state.board.cards[card_id]
+        card = engine.state.board.get_card_by_id(card_id)
         if on_reveal is not None:
             on_reveal(card_id, result, card)
         reveals.append((card_id, result, card))

@@ -31,7 +31,18 @@ class Covariates(BaseModel):
 class WordCard(BaseModel):
     """
     A card in the game, defined by its text (the word on the card) and its role for both the LLM and
-    the human player. It also has a state to indicate whether it has been revealed and by whom.
+    the human player, plus the two independent pieces of physical state the rules put on a word: the
+    agent card that may cover it and the time tokens that may sit on it.
+
+    The two state families answer different questions and must not be conflated (see
+    ``is_covered`` vs ``revealed_by``):
+
+    - ``revealed`` / ``time_marker_by`` describe what physically sits on the word, and therefore
+      whether ANYONE may still touch it. This is what ``is_covered`` and ``is_guessable_by`` are 
+      derived from.
+    - ``revealed_by`` describes for WHICH seats the word has stopped being a pending word, i.e.
+      whose clue-giving no longer needs to target it. It is bookkeeping for the clue-giver side and
+      says nothing about who may touch the card.
     """
     model_config = ConfigDict(extra="forbid")
 
@@ -42,12 +53,47 @@ class WordCard(BaseModel):
     llm_perspective_role: CardRole
     human_perspective_role: CardRole
 
-    # Card state
+    # Card state: an agent card covers this word. Set for either seat's correct guess, so it is
+    # seat-independent - a covered word is covered for BOTH players.
     revealed: bool = False
-    revealed_by: list[int] = []  # 0: "llm" or 1: "human"
+    # Seats for which this word has stopped being pending: the guesser who found it, plus the other
+    # seat when the word is a shared agent. 0: "llm" or 1: "human". NOT a guess guard.
+    revealed_by: list[int] = []
 
-    # Time marker state
+    # Time marker state: the seats that touched this word and hit an innocent bystander. A token
+    # carries a direction (clue giver -> guesser) and the seat stored here is the guesser, i.e. the
+    # seat that may no longer touch this word. Two tokens (one per direction) cover it.
     time_marker_by: list[int] = []  # 0: "llm" or 1: "human"
+
+    @property
+    def is_covered(self) -> bool:
+        """
+        Whether this word is covered and therefore out of play for BOTH players: an agent card sits
+        on it, or two time tokens do - one from each direction.
+
+        A covered word can never be guessed again by either seat, and it stops being visible for
+        clue validation. The seat that covered it is irrelevant.
+
+        :return: True if the word is covered, False otherwise.
+        """
+        return self.revealed or len(self.time_marker_by) == 2
+
+    def is_guessable_by(self, player_id: int) -> bool:
+        """
+        Whether ``player_id`` may still touch this word.
+
+        A word is out of reach for a seat when it is covered (agent card, or two time tokens), or
+        when that seat already touched it and hit an innocent bystander - its own time token points
+        at it, and the word is still an innocent bystander on the other face.
+
+        This is the single predicate behind the engine's guess guard, the words offered to an LLM
+        guesser, and the cards the UI lets a human guesser click.
+
+        :param player_id: The seat asking (0 = LLM, 1 = human).
+
+        :return: True if that seat may still guess this word, False otherwise.
+        """
+        return not self.is_covered and player_id not in self.time_marker_by
 
     # Bias category (male | female | neutral)
     category: Optional[str] = None
@@ -143,6 +189,23 @@ class Board(BaseModel):
         for card in self.cards:
             if card.text.lower() == text.lower():
                 return card.id
+
+        return None
+
+    def get_card_by_id(self, card_id: int) -> Optional[WordCard]:
+        """
+        Looks a card up by its declared ``id`` rather than by list position, so a caller holding an
+        id from outside the process (an HTTP form field, an LLM proposal) can never address the
+        wrong card: an unknown id yields None instead of an IndexError, and a negative id can never
+        wrap around to a real card the way ``cards[card_id]`` would.
+
+        :param card_id: The card's ``id`` field.
+
+        :return: The matching WordCard, or None when no card carries that id.
+        """
+        for card in self.cards:
+            if card.id == card_id:
+                return card
 
         return None
 

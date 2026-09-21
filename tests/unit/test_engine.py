@@ -331,7 +331,13 @@ def test_engine_resolve_guess_time_marker_from_other_player(valid_board_data: di
 @pytest.mark.parametrize("modification, expected_error", [
     ("invalid_phase", "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or SUDDEN_DEATH_LLM phase."),
     ("invalid_player", "Only the guesser can make guesses."),
-    ("already_revealed", "This card has already been revealed."),
+    ("unknown_card_id", "There is no card with id 99 on this board."),
+    ("covered_by_own_agent_card",
+     "This card is covered by an agent card and cannot be guessed."),
+    ("covered_by_other_seats_agent_card",
+     "This card is covered by an agent card and cannot be guessed."),
+    ("covered_by_two_time_tokens",
+     "This card is covered by two time tokens and cannot be guessed."),
     ("time_token", "This card is currently marked by a time token and cannot be guessed."),
     ("sudden_death_no_agents_left",
      "The player has already revealed all of their agents and cannot make more guesses.")
@@ -360,9 +366,23 @@ def test_engine_resolve_guess_invalid_inputs(valid_board_data: dict, modificatio
     elif modification == "invalid_player":
         with pytest.raises(PermissionError, match=expected_error):
             engine.resolve_guess(card_id=0, player_id=0)
-    elif modification == "already_revealed":
+    elif modification == "unknown_card_id":
+        with pytest.raises(ValueError, match=expected_error):
+            engine.resolve_guess(card_id=99, player_id=1)
+    elif modification == "covered_by_own_agent_card":
         engine.state.board.cards[0].revealed = True
         engine.state.board.cards[0].revealed_by.append(1)
+        with pytest.raises(ValueError, match=expected_error):
+            engine.resolve_guess(card_id=0, player_id=1)
+    elif modification == "covered_by_other_seats_agent_card":
+        # Coverage is a property of the word, not of the seat asking: the guesser is absent from
+        # revealed_by, yet an agent card still sits on the word.
+        engine.state.board.cards[0].revealed = True
+        engine.state.board.cards[0].revealed_by.append(0)
+        with pytest.raises(ValueError, match=expected_error):
+            engine.resolve_guess(card_id=0, player_id=1)
+    elif modification == "covered_by_two_time_tokens":
+        engine.state.board.cards[0].time_marker_by.extend([0, 1])
         with pytest.raises(ValueError, match=expected_error):
             engine.resolve_guess(card_id=0, player_id=1)
     elif modification == "time_token":
@@ -375,6 +395,94 @@ def test_engine_resolve_guess_invalid_inputs(valid_board_data: dict, modificatio
         engine.state.agents_remaining[1] = 0  # No agents left for the guesser
         with pytest.raises(PermissionError, match=expected_error):
             engine.resolve_guess(card_id=0, player_id=1)
+
+
+def test_engine_covered_agent_card_cannot_be_retouched_by_the_other_seat(valid_board_data: dict):
+    """
+    A word covered by an agent card is out of play for BOTH players, including the seat that did not
+    cover it and is therefore absent from ``revealed_by``.
+
+    This is the exact sequence that used to end games: ANT is an agent on the human's face and an
+    ASSASSIN on the LLM's. The LLM covers it with an agent card, then on the next turn - with the
+    LLM now giving the clue - the human touches it again and the guess is resolved against the
+    LLM's face, losing the game on a word that was already covered.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    ANT = 2  # human_perspective_role=agent, llm_perspective_role=assassin
+    LLM, HUMAN = 0, 1
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = HUMAN
+    engine.state.guesser = LLM
+
+    # Turn 1: the human gives the clue and the LLM covers ANT with an agent card.
+    engine.receive_clue("insect", 1, HUMAN)
+    assert engine.resolve_guess(card_id=ANT, player_id=LLM) == "agent"
+    assert engine.state.board.cards[ANT].revealed is True
+    assert engine.state.board.cards[ANT].revealed_by == [LLM]
+    engine.pass_turn(LLM)
+
+    # Turn 2: roles have switched, so ANT would now resolve against the LLM's face (ASSASSIN).
+    engine.receive_clue("tiny", 1, LLM)
+    assert engine.state.guesser == HUMAN
+    tokens_before = engine.state.timer_tokens
+
+    with pytest.raises(ValueError, match="covered by an agent card"):
+        engine.resolve_guess(card_id=ANT, player_id=HUMAN)
+
+    # The refused guess costs nothing: no loss, no token, and it does not count as an attempt.
+    assert engine.state.is_game_over is False
+    assert engine.state.result is None
+    assert engine.state.timer_tokens == tokens_before
+    assert engine.state.guesses_made_this_turn == 0
+    assert engine.state.current_phase == GamePhase.GUESSING
+
+
+def test_engine_shared_agent_is_covered_for_both_seats(valid_board_data: dict):
+    """
+    Covering a shared agent (green on both faces) puts it out of reach for both seats, and the
+    engine reports it as covered rather than as "already revealed for you".
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    BRICK = 1  # agent on both faces
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = 0
+    engine.state.guesser = 1
+    engine.state.current_phase = GamePhase.GUESSING
+
+    assert engine.resolve_guess(card_id=BRICK, player_id=1) == "agent"
+
+    card = engine.state.board.cards[BRICK]
+    assert card.is_covered is True
+    assert card.is_guessable_by(0) is False
+    assert card.is_guessable_by(1) is False
+
+
+def test_engine_single_time_token_only_blocks_the_seat_that_left_it(valid_board_data: dict):
+    """
+    A single time token blocks only the seat that touched the word; the other seat may still try it.
+    A second token, one per direction, covers the word for both.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    card = engine.state.board.cards[0]
+
+    card.time_marker_by = [1]
+    assert card.is_covered is False
+    assert card.is_guessable_by(0) is True
+    assert card.is_guessable_by(1) is False
+
+    card.time_marker_by = [1, 0]
+    assert card.is_covered is True
+    assert card.is_guessable_by(0) is False
+    assert card.is_guessable_by(1) is False
 
 
 def test_engine_resolve_guess_change_to_sudden_death(valid_board_data: dict):

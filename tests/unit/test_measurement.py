@@ -404,7 +404,7 @@ def test_switch_roles_sets_sd_pending_flag(valid_board_data):
 
 
 # Seat symmetry: the guess/measurement/SD builders are driven by the guesser seat, using the
-# per-seat reveal predicate (player_id not in card.revealed_by) that mirrors resolve_guess's guard.
+# per-seat predicate WordCard.is_guessable_by(player_id) that mirrors resolve_guess's guard.
 
 def _seat1_guessing_engine(valid_board_data: dict) -> CodenamesDuetEngine:
     """A guessing-phase engine with seat 1 as the guesser (the future LLM-vs-LLM seat)."""
@@ -423,25 +423,45 @@ def _board_words_in(text: str, words: set[str]) -> set[str]:
     return {w for w in words if f"- {w}" in text}
 
 
-def test_seat1_guess_builder_uses_per_seat_reveal_predicate(valid_board_data):
-    """The seat-1 guess builder offers cards by seat 1's own revealed_by, mirroring the engine's
-    per-seat resolve_guess guard: a card revealed only by seat 0 is still shown to seat 1, and a
-    card seat 1 revealed is hidden. A shared `not card.revealed` reading would wrongly hide the
-    seat-0-only card (both are card.revealed here)."""
+def _mark_discriminating_cards(cards) -> None:
+    """Puts the three states that tell a per-seat filter apart from a seat-blind one on the board:
+
+    - BUCKET carries seat 1's own time token: out of reach for seat 1, still offered to seat 0.
+    - BRICK carries seat 0's time token: out of reach for seat 0, still offered to seat 1.
+    - ANT is covered by an agent card that seat 0 placed: out of reach for BOTH seats, even though
+      seat 1 never touched it and is absent from revealed_by.
+    """
+    cards[0].time_marker_by = [1]
+    cards[1].time_marker_by = [0]
+    cards[2].revealed = True
+    cards[2].revealed_by = [0]
+
+
+def test_guess_builder_offers_only_words_the_seat_may_still_guess(valid_board_data):
+    """The guess builder offers exactly the words resolve_guess would accept from that seat: the
+    filter is per-seat for time tokens (each seat keeps the word the OTHER seat's token sits on)
+    and seat-blind for coverage (a word under an agent card is offered to neither seat, whichever
+    seat covered it)."""
     engine = _seat1_guessing_engine(valid_board_data)
     cards = engine.state.board.cards
-    cards[0].revealed = True
-    cards[0].revealed_by = [1]   # BUCKET: seat-1 reveal -> hidden from seat 1
-    cards[1].revealed = True
-    # BRICK: seat-0-only reveal -> still shown to seat 1
-    cards[1].revealed_by = [0]
+    _mark_discriminating_cards(cards)
 
-    user_prompt = LLMService()._build_guess_request(
+    svc = LLMService()
+    seat1 = svc._build_guess_request(
         engine.state, "test_model", player_id=1).messages[-1].content
+    seat0 = svc._build_guess_request(
+        engine.state, "test_model", player_id=0).messages[-1].content
+    board_words = {c.text for c in cards}
 
-    # discriminating card: per-seat keeps it; shared would drop it
-    assert "BRICK" in user_prompt
-    assert "BUCKET" not in user_prompt   # seat-1 reveal excluded
+    # Time tokens are per-seat: the seats see opposite sides of the same two words.
+    assert "BRICK" in _board_words_in(seat1, board_words)
+    assert "BUCKET" not in _board_words_in(seat1, board_words)
+    assert "BUCKET" in _board_words_in(seat0, board_words)
+    assert "BRICK" not in _board_words_in(seat0, board_words)
+
+    # Coverage is not per-seat: an agent card takes the word away from both seats.
+    assert "ANT" not in _board_words_in(seat1, board_words)
+    assert "ANT" not in _board_words_in(seat0, board_words)
 
 
 def test_seat1_measurement_builder_matches_seat1_guess_words(valid_board_data):
@@ -449,10 +469,7 @@ def test_seat1_measurement_builder_matches_seat1_guess_words(valid_board_data):
     guess builder (the measurement must mirror the guess for the same seat)."""
     engine = _seat1_guessing_engine(valid_board_data)
     cards = engine.state.board.cards
-    cards[0].revealed = True
-    cards[0].revealed_by = [1]
-    cards[1].revealed = True
-    cards[1].revealed_by = [0]
+    _mark_discriminating_cards(cards)
 
     svc = LLMService()
     board_words = {c.text for c in cards}
@@ -465,6 +482,7 @@ def test_seat1_measurement_builder_matches_seat1_guess_words(valid_board_data):
         guess, board_words) == _board_words_in(meas, board_words)
     assert "BRICK" in _board_words_in(meas, board_words)
     assert "BUCKET" not in _board_words_in(meas, board_words)
+    assert "ANT" not in _board_words_in(meas, board_words)
 
 
 def test_seat1_sd_builders_use_seat1_agents_and_reveals(valid_board_data):
@@ -475,10 +493,7 @@ def test_seat1_sd_builders_use_seat1_agents_and_reveals(valid_board_data):
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
     engine.state.agents_remaining = [3, 5]
     cards = engine.state.board.cards
-    cards[0].revealed = True
-    cards[0].revealed_by = [1]   # hidden from seat 1
-    cards[1].revealed = True
-    cards[1].revealed_by = [0]   # shown to seat 1
+    _mark_discriminating_cards(cards)
 
     svc = LLMService()
     board_words = {c.text for c in cards}
@@ -494,6 +509,7 @@ def test_seat1_sd_builders_use_seat1_agents_and_reveals(valid_board_data):
         guess, board_words) == _board_words_in(meas, board_words)
     assert "BRICK" in _board_words_in(guess, board_words)
     assert "BUCKET" not in _board_words_in(guess, board_words)
+    assert "ANT" not in _board_words_in(guess, board_words)
 
 
 def test_both_seats_reach_sudden_death_hold_both_rankings(valid_board_data):

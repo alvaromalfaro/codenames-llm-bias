@@ -499,8 +499,8 @@ class LLMService:
             for clue_entry in game_state.clue_history if clue_entry.clue_giver != player_id
         ])
         words_remaining = "\n".join([
-            f"- {card.text}" for card in game_state.board.cards if player_id not in card.revealed_by and
-            player_id not in card.time_marker_by
+            f"- {card.text}" for card in game_state.board.cards
+            if card.is_guessable_by(player_id)
         ])
 
         # Format the user prompt with the game state information
@@ -532,9 +532,9 @@ class LLMService:
         """
         Builds an LLMRequest for sudden death guessing. No current clue is available; the LLM
         receives full clue history and must identify all remaining agents from memory. Seat-
-        parameterized: it reports the guesser's own remaining agent count and the SAME unrevealed-word
-        predicate (``player_id not in card.revealed_by and player_id not in card.time_marker_by``) 
-        as _build_measurement_sd_request, so it generalizes to either seat in an LLM-vs-LLM run.
+        parameterized: it reports the guesser's own remaining agent count and the SAME guessable-word
+        predicate (``card.is_guessable_by(player_id)``) as _build_measurement_sd_request, so it
+        generalizes to either seat in an LLM-vs-LLM run.
 
         :param game_state: The current state of the game (sudden death).
         :param model: The LLM model to use.
@@ -546,7 +546,7 @@ class LLMService:
         ])
         words_remaining = "\n".join([
             f"- {card.text}" for card in game_state.board.cards
-            if player_id not in card.revealed_by and player_id not in card.time_marker_by
+            if card.is_guessable_by(player_id)
         ])
         user_prompt = self._user_prompt_sd_gg.format(
             clue_history=clue_history or "No clues were given.",
@@ -599,7 +599,7 @@ class LLMService:
         """
         Builds the out-of-band measurement request for the standard guessing phase. It mirrors
         _build_guess_request exactly for the public inputs the guesser sees - the current clue and
-        count, the previous-clue history, and the SAME unrevealed-word filter - so the measurement
+        count, the previous-clue history, and the SAME guessable-word filter - so the measurement
         observes the identical game state as the play-guess request. The clue-giver's intended target
         set S is never read here (only ``current_clue.clue``/``.count`` and history clue/count),
         preserving the guardrail that S never reaches the guesser side.
@@ -617,8 +617,8 @@ class LLMService:
             for clue_entry in game_state.clue_history if clue_entry.clue_giver != player_id
         ])
         words_remaining = "\n".join([
-            f"- {card.text}" for card in game_state.board.cards if player_id not in card.revealed_by and
-            player_id not in card.time_marker_by
+            f"- {card.text}" for card in game_state.board.cards
+            if card.is_guessable_by(player_id)
         ])
 
         user_prompt = self._user_prompt_meas_gg.format(
@@ -640,7 +640,7 @@ class LLMService:
         """
         Builds the out-of-band measurement request for the sudden-death phase. Mirrors
         _build_guess_sd_request but is seat-parameterized: it reports the guesser's own remaining
-        agent count and the SAME unrevealed-word filter from that seat's perspective, so it
+        agent count and the SAME guessable-word filter from that seat's perspective, so it
         generalizes to either seat in an LLM-vs-LLM run.
 
         :param game_state: The current state of the game (sudden death).
@@ -655,7 +655,7 @@ class LLMService:
         ])
         words_remaining = "\n".join([
             f"- {card.text}" for card in game_state.board.cards
-            if player_id not in card.revealed_by and player_id not in card.time_marker_by
+            if card.is_guessable_by(player_id)
         ])
         user_prompt = self._user_prompt_meas_sd.format(
             clue_history=clue_history or "No clues were given.",

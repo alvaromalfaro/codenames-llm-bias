@@ -161,14 +161,19 @@ class CodenamesDuetEngine:
         """
         Processes a guess made by the guessing player.
 
-        :param card_id: The identifier of the card being guessed.
+        The card must still be reachable for ``player_id`` (``WordCard.is_guessable_by``): a word
+        covered by an agent card or by two time tokens is out of play for BOTH seats, and a word
+        already marked by this seat's own time token is out of play for this seat only - the other
+        seat may still touch it.
+
+        :param card_id: The ``id`` of the card being guessed.
         :param player_id: The identifier of the player making the guess.
 
         :return: A string indicating the result of the guess ("agent", "assassin", "civilian",
             "victory").
 
-        :raises ValueError: If the card is already revealed, marked by a time token, or if it's not 
-            the guessing player's turn.
+        :raises ValueError: If no card carries that id, if the card is covered (agent card or two
+            time tokens), or if it is already marked by this player's own time token.
         :raises PermissionError: If a player other than the guesser attempts to make a guess, the 
             game is not in the GUESSING or SUDDEN_DEATH phase, or if the guesser has already
             revealed all of their agents in the SUDDEN_DEATH phase.
@@ -193,9 +198,22 @@ class CodenamesDuetEngine:
             raise PermissionError(
                 "The player has already revealed all of their agents and cannot make more guesses.")
 
-        card = self.state.board.cards[card_id]
-        if player_id in card.revealed_by:
-            raise ValueError("This card has already been revealed.")
+        card = self.state.board.get_card_by_id(card_id)
+        if card is None:
+            raise ValueError(
+                f"There is no card with id {card_id} on this board.")
+
+        # Coverage is a property of the word, not of the seat asking: once an agent card - or a
+        # second time token - sits on a word, NEITHER player may touch it again. Reading the per-seat
+        # bookkeeping (revealed_by) here instead would let the seat that did not cover the word
+        # re-guess it and have it resolved against the new clue giver's face.
+        if card.revealed:
+            raise ValueError(
+                "This card is covered by an agent card and cannot be guessed.")
+
+        if len(card.time_marker_by) == 2:
+            raise ValueError(
+                "This card is covered by two time tokens and cannot be guessed.")
 
         if player_id in card.time_marker_by:
             raise ValueError(

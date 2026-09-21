@@ -183,7 +183,7 @@ async def make_guess(game_id: str, card_id: int = Form(...), player_id: int = Fo
     )
     _flush_if_over(engine, recorder)
 
-    card = engine.state.board.cards[card_id]
+    card = engine.state.board.get_card_by_id(card_id)
 
     log_html = templates.get_template("partials/_log_entry.html").render({
         "card": card,
