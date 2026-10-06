@@ -706,6 +706,101 @@ def test_engine_pass_turn_invalid_inputs(valid_board_data: dict, modification: s
             engine.pass_turn(player_id=1)
 
 
+def test_engine_seat_without_pending_words_gives_every_remaining_clue(valid_board_data: dict):
+    """
+    Once every green on the LLM's face is covered, the human has nothing left to guess, so from then
+    on the human gives every clue and the LLM is always the guesser (§6.1, §6.8) - whether the turn
+    ends with a stop or a miss, and up to the sudden-death transition.
+
+    With strict alternation the human was handed the guesser role on alternate turns: it cannot pass
+    without a guess, and every word it can touch is beige or black on the LLM's face, so the turn
+    always cost a token - or the game, on an assassin.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    LLM, HUMAN = 0, 1
+    LLM_GREENS = [1, 4, 8, 11, 12, 15, 17, 19, 24]  # the human's pending words
+    ANT = 2  # agent on the human's face
+    HUMAN_CIVILIANS = [0, 6, 7, 13, 14, 18, 22]  # beige on the human's face, never touched here
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = LLM
+    engine.state.guesser = HUMAN
+
+    # Turn 1: the human covers every green on the LLM's face.
+    engine.receive_clue("battle", 9, LLM)
+    for card_id in LLM_GREENS:
+        assert engine.resolve_guess(card_id=card_id, player_id=HUMAN) == "agent"
+    assert engine.state.agents_remaining == [6, 0]
+    engine.pass_turn(HUMAN)
+
+    # Turn 2: the LLM still has pending words, so the roles alternate as usual.
+    assert (engine.state.clue_giver, engine.state.guesser) == (HUMAN, LLM)
+    engine.receive_clue("insect", 1, HUMAN)
+    assert engine.resolve_guess(card_id=ANT, player_id=LLM) == "agent"
+    engine.pass_turn(LLM)
+
+    # Every remaining turn - here all ending on a miss - keeps the human as the clue giver.
+    for card_id in HUMAN_CIVILIANS:
+        assert (engine.state.clue_giver, engine.state.guesser) == (HUMAN, LLM)
+        assert engine.state.current_phase == GamePhase.GIVING_CLUE
+        engine.receive_clue("ocean", 1, HUMAN)
+        assert engine.resolve_guess(card_id=card_id, player_id=LLM) == "civilian"
+
+    # The last token is gone: sudden death for the only seat with pending words.
+    assert engine.state.timer_tokens == 0
+    assert engine.state.agents_remaining == [5, 0]
+    assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
+
+
+@pytest.mark.parametrize("exhausted", [0, 1])
+def test_engine_seat_can_run_out_of_pending_words_on_the_partners_turn(valid_board_data: dict,
+                                                                       exhausted: int):
+    """
+    A seat can run out of pending words while it is the clue giver: the partner covering a shared
+    green also covers it for that seat. The seat that just gave the clue then gives the next one too,
+    so it gives two clues in a row (§6.8).
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param exhausted: The seat that ends up with no pending words.
+    """
+    other = 1 - exhausted
+    SHARED_GREENS = [1, 8, 17]  # BRICK, TATTOO, NAPOLEON
+    # Greens only on the partner's face: what the exhausted seat has to find on its own.
+    OWN_PENDING = {0: [2, 5, 9, 16, 20, 21], 1: [4, 11, 12, 15, 19, 24]}[exhausted]
+    BUCKET = 0  # beige on both faces
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = other
+    engine.state.guesser = exhausted
+
+    # Turn 1: the exhausted seat finds every pending word except the shared ones.
+    engine.receive_clue("battle", 6, other)
+    for card_id in OWN_PENDING:
+        assert engine.resolve_guess(card_id=card_id, player_id=exhausted) == "agent"
+    engine.pass_turn(exhausted)
+
+    # Turn 2: plain alternation. The partner covers the shared greens, which empties the giver.
+    assert (engine.state.clue_giver, engine.state.guesser) == (exhausted, other)
+    engine.receive_clue("ocean", 3, exhausted)
+    for card_id in SHARED_GREENS:
+        assert engine.resolve_guess(card_id=card_id, player_id=other) == "agent"
+    assert engine.state.agents_remaining[exhausted] == 0
+    assert engine.state.agents_remaining[other] == 6
+    engine.pass_turn(other)
+
+    # Turn 3: the seat with nothing pending gives the clue again instead of guessing.
+    assert (engine.state.clue_giver, engine.state.guesser) == (exhausted, other)
+    engine.receive_clue("winter", 1, exhausted)
+    assert engine.resolve_guess(card_id=BUCKET, player_id=other) == "civilian"
+
+    # Turn 4: a miss does not hand the guess back either.
+    assert (engine.state.clue_giver, engine.state.guesser) == (exhausted, other)
+    assert engine.state.current_phase == GamePhase.GIVING_CLUE
+
+
 def test_engine_seeded_rng_is_deterministic(valid_board_data: dict):
     """
     Validates that injecting a seeded random.Random produces a deterministic start player, and that

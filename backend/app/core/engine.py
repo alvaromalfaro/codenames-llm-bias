@@ -350,11 +350,20 @@ class CodenamesDuetEngine:
 
     def _switch_roles(self):
         """
-        Switches the roles of the clue giver and guesser, resets the current clue and count, and 
-        updates the turn number. If the timer tokens have run out and there are still agents
-        remaining, transitions to the SUDDEN_DEATH phase.
+        Hands over to the next turn: the roles of the clue giver and guesser alternate (§6.1) unless
+        the seat that would guess next has no pending words left, in which case the roles are kept -
+        the seat with nothing left to guess gives every remaining clue and the other is always the
+        guesser (§6.8). Also resets the current clue and count and updates the turn number. If the
+        timer tokens have run out and there are still agents remaining, transitions to the
+        SUDDEN_DEATH phase.
         """
-        self.state.clue_giver, self.state.guesser = self.state.guesser, self.state.clue_giver
+        next_giver, next_guesser = self.state.guesser, self.state.clue_giver
+        # Handing the guess to a seat with nothing pending would force it to touch a word that is
+        # beige or black on the giver's face (it cannot pass without a guess). Both seats can never
+        # be at 0 here: that is a victory, which ends the game without switching roles.
+        if self.state.agents_remaining[next_guesser] == 0:
+            next_giver, next_guesser = next_guesser, next_giver
+        self.state.clue_giver, self.state.guesser = next_giver, next_guesser
         self.state.current_phase = GamePhase.GIVING_CLUE
         self.state.guesses_made_this_turn = 0
         self.state.turn_number += 1
