@@ -56,8 +56,8 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
 
     Returns the ordered list of resolved ``(card_id, result, card)`` reveals.
 
-    This never returns with ``engine.state.current_phase == GUESSING``. Either the loop broke on a 
-    non-agent reveal (the engine advanced the phase), or the ``for/else`` passed the turn (the 
+    This never returns with ``engine.state.current_phase == GUESSING``. Either the loop broke on a
+    turn-ending reveal (the engine advanced the phase), or the ``for/else`` passed the turn (the
     engine advanced the phase), or an exception propagated. This is what keeps the phase-driven
     driver loop from re-dispatching GUESSING for the same turn and overwriting this turn's records.
     """
@@ -117,7 +117,8 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
         reveals.append((card_id, result, card))
 
         if result != "agent":
-            # civilian, assassin, or victory - turn or game ended
+            # civilian, assassin, victory, or agent_turn_end (the guesser has nothing left to find) -
+            # turn or game ended
             break
     else:
         # Loop exhausted with no turn-ending reveal: every item was an agent, unmappable, or

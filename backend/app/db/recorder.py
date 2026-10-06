@@ -24,9 +24,10 @@ def result_role_of(result_str: str) -> str:
 
     The engine returns an outcome string (``'agent'``/``'victory'``/``'loss_assassin_sd'`` ...);
     the reveal row records the underlying card role in ``('agent','assassin','civilian')``. A
-    victory is always an agent reveal; a sudden-death loss names the losing role.
+    victory is always an agent reveal, and so is ``'agent_turn_end'`` (a hit that left the guesser
+    with nothing pending and ended the turn); a sudden-death loss names the losing role.
     """
-    if result_str in ("agent", "victory", "victory_sd"):
+    if result_str in ("agent", "agent_turn_end", "victory", "victory_sd"):
         return "agent"
     if result_str in ("assassin", "loss_assassin_sd"):
         return "assassin"

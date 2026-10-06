@@ -169,8 +169,9 @@ class CodenamesDuetEngine:
         :param card_id: The ``id`` of the card being guessed.
         :param player_id: The identifier of the player making the guess.
 
-        :return: A string indicating the result of the guess ("agent", "assassin", "civilian",
-            "victory").
+        :return: A string indicating the result of the guess ("agent", "agent_turn_end",
+            "assassin", "civilian", "victory", or a sudden-death result). "agent_turn_end" is a hit
+            that left the guesser with no pending words, which ends the turn (§6.8).
 
         :raises ValueError: If no card carries that id, if the card is covered (agent card or two
             time tokens), or if it is already marked by this player's own time token.
@@ -263,8 +264,8 @@ class CodenamesDuetEngine:
         :param card: The WordCard object representing the guessed card.
         :param card_role: The role of the guessed card for the guessing player.
 
-        :return: A string indicating the result of the guess ("agent", "assassin", "civilian", 
-            "victory").
+        :return: A string indicating the result of the guess ("agent", "agent_turn_end",
+            "assassin", "civilian", "victory").
         """
         if card_role == CardRole.AGENT:
             return self._reveal_agent(card, guessed_by=self.state.guesser)
@@ -299,12 +300,14 @@ class CodenamesDuetEngine:
     def _reveal_agent(self, card: WordCard, guessed_by: int):
         """
         Reveals an agent card and updates the game state accordingly. Checks for win conditions
-        after revealing the card.
+        after revealing the card. In normal play, if the guesser has no pending words left after the
+        reveal, its turn ends on the spot as a voluntary stop (§6.8).
 
         :param card: The WordCard object representing the guessed card.
         :param guessed_by: The identifier of the player who made the guess that revealed the agent
 
-        :return: A string indicating the result of the guess ("agent" or "victory").
+        :return: A string indicating the result of the guess ("agent", "agent_turn_end" when the
+            reveal also ended the turn, "victory" or "victory_sd").
         """
         # Reveal the card
         card.revealed = True
@@ -324,6 +327,15 @@ class CodenamesDuetEngine:
             res = "victory_sd" if in_sd else "victory"
             self._finish_game(result=res)
             return res
+
+        # The guesser just covered the last word it had to find (§6.8): the giver must tell it there
+        # is nothing left, and every word it could still touch is beige or black on the giver's face.
+        # The turn ends here as a voluntary stop - one token, exactly as pass_turn - and
+        # _switch_roles hands every remaining guess to the partner.
+        if (self.state.current_phase == GamePhase.GUESSING
+                and self.state.agents_remaining[guessed_by] == 0):
+            self.pass_turn(guessed_by)
+            return "agent_turn_end"
 
         # LLM just found their last agent in SUDDEN_DEATH_LLM -> hand off to Human (seat 1). Re-arm
         # the measurement flag so seat 1's sudden-death confidence ranking is elicited once, at its

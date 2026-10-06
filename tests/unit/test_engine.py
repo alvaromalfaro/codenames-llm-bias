@@ -728,12 +728,12 @@ def test_engine_seat_without_pending_words_gives_every_remaining_clue(valid_boar
     engine.state.clue_giver = LLM
     engine.state.guesser = HUMAN
 
-    # Turn 1: the human covers every green on the LLM's face.
+    # Turn 1: the human covers every green on the LLM's face; the last one ends the turn (§6.8).
     engine.receive_clue("battle", 9, LLM)
-    for card_id in LLM_GREENS:
+    for card_id in LLM_GREENS[:-1]:
         assert engine.resolve_guess(card_id=card_id, player_id=HUMAN) == "agent"
+    assert engine.resolve_guess(card_id=LLM_GREENS[-1], player_id=HUMAN) == "agent_turn_end"
     assert engine.state.agents_remaining == [6, 0]
-    engine.pass_turn(HUMAN)
 
     # Turn 2: the LLM still has pending words, so the roles alternate as usual.
     assert (engine.state.clue_giver, engine.state.guesser) == (HUMAN, LLM)
@@ -799,6 +799,84 @@ def test_engine_seat_can_run_out_of_pending_words_on_the_partners_turn(valid_boa
     # Turn 4: a miss does not hand the guess back either.
     assert (engine.state.clue_giver, engine.state.guesser) == (exhausted, other)
     assert engine.state.current_phase == GamePhase.GIVING_CLUE
+
+
+def test_engine_turn_ends_when_the_guesser_covers_its_last_pending_word(valid_board_data: dict):
+    """
+    The hit that covers the guesser's last pending word ends the turn by itself (§6.8): the giver
+    must tell it there is nothing left to guess, and any word it could still touch is beige or black
+    on the giver's face. The turn closes as a voluntary stop - one token - and the partner guesses.
+
+    This is the sequence that used to cost games: the human covers RUSSIA, its last pending word,
+    the turn stays in GUESSING, and the human goes on to touch MAKEUP - an assassin on the LLM's face.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    LLM, HUMAN = 0, 1
+    RUSSIA = 4  # agent on the LLM's face
+    MAKEUP = 14  # assassin on the LLM's face
+    LLM_GREENS = [1, 8, 11, 12, 15, 17, 19, 24, RUSSIA]  # the human's pending words, RUSSIA last
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = LLM
+    engine.state.guesser = HUMAN
+    turn_before = engine.state.turn_number
+
+    engine.receive_clue("battle", 9, LLM)
+    for card_id in LLM_GREENS[:-1]:
+        assert engine.resolve_guess(card_id=card_id, player_id=HUMAN) == "agent"
+    assert engine.state.current_phase == GamePhase.GUESSING
+
+    assert engine.resolve_guess(card_id=RUSSIA, player_id=HUMAN) == "agent_turn_end"
+    assert engine.state.agents_remaining == [6, 0]
+
+    # Closed exactly like pass_turn: one token, clue archived, next turn with the LLM guessing.
+    assert engine.state.timer_tokens == 8
+    assert engine.state.current_phase == GamePhase.GIVING_CLUE
+    assert (engine.state.clue_giver, engine.state.guesser) == (HUMAN, LLM)
+    assert engine.state.turn_number == turn_before + 1
+    assert engine.state.guesses_made_this_turn == 0
+    assert engine.state.current_clue is None
+    assert [entry.clue for entry in engine.state.clue_history] == ["battle"]
+
+    # The turn is over, so the human can no longer touch MAKEUP and lose the game on it.
+    with pytest.raises(PermissionError):
+        engine.resolve_guess(card_id=MAKEUP, player_id=HUMAN)
+    assert engine.state.is_game_over is False
+
+
+@pytest.mark.parametrize("exhausted, sudden_death_phase", [
+    (0, GamePhase.SUDDEN_DEATH_HUMAN),
+    (1, GamePhase.SUDDEN_DEATH_LLM),
+])
+def test_engine_last_pending_word_on_the_last_token_starts_sudden_death(
+        valid_board_data: dict, exhausted: int, sudden_death_phase: GamePhase):
+    """
+    The stop forced by the last pending word spends a token like any other stop, so on the last
+    token it starts sudden death for the partner, the only seat with words left.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param exhausted: The guesser that covers its last pending word.
+    :param sudden_death_phase: The sudden-death phase of the partner.
+    """
+    other = 1 - exhausted
+    # A green only on the partner's face: CAVE is green for the human, RUSSIA for the LLM.
+    last_word = {0: 5, 1: 4}[exhausted]
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = other
+    engine.state.guesser = exhausted
+    engine.state.current_phase = GamePhase.GUESSING
+    engine.state.timer_tokens = 1
+    engine.state.agents_remaining[exhausted] = 1
+    engine.state.agents_remaining[other] = 3
+
+    assert engine.resolve_guess(card_id=last_word, player_id=exhausted) == "agent_turn_end"
+    assert engine.state.timer_tokens == 0
+    assert engine.state.current_phase == sudden_death_phase
+    assert engine.state.sd_measurement_pending is True
 
 
 def test_engine_seeded_rng_is_deterministic(valid_board_data: dict):

@@ -76,6 +76,7 @@ def test_local_client_maps_to_ollama_provider():
 # result-role mapping
 @pytest.mark.parametrize("result_str,expected", [
     ("agent", "agent"),
+    ("agent_turn_end", "agent"),
     ("victory", "agent"),
     ("victory_sd", "agent"),
     ("assassin", "assassin"),

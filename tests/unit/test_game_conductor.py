@@ -328,6 +328,34 @@ async def test_conduct_guess_skips_unplayable_item_and_continues(caplog):
 
 
 @pytest.mark.asyncio
+async def test_conduct_guess_stops_when_the_guesser_covers_its_last_pending_word():
+    """CAVE is the LLM's last pending word: covering it ends the turn in the engine (§6.8), so the
+    loop stops there - the trailing LOCUST (an assassin on the human's face) is never resolved, and
+    the for/else does not try to pass a turn that is already over."""
+    eng = _guessing_engine(guesser=0, agents=(1, 5))
+    client = _mock_client([_guess_json(["CAVE", "LOCUST"]), _rankings_json()])
+    rec = _recorder(client)
+    rec.record_clue(eng.state.current_clue, proposal=None)
+    service = LLMService()
+    flush = MagicMock()
+
+    reveals = await conduct_guess(service, client, eng, rec, player_id=0,
+                                  flush=flush, on_reveal=None)
+
+    assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent_turn_end")]
+    assert not eng.state.is_game_over
+    assert eng.state.current_phase == GamePhase.GIVING_CLUE
+    assert (eng.state.clue_giver, eng.state.guesser) == (0, 1)
+    assert eng.state.timer_tokens == 8
+    assert flush.call_count == 1
+
+    # Persisted as an agent reveal that ended the turn, with the stop's token already spent.
+    [reveal] = rec.turns[-1].reveals
+    assert (reveal.result_role, reveal.ended_turn, reveal.ended_game) == ("agent", True, False)
+    assert reveal.timer_tokens_after == 8
+
+
+@pytest.mark.asyncio
 async def test_conduct_guess_all_unmappable_raises_on_pass(caplog):
     """Every proposed word is off-board, so no guess resolves (guesses_made_this_turn == 0) and the 
     for/else pass_turn raises - the raise now PROPAGATES (no longer swallowed), leaving the phase at

@@ -208,7 +208,7 @@ async def make_guess(game_id: str, card_id: int = Form(...), player_id: int = Fo
     })
 
     cards_html = ""
-    if result in ("civilian", "assassin", "victory", "victory_sd"):
+    if result in ("civilian", "assassin", "victory", "victory_sd", "agent_turn_end"):
         cards_html = _render_cards_oob(engine, game_id)
         return HTMLResponse(content=log_html + cards_html + clue_html + stats_html)
 
@@ -301,7 +301,7 @@ async def llm_make_guess(game_id: str):
         html += templates.get_template("partials/_game_stats.html").render({
             "state": engine.state, "oob": True
         })
-        if result in ("civilian", "assassin", "victory", "victory_sd"):
+        if result in ("civilian", "assassin", "victory", "victory_sd", "agent_turn_end"):
             html += _render_cards_oob(engine, game_id)
 
     try:

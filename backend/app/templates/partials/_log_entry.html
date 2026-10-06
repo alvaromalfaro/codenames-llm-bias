@@ -36,8 +36,8 @@
         </div>
     </div>
 </div>
-{% elif result == 'agent' or result == 'victory' or result == 'victory_sd' %}
-{# Correct guess #}
+{% elif result == 'agent' or result == 'agent_turn_end' or result == 'victory' or result == 'victory_sd' %}
+{# Correct guess. 'agent_turn_end': the guesser has no words left, so the turn is already over #}
 <div class="flex gap-3">
     <div class="flex flex-col items-center">
         <div
@@ -47,7 +47,8 @@
         <div class="w-0.5 flex-1 bg-slate-200 dark:bg-slate-700 my-1"></div>
     </div>
     <div class="pb-2">
-        <div class="text-[10px] font-mono text-slate-400 mb-1">Turn {{ state.turn_number }}</div>
+        <!-- show previous turn number when the turn has already ended -->
+        <div class="text-[10px] font-mono text-slate-400 mb-1">Turn {{ state.turn_number - 1 if result == 'agent_turn_end' else state.turn_number }}</div>
         <div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
             <span class="font-semibold text-slate-900 dark:text-slate-200 text-sm">{{ player }} selection:</span>
             <div class="flex items-center gap-2 mt-1">
@@ -58,6 +59,9 @@
                     {% if result == 'victory' or result == 'victory_sd' %}Victory!{% else %}Correct{% endif %}
                 </span>
             </div>
+            {% if result == 'agent_turn_end' %}
+            <div class="text-slate-500 dark:text-slate-400 text-xs mt-1">No words left to guess — turn over.</div>
+            {% endif %}
         </div>
     </div>
 </div>
