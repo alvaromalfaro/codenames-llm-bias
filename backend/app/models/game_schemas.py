@@ -381,8 +381,13 @@ class ClueEntry(BaseModel):
     # Clue must be a non-empty string without spaces (more complex clue validation will be
     # implemented in the game engine).
     clue: str = Field(min_length=1, pattern=r"^\S+$")
-    # Clue count must be a positive integer. Codenames Duet allows a clue count of 0, but for
-    # simplicity, we will require at least 1.
+    # Clue count must be a positive integer. This is a deliberate deviation from the Duet rules,
+    # which allow a count of 0 (rules §6.2, §8.3): a "zero clue" means "avoid the words related to
+    # this one", and the guesser must still make at least one guess. Supporting it would mean
+    # explaining that inverted meaning in both prompts (when to give a zero clue, and that "count 0"
+    # does not mean "do not guess"). That makes the prompts longer and the task more complex, which
+    # makes the models more likely to hallucinate. Applies to both seats, LLM and human; a count of
+    # 0 is rejected here. See "Deviations from the Duet rules" in the README.
     count: int = Field(ge=1)
     # The player who gave the clue
     clue_giver: int = Field(ge=0, le=1)  # 0: "llm" or 1: "human"

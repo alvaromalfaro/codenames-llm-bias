@@ -26,15 +26,16 @@ Computer Science at the **University of Castilla-La Mancha**.
 5. [Running on Windows](#running-on-windows)
 6. [The board bank](#the-board-bank)
 7. [The experiment](#the-experiment)
-8. [Running the batch unattended](#running-the-batch-unattended)
-9. [Post-batch embedding backfill](#post-batch-embedding-backfill)
-10. [Analysis scripts](#analysis-scripts)
-11. [Reproducing the shipped results](#reproducing-the-shipped-results)
-12. [Data model](#data-model)
-13. [Interactive UI](#interactive-ui)
-14. [Development](#development)
-15. [Related documentation](#related-documentation)
-16. [About](#about)
+8. [Deviations from the Duet rules](#deviations-from-the-duet-rules)
+9. [Running the batch unattended](#running-the-batch-unattended)
+10. [Post-batch embedding backfill](#post-batch-embedding-backfill)
+11. [Analysis scripts](#analysis-scripts)
+12. [Reproducing the shipped results](#reproducing-the-shipped-results)
+13. [Data model](#data-model)
+14. [Interactive UI](#interactive-ui)
+15. [Development](#development)
+16. [Related documentation](#related-documentation)
+17. [About](#about)
 
 ---
 
@@ -342,6 +343,25 @@ snapshot as a record-only witness.
 **Provenance.** Each `run` row records `code_version` (git short SHA, `-dirty` suffixed),
 `prompt_template_version` (a fingerprint over the loaded templates), `model_registry_snapshot` (the
 served digest per seat), the `master_seed` and the `temperature`.
+
+---
+
+## Deviations from the Duet rules
+
+The engine follows the Codenames Duet rules, apart from these deliberate choices:
+
+* **No zero clues: the count is always at least 1.** The rules allow a clue with count 0. A zero clue
+  means "avoid the words related to this one", for example *lazy: 0* to steer the partner away from
+  the assassin SLOTH, and the guesser must still make at least one guess. The platform does not
+  support it, on purpose. To support it, both prompts would have to explain that inverted meaning:
+  the clue giver would need to know when a zero clue is worth giving, and the guesser that "count 0"
+  does not mean "do not guess". That makes the prompts longer and the task more complex, which makes
+  the models more likely to hallucinate. The rule applies to both seats, model and human: the
+  clue-giver prompt asks for a positive count, the UI field has `min="1"`, and a count of 0 fails
+  validation because `ClueEntry.count` and `ClueProposal.count` are `ge=1`.
+  Everything else about the count follows the rules: it is a hint, not a limit, and every turn still
+  needs at least one guess.
+* **Fixed sudden-death order: model first, then human.** See [Interactive UI](#interactive-ui).
 
 ---
 
