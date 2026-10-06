@@ -616,6 +616,80 @@ def test_engine_sudden_death_skip_human_if_done(valid_board_data: dict):
     assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
 
 
+@pytest.mark.parametrize("player_id, phase, agents, card_id, agents_after", [
+    # CAVE is green only on the human's face: one of the LLM's words
+    (0, GamePhase.SUDDEN_DEATH_LLM, [2, 3], 5, [1, 3]),
+    # RUSSIA is green only on the LLM's face: one of the human's words
+    (1, GamePhase.SUDDEN_DEATH_HUMAN, [0, 3], 4, [0, 2]),
+])
+def test_engine_concede_sudden_death_ends_the_game_as_a_loss(
+        valid_board_data: dict, player_id: int, phase: GamePhase, agents: list[int],
+        card_id: int, agents_after: list[int]):
+    """
+    Validates that the seat guessing in sudden death can stop with words still pending, and that
+    stopping ends the game as a loss for both without touching a card (§7.3, §14). Before this
+    action existed, a seat that proposed nothing playable left the game stuck in its sudden-death
+    phase.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param player_id: The seat guessing in sudden death.
+    :param phase: That seat's sudden-death phase.
+    :param agents: agents_remaining when sudden death starts.
+    :param card_id: One of this seat's words, found before it stops.
+    :param agents_after: agents_remaining after that hit.
+    """
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+
+    engine.state.current_phase = phase
+    engine.state.timer_tokens = 0
+    engine.state.agents_remaining = agents
+
+    assert engine.resolve_guess(card_id=card_id, player_id=player_id) == "agent"
+    assert engine.state.current_phase == phase
+
+    assert engine.concede_sudden_death(player_id) == "loss_stopped_sd"
+    assert engine.state.current_phase == GamePhase.GAME_OVER
+    assert engine.state.is_game_over is True
+    assert engine.state.result == "loss_stopped_sd"
+    # Conceding touches no card and spends nothing.
+    assert engine.state.agents_remaining == agents_after
+    assert engine.state.timer_tokens == 0
+    assert [c.id for c in engine.state.board.cards if c.revealed] == [card_id]
+
+
+@pytest.mark.parametrize("phase, player_id", [
+    (GamePhase.GUESSING, 1),            # normal play: the turn ends with pass_turn instead
+    (GamePhase.GIVING_CLUE, 1),
+    (GamePhase.GAME_OVER, 0),
+    (GamePhase.SUDDEN_DEATH_LLM, 1),    # not this seat's sudden-death turn
+    (GamePhase.SUDDEN_DEATH_HUMAN, 0),
+    (GamePhase.SUDDEN_DEATH_LLM, 2),    # not a seat
+])
+def test_engine_concede_sudden_death_rejected(
+        valid_board_data: dict, phase: GamePhase, player_id: int):
+    """
+    Validates that sudden death can only be conceded during a sudden-death phase, and only by the
+    seat guessing in it. A rejected concession leaves the game untouched.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param phase: The phase the game is in.
+    :param player_id: The seat attempting to concede.
+    """
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+
+    engine.state.current_phase = phase
+    engine.state.clue_giver = 0
+    engine.state.guesser = 1
+
+    with pytest.raises(PermissionError):
+        engine.concede_sudden_death(player_id)
+
+    assert engine.state.current_phase == phase
+    assert engine.state.result is None
+
+
 def test_engine_pass_turn(valid_board_data: dict):
     """
     Validates that the pass_turn method correctly allows the guesser to pass their turn during the

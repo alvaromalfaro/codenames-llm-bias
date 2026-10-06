@@ -354,10 +354,53 @@ async def llm_make_guess_sd(game_id: str):
     except (ValueError, PermissionError, LLMError) as e:
         return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
 
+    if engine.state.result == "loss_stopped_sd":
+        # The LLM's proposal ran out with words pending and the conductor conceded: no reveal
+        # reported it, so log it here.
+        html += _render_concession(engine, game_id, player="LLM")
+
     html += templates.get_template("partials/_clue_banner.html").render({
         "state": engine.state, "game_id": game_id, "oob": True
     })
     return HTMLResponse(content=html)
+
+
+@router.post("/play/{game_id}/concede")
+async def concede_sudden_death(game_id: str, player_id: int = Form(...)):
+    """
+    Handle the human giving up in sudden death: the game ends as a loss for both players without a
+    card being touched.
+    """
+    game = _games.get(game_id)
+    if not game:
+        return HTMLResponse("Game not found.", status_code=404)
+
+    engine, _, recorder = game
+    try:
+        engine.concede_sudden_death(player_id)
+    except (ValueError, PermissionError) as e:
+        return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
+
+    _flush_if_over(engine, recorder)
+
+    clue_html = templates.get_template("partials/_clue_banner.html").render({
+        "state": engine.state,
+        "game_id": game_id,
+        "oob": True
+    })
+
+    return HTMLResponse(content=_render_concession(engine, game_id, player="Human") + clue_html)
+
+
+def _render_concession(engine: CodenamesDuetEngine, game_id: str, player: str) -> str:
+    """Log entry and the now non-interactive board after a sudden-death concession."""
+    log_html = templates.get_template("partials/_log_entry.html").render({
+        "card": None,
+        "result": "loss_stopped_sd",
+        "state": engine.state,
+        "player": player
+    })
+    return log_html + _render_cards_oob(engine, game_id)
 
 
 def _render_cards_oob(engine: CodenamesDuetEngine, game_id: str) -> str:

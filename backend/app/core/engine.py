@@ -8,6 +8,10 @@ from backend.app.models.game_schemas import (
 )
 from backend.app.core.clue_validator import ClueValidator
 
+# The sudden-death phase in which each seat (0 = LLM, 1 = human) is the one guessing.
+_SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM,
+                     1: GamePhase.SUDDEN_DEATH_HUMAN}
+
 
 class CodenamesDuetEngine:
     """
@@ -255,6 +259,34 @@ class CodenamesDuetEngine:
 
         self._switch_roles()
 
+    def concede_sudden_death(self, player_id: int) -> str:
+        """
+        Ends sudden death as a loss because the seat guessing stops with words still pending.
+
+        The rules only describe two ways out of sudden death - every guess a hit (victory) or any
+        miss (loss) - and say nothing about stopping (§7.3, §14). No clue will ever come again, and
+        the game can only be won once this seat's words are found, so stopping can never lead to a
+        win: it is treated as conceding, and both players lose without touching a card. Without this
+        action a seat that will not, or cannot, propose a playable card leaves the game stuck in its
+        sudden-death phase.
+
+        :param player_id: The seat whose sudden-death turn it is.
+
+        :return: "loss_stopped_sd".
+
+        :raises PermissionError: If the game is not in a sudden-death phase, or if ``player_id`` is
+            not the seat guessing in it.
+        """
+        if self.state.current_phase not in _SD_PHASE_BY_SEAT.values():
+            raise PermissionError(
+                "Sudden death can only be conceded during the SUDDEN_DEATH_HUMAN or SUDDEN_DEATH_LLM phase.")
+        if self.state.current_phase != _SD_PHASE_BY_SEAT.get(player_id):
+            raise PermissionError(
+                "Only the player guessing in sudden death can concede it.")
+
+        self._finish_game(result="loss_stopped_sd")
+        return "loss_stopped_sd"
+
     def _resolve_guess_normal(self, card: WordCard, card_role: CardRole) -> str:
         """
         Resolves a guess during the normal guessing phase. If the guessed card is an agent, it is
@@ -337,9 +369,10 @@ class CodenamesDuetEngine:
             self.pass_turn(guessed_by)
             return "agent_turn_end"
 
-        # LLM just found their last agent in SUDDEN_DEATH_LLM -> hand off to Human (seat 1). Re-arm
-        # the measurement flag so seat 1's sudden-death confidence ranking is elicited once, at its
-        # own pre-first-selection instant (consumed at that seat's SD proposal entry).
+        # LLM just found their last agent in SUDDEN_DEATH_LLM -> hand off to Human (seat 1); this is
+        # the only handoff of the fixed LLM -> human order (see _switch_roles). Re-arm the
+        # measurement flag so seat 1's sudden-death confidence ranking is elicited once, at its own
+        # pre-first-selection instant (consumed at that seat's SD proposal entry).
         if (self.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
                 and self.state.agents_remaining[0] == 0):
             self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
@@ -385,7 +418,11 @@ class CodenamesDuetEngine:
         self.state.current_clue = None
 
         # If the timer tokens have run out and there are still agents remaining, transition to the
-        # sudden death phase - LLM goes first unless they have no agents left
+        # sudden death phase - LLM goes first unless they have no agents left. When both seats have
+        # words pending the rules let them guess in any order (§7.3); fixing the order LLM -> human
+        # is a deliberate deviation that gives every seat a single sudden-death play: the human may
+        # only guess once the LLM has found all its words. A seat that stops before that concedes
+        # (concede_sudden_death).
         if self.state.timer_tokens <= 0 and self._any_agents_remaining():
             if self.state.agents_remaining[0] == 0:
                 self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN

@@ -499,10 +499,10 @@ async def test_conduct_sd_guess_skips_unplayable_item_and_continues(caplog):
     # The unplayable TATTOO is skipped; the trailing valid CAVE(5) STILL resolves - the turn was not
     # abandoned (a break would have returned an empty list and left that agent unfound).
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
-    # Seat 0 had 2 agents and found one: the game continues in its own SD phase (no loss, no handoff).
-    assert eng.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
-    assert eng.state.is_game_over is False
+    # Seat 0 had 2 agents and found one; with the proposal exhausted it concedes (see
+    # test_conduct_sd_guess_concedes_when_the_proposal_runs_out_with_words_pending).
     assert eng.state.agents_remaining[0] == 1
+    assert eng.state.result == "loss_stopped_sd"
 
     # The whole ordered proposal is preserved on the single SD turn, but only the valid item produced
     # a reveal - and at its OWN per-seat index 1, satisfying the writer's per-seat backfill contract.
@@ -513,6 +513,76 @@ async def test_conduct_sd_guess_skips_unplayable_item_and_continues(caplog):
     assert [(rv.proposal_index, rv.acting_seat) for rv in sd.reveals] == [(1, 0)]
 
     assert "Skipping unplayable SD guess" in caplog.text and "TATTOO" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_conduct_sd_guess_concedes_when_nothing_is_playable():
+    """A sudden-death proposal with no playable item (an off-board word and an already covered card)
+    makes no progress. The seat concedes instead of returning in its own SD phase, which used to make
+    the driver re-dispatch the same seat with the same seed until _MAX_DISPATCHES (ENG-04)."""
+    eng = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=1, agents=(2, 3))
+    eng.state.board.cards[8].revealed = True        # TATTOO, already covered
+    eng.state.board.cards[8].revealed_by = [0, 1]
+    client = _mock_client([_rankings_json(), _guess_json(["NONWORD", "TATTOO"])])
+    rec = _recorder(client)
+    flush = MagicMock()
+
+    reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0,
+                                     flush=flush, on_reveal=None)
+
+    assert reveals == []
+    assert eng.state.current_phase == GamePhase.GAME_OVER
+    assert eng.state.result == "loss_stopped_sd"
+    assert eng.state.agents_remaining == [2, 3]
+    # The terminal flush fired after the concession, so the game is persisted as ended.
+    flush.assert_called_once_with(eng, rec)
+    # The seat's single SD play is on record, with no reveal.
+    sd = rec.turns[-1]
+    assert sd.sd_play_by_seat[0].proposals == ["NONWORD", "TATTOO"]
+    assert sd.reveals == []
+
+
+@pytest.mark.asyncio
+async def test_conduct_sd_guess_concedes_when_the_proposal_runs_out_with_words_pending():
+    """A seat that proposes fewer words than it still has to find, all of them hits, has stopped:
+    with no clue ever coming again it concedes after its last hit rather than being re-dispatched."""
+    eng = _sd_engine(GamePhase.SUDDEN_DEATH_HUMAN, clue_giver=0, agents=(0, 3))
+    client = _mock_client([_rankings_json(), _guess_json(["RUSSIA", "RIFLE"])])
+    rec = _recorder(client)
+    flush = MagicMock()
+
+    reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=1,
+                                     flush=flush, on_reveal=None)
+
+    assert [(cid, r) for cid, r, _ in reveals] == [(4, "agent"), (11, "agent")]
+    assert eng.state.agents_remaining == [0, 1]
+    assert eng.state.result == "loss_stopped_sd"
+    # One flush per reveal, then the one after the concession.
+    assert flush.call_count == 3
+    sd = rec.turns[-1]
+    assert [(rv.proposal_index, rv.result_role, rv.ended_game) for rv in sd.reveals] == [
+        (0, "agent", False), (1, "agent", False)]
+
+
+@pytest.mark.asyncio
+async def test_conduct_sd_guess_stops_at_the_handoff_without_conceding(caplog):
+    """When the seat finds its last word the engine hands the board to the partner: the rest of the
+    proposal is not this seat's to play (it is not even tried), and the seat does not concede."""
+    eng = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=1, agents=(1, 3))
+    # CAVE is seat 0's last word; RUSSIA, behind it, is one of seat 1's.
+    client = _mock_client([_rankings_json(), _guess_json(["CAVE", "RUSSIA"])])
+    rec = _recorder(client)
+
+    with caplog.at_level("WARNING"):
+        reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0,
+                                         flush=MagicMock(), on_reveal=None)
+
+    assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
+    assert eng.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
+    assert eng.state.is_game_over is False
+    assert eng.state.agents_remaining == [0, 3]
+    assert eng.state.board.cards[4].revealed is False
+    assert "Skipping unplayable SD guess" not in caplog.text
 
 
 # LLMService seat-symmetric SD phase gate (direct)

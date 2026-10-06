@@ -320,9 +320,12 @@ class GamePhase(str, Enum):
     GUESSING = "guessing"
     # The phase when the game has ended, either by win, loss, or other termination conditions.
     GAME_OVER = "game_over"
-    # Endgame phase when the timer tokens have run out: human guesses their remaining agents first.
+    # Endgame phase when the timer tokens have run out with words still pending, human guessing.
+    # Entered once the LLM has nothing left to find: straight away if it had nothing at the start of
+    # sudden death, or from SUDDEN_DEATH_LLM when the LLM finds its last agent.
     SUDDEN_DEATH_HUMAN = "sudden_death_human"
-    # After the human finishes, the LLM guesses its remaining agents.
+    # Endgame phase, LLM guessing. Always entered first when the LLM has words pending: the engine
+    # fixes the order LLM -> human (the rules allow any order, §7.3).
     SUDDEN_DEATH_LLM = "sudden_death_llm"
 
 
@@ -453,5 +456,6 @@ class GameState(BaseModel):
 
     # Finalization state
     is_game_over: bool = False
-    # None, "victory", "loss_assassin", "loss_time"
+    # None, "victory", "loss_assassin", or a sudden-death ending: "victory_sd", "loss_civilian_sd",
+    # "loss_assassin_sd", "loss_stopped_sd" (the guessing seat conceded with words still pending)
     result: Optional[str] = None

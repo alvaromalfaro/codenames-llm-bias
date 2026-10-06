@@ -139,9 +139,18 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
     """Conduct one sudden-death guessing turn for ``player_id`` (either SD seat).
 
     Returns the ordered list of resolved ``(card_id, result, card)`` reveals.
+
+    This never returns with the engine still in this seat's sudden-death phase. Either a reveal ended
+    the game (victory or a miss), or the seat found its last word and the engine handed the board
+    to the partner, or the proposal ran out with words still pending and the seat conceded
+    (``engine.concede_sudden_death``), or an exception propagated. Each seat therefore makes a
+    single sudden-death play: the driver never re-dispatches it, so the run cannot spin on a seat
+    that proposes nothing playable, and the seat's SD proposal record is never overwritten.
     """
     # The sudden-death turn has no clue; record the clue_giver held at SD entry as its clue_giver_seat.
     sd_clue_giver = engine.state.clue_giver
+    # This seat's sudden-death phase; the service gate below refuses any other.
+    sd_phase = engine.state.current_phase
 
     # Out-of-band measurement: on entry to this seat's sudden-death turn, if the engine flagged the
     # sudden-death transition, elicit and attach the confidence ranking once, before any selection.
@@ -204,7 +213,17 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
             on_reveal(card_id, result, card)
         reveals.append((card_id, result, card))
 
-        if result != "agent":
+        if result != "agent" or engine.state.current_phase != sd_phase:
+            # victory or a miss ended the game, or the seat found its last word and the board went
+            # to the partner - the rest of this proposal is no longer this seat's to play
             break
+
+    if not engine.state.is_game_over and engine.state.current_phase == sd_phase:
+        # The proposal is exhausted (all hits, unmappable or unplayable) and the seat still has words
+        # pending. No clue will ever come, so the seat has stopped: it concedes and both players
+        # lose. Returning instead would leave the phase unchanged and the driver would re-dispatch
+        # this seat with the same seed, overwriting its SD proposal record each time.
+        engine.concede_sudden_death(player_id)
+        flush(engine, recorder)
 
     return reveals

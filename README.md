@@ -606,13 +606,17 @@ pgvector columns and the cascade rules do not always round-trip.
 
 `GET /` landing, `GET /about` the rules, `GET /config` the setup form (`GET /config/models` fills the
 model list per provider), `GET /play` starts a game against a chosen model on a board drawn from the
-selected category. During play the human acts through `POST /play/{game_id}/{clue,guess,pass}` and
-the model through `POST /play/{game_id}/{llm-clue,llm-guess,llm-sd-guess}`; each returns rendered
+selected category. During play the human acts through `POST /play/{game_id}/{clue,guess,pass,concede}`
+and the model through `POST /play/{game_id}/{llm-clue,llm-guess,llm-sd-guess}`; each returns rendered
 partials that patch the board in place.
 
-Duet phases are `giving_clue`, `guessing`, `sudden_death_human`, `sudden_death_llm`, `game_over`.
-When the timer tokens run out the game enters sudden death: the human hunts their remaining agents
-first, then the model hunts its own, with no clues available to either.
+Duet phases are `giving_clue`, `guessing`, `sudden_death_llm`, `sudden_death_human`, `game_over`.
+When the timer tokens run out the game enters sudden death: the model hunts its remaining agents
+first, then the human hunts their own, with no clues available to either. The rules let both guess
+in any order; the fixed model-then-human order is a deliberate simplification that gives each seat a
+single sudden-death play. Sudden death ends in a win, in a loss on any miss, or in a loss when the
+seat guessing stops with words still pending (`loss_stopped_sd`): the model when its proposal runs
+out, the human through *Give Up*.
 
 Two deliberate differences from the headless path: the interactive path **never enforces model
 digests** (the registry snapshot stays a record-only witness), and a persistence failure at game end

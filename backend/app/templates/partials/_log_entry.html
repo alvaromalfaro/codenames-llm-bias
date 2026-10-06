@@ -115,4 +115,21 @@
         </div>
     </div>
 </div>
+{% elif result == 'loss_stopped_sd' %}
+{# Sudden death conceded with words still pending — game over #}
+<div class="flex gap-3">
+    <div class="flex flex-col items-center">
+        <div
+            class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300">
+            <span class="material-symbols-outlined text-sm">flag</span>
+        </div>
+    </div>
+    <div class="pb-2 pt-1">
+        <div class="text-[10px] font-mono text-slate-400 mb-1">Sudden death</div>
+        <div class="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-200 dark:border-red-800 shadow-sm">
+            <span class="font-semibold text-red-700 dark:text-red-400 text-sm">{{ player }}:</span>
+            <span class="text-red-600 text-sm">Stopped guessing — game over.</span>
+        </div>
+    </div>
+</div>
 {% endif %}

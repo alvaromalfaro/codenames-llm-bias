@@ -101,16 +101,18 @@ def _clue_json(clue="OCEAN", count=1, reasoning="r", targets=None) -> str:
                        "count": count, "targets": targets or []})
 
 
-def _make_client(name: str, guess_supplier, log=None) -> MagicMock:
+def _make_client(name: str, guess_supplier, log=None, clue_supplier=None) -> MagicMock:
     """A mock LLMClient. ``guess_supplier()`` is called per guess request and returns the word list
-    (or raises to inject an error); clue/ranking are canned. Each response echoes the request seed
-    (as real clients do). ``log``, if given, records (name, format, seed) per call in dispatch order.
+    (or raises to inject an error); the ranking is canned, and so is the clue unless
+    ``clue_supplier()`` gives the clue word per clue request (a game of more than one clue per seat
+    needs distinct words). Each response echoes the request seed (as real clients do). ``log``, if
+    given, records (name, format, seed) per call in dispatch order.
     """
     def gen(request, expected_format=None):
         if log is not None:
             log.append((name, expected_format, request.seed))
         if expected_format is ClueJSONFormat:
-            text = _clue_json()
+            text = _clue_json(clue_supplier()) if clue_supplier else _clue_json()
         elif expected_format is ConfidenceRankingJSONFormat:
             text = _rankings_json()
         elif expected_format is GuessJSONFormat:
@@ -402,6 +404,39 @@ async def test_all_unmappable_guess_errors_without_redispatch(monkeypatch):
         1 for c in clients.values() for call in c.generate.call_args_list
         if call.kwargs.get("expected_format") is GuessJSONFormat)
     assert guess_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_sudden_death_without_a_playable_proposal_concedes_without_redispatch(monkeypatch):
+    """A game driven to natural sudden death (start_player 0) in which seat 0's sudden-death
+    proposal has nothing playable. The seat concedes and the game completes as loss_stopped_sd after
+    a single SD dispatch - it used to be re-dispatched with the same seed until _MAX_DISPATCHES."""
+    monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
+    master_seed = _seed_with_start_player(0)
+    # Nine clues, all distinct: a repeated clue word is rejected.
+    clue_words = iter(["OCEAN", "FOREST", "RIVER", "DESERT", "MOUNTAIN",
+                       "VALLEY", "ISLAND", "CANYON", "GLACIER"])
+    # Guesser order under start_player 0 is 1,0,1,0,1,0,1,0,1 across the nine civilian turns.
+    client0 = _make_client("m0", _queue_supplier(
+        # 4 civilians, then an off-board SD proposal
+        [["RUSSIA"], ["RIFLE"], ["VIRUS"], ["MAKEUP"], ["NONWORD"]]),
+        clue_supplier=lambda: next(clue_words))
+    client1 = _make_client("m1", _queue_supplier(
+        [["BUCKET"], ["FIDDLE"], ["VAMPIRE"], ["IGLOO"], ["GOLF"]]),  # 5 civilians
+        clue_supplier=lambda: next(clue_words))
+    clients = {0: client0, 1: client1}
+
+    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=master_seed,
+                                temperature=0.4, persist=False,
+                                client_factory=lambda i, spec: clients[i])
+
+    assert res.status == "completed" and res.result == "loss_stopped_sd"
+    # Seat 0: 4 normal guess turns + exactly one SD play. Seat 1 never reaches sudden death.
+    guess_calls = {
+        seat: sum(1 for call in c.generate.call_args_list
+                  if call.kwargs.get("expected_format") is GuessJSONFormat)
+        for seat, c in clients.items()}
+    assert guess_calls == {0: 5, 1: 5}
 
 
 # DB-gated end-to-end
