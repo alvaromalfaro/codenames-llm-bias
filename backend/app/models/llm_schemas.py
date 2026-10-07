@@ -192,7 +192,7 @@ class ClueProposal(BaseModel):
     clue: str
     # The count of how many words are associated with the clue. This must be a positive integer:
     # zero clues are deliberately not supported, to keep the prompts short and the task simple (see
-    # ClueEntry.count in game_schemas.py). The clue-giver prompt asks for a positive count (rule 6).
+    # ClueEntry.count in game_schemas.py). The clue-giver prompt asks for a positive count (rule 5).
     count: int = Field(ge=1)
     # Optional reasoning provided by the LLM for the clue proposal
     reasoning: Optional[str] = None

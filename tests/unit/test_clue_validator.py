@@ -82,7 +82,7 @@ def test_lemma_match_unrelated_word_same_ending(validator_hide):
 def test_compound_prefix_component(validator_earthquake):
     """
     A word that forms the prefix of a compound board word is invalid.
-    "earth" + "quake" = "earthquake", and "quake" is a valid English word.
+    MorphoLex segments "earthquake" as "earth" + "quake".
     """
     valid, reason = validator_earthquake.is_valid(_make_clue("earth"))
 
@@ -93,7 +93,7 @@ def test_compound_prefix_component(validator_earthquake):
 def test_compound_suffix_component(validator_earthquake):
     """
     A word that forms the suffix of a compound board word is invalid.
-    "earth" + "quake" = "earthquake", and "earth" is a valid English word.
+    MorphoLex segments "earthquake" as "earth" + "quake".
     """
     valid, reason = validator_earthquake.is_valid(_make_clue("quake"))
 
@@ -104,7 +104,7 @@ def test_compound_suffix_component(validator_earthquake):
 def test_compound_clue_contains_board_word():
     """
     A clue that is itself a compound containing a board word is invalid.
-    "raw" + "hide" = "rawhide", and "raw" is a valid English word.
+    MorphoLex segments "rawhide" as "raw" + "hide".
     """
     validator = ClueValidator([_make_card(0, "HIDE")])
     valid, reason = validator.is_valid(_make_clue("rawhide"))
@@ -116,8 +116,7 @@ def test_compound_clue_contains_board_word():
 def test_compound_shared_letters_not_a_component(validator_earthquake):
     """
     A word that is a substring of a board word but NOT a compound component is valid.
-    "ear" appears inside "earthquake", but removing it leaves "thquake" which is not
-    a valid English word, so "ear" is not a compound component.
+    "ear" appears inside "earthquake", but the parts of "earthquake" are "earth" and "quake".
     """
     valid, _ = validator_earthquake.is_valid(_make_clue("ear"))
 
@@ -135,18 +134,213 @@ def test_compound_inflected_form_of_component(validator_earthquake):
     assert "component" in reason
 
 
-def test_known_limitation_derivational_form_not_caught():
+def test_compound_derived_form_of_component(validator_earthquake):
     """
-    Derivational adjective forms of board words are NOT caught by this implementation.
-    "earthy" is derived from "earth" via the adjectival suffix "-y", but
-    WordNetLemmatizer only handles inflectional morphology (tense, number, etc.),
-    not derivational morphology. Fixing this requires a dedicated derivational
-    morphology tool or lexicon.
+    A derived form of a compound component is invalid (§8.1.6).
+    "earthy" is derived from "earth" (MorphoLex segments it as "earth" + "-y"), and "earth"
+    is a prefix component of "earthquake".
     """
-    validator = ClueValidator([_make_card(0, "EARTHQUAKE")])
-    valid, _ = validator.is_valid(_make_clue("earthy"))
+    valid, reason = validator_earthquake.is_valid(_make_clue("earthy"))
 
-    assert valid  # incorrectly treated as valid — known limitation
+    assert not valid
+    assert reason == (
+        "'earthy' is a derived form of 'earth', a component of the board word 'earthquake'."
+    )
+
+
+@pytest.mark.parametrize(("board_word", "clue"), [("KING", "kingdom"), ("KINGDOM", "king")])
+def test_derived_form_of_visible_word(board_word, clue):
+    """
+    A derived form of a visible word is invalid (§8.1.5), whichever of the two is on the board.
+    """
+    validator = ClueValidator([_make_card(0, board_word)])
+    valid, reason = validator.is_valid(_make_clue(clue))
+
+    assert not valid
+    assert reason == f"'{clue}' is a derived form of the board word '{board_word.lower()}'."
+
+
+@pytest.mark.parametrize(("board_word", "clue", "expected_valid"), [
+    ("STORM", "storm", False),
+    ("HIDE", "hid", False),
+    ("HIDE", "hidden", False),
+    ("HIDE", "rawhide", False),
+    ("HIDE", "hideous", True),
+    ("RAINBOW", "rain", False),
+    ("EARTHQUAKE", "earth", False),
+    ("EARTHQUAKE", "quake", False),
+    ("EARTHQUAKE", "earthy", False),
+    ("EARTHQUAKE", "quaking", False),
+    ("EARTHQUAKE", "hearth", True),
+    ("EARTHQUAKE", "ear", True),
+])
+def test_rulebook_examples(board_word, clue, expected_valid):
+    """The examples of §8.1.4-6 of the Duet rules."""
+    validator = ClueValidator([_make_card(0, board_word)])
+    valid, _ = validator.is_valid(_make_clue(clue))
+
+    assert valid == expected_valid
+
+
+@pytest.mark.parametrize(("board_word", "clue"), [
+    ("DRIVER", "river"),
+    ("THUNDER", "under"),
+    ("EAR", "earth"),
+    ("EAR", "year"),
+    ("BOIL", "b"),
+    ("ANT", "pleasant"),
+    ("MESS", "message"),
+    ("MONKEY", "key"),
+])
+def test_word_split_by_letters_is_not_a_compound(board_word, clue):
+    """
+    A word is a compound only if MorphoLex segments it as one, not because its letters split into
+    two dictionary entries: "driver" is "drive" + "-er", not "d" + "river", and "year" is a word of
+    its own. A letter is a valid clue if it refers to a meaning (§8.1.2), so "b" is valid with
+    "boil" visible.
+    """
+    validator = ClueValidator([_make_card(0, board_word)])
+
+    assert validator.is_valid(_make_clue(clue)) == (True, "")
+
+
+@pytest.mark.parametrize(("board_word", "clue"), [
+    ("HAPPY", "happily"),
+    ("SWEAT", "sweaty"),
+    ("STABLE", "unstable"),
+    ("CORPORATION", "corporate"),
+    ("DOMESTIC", "domesticated"),
+    ("MEDIC", "medical"),
+    ("INDEPENDENT", "depend"),
+    ("MARRIAGE", "marry"),
+    ("PATIENT", "patience"),
+])
+def test_derived_form_from_morpholex(board_word, clue):
+    """
+    Derived forms are caught from MorphoLex's segmentations, also the ones WordNet does not link
+    ("happily", "unstable"). MorphoLex takes "marriage" and "patience" for words of their own, and
+    WordNet's derivational links catch them, since they keep the spelling.
+    """
+    validator = ClueValidator([_make_card(0, board_word)])
+    valid, reason = validator.is_valid(_make_clue(clue))
+
+    assert not valid
+    assert reason == f"'{clue}' is a derived form of the board word '{board_word.lower()}'."
+
+
+@pytest.mark.parametrize(("board_word", "clue"), [
+    ("FLEE", "flight"),
+    ("DIE", "death"),
+    ("PORT", "transport"),
+    ("INDEPENDENT", "pending"),
+])
+def test_related_word_that_is_not_a_form_is_valid(board_word, clue):
+    """
+    A word related to a visible word only by its history is not a form of it: WordNet links
+    "flight" to "flee", but their spelling differs, and MorphoLex's "transport" has the root of
+    "port" with a fused prefix, so it is a different word.
+    """
+    validator = ClueValidator([_make_card(0, board_word)])
+
+    assert validator.is_valid(_make_clue(clue)) == (True, "")
+
+
+@pytest.mark.parametrize(("board_word", "clue", "reason"), [
+    ("OUTSIDE", "out", "'out' is a component of the board word 'outside'."),
+    ("CHRISTMAS", "christ", "'christ' is a component of the board word 'christmas'."),
+    ("MAKEUP", "upper",
+     "'upper' is a derived form of 'up', a component of the board word 'makeup'."),
+    ("SET", "upset", "'upset' contains the board word 'set'."),
+    ("STAIRS", "upstairs", "'upstairs' contains the board word 'stairs'."),
+    ("BOOK", "notebooks", "'notebooks' contains the board word 'book'."),
+    ("DRIVER", "screwdriver", "'screwdriver' contains the board word 'driver'."),
+    ("DRAWING", "withdraw", "'withdraw' contains the board word 'drawing'."),
+    ("SLEEP", "overslept", "'overslept' contains the board word 'sleep'."),
+])
+def test_compounds_from_morpholex(board_word, clue, reason):
+    """
+    MorphoLex's compounds include the ones a prefix like "out" or "up" makes, and the ones it
+    segments as a single group ("christmas"). A compound clue contains a board word if it spells
+    out the word or one of its lemmas: "withdraw" contains "draw", the lemma of "drawing".
+    """
+    validator = ClueValidator([_make_card(0, board_word)])
+
+    assert validator.is_valid(_make_clue(clue)) == (False, reason)
+
+
+@pytest.mark.parametrize(("board_word", "clue"), [
+    ("EARTHQUAKE", "earthworm"),
+    ("RAINBOW", "raincoat"),
+    ("OUTSIDE", "inside"),
+    ("ARMAMENT", "firearm"),
+    ("BOXER", "mailbox"),
+])
+def test_word_sharing_only_a_part_is_valid(board_word, clue):
+    """
+    The rules are applied as written (§8.1.5-6): a clue is invalid if it is a part of a visible
+    compound or contains a visible word, but sharing a part is not covered. Two compounds with a
+    common part are valid ("raincoat" with "rainbow"), and so is a compound that contains the root
+    of a visible derived word but not the word ("firearm" with "armament").
+    """
+    validator = ClueValidator([_make_card(0, board_word)])
+
+    assert validator.is_valid(_make_clue(clue)) == (True, "")
+
+
+@pytest.mark.parametrize(("clue", "reason"), [
+    ("crown's", "'crown's' is a visible word on the board."),
+    ("CROWN!", "'CROWN!' is a visible word on the board."),
+    ("crown.", "'crown.' is a visible word on the board."),
+])
+def test_punctuation_and_possessive_are_ignored(clue, reason):
+    """Punctuation around the clue and a possessive "'s" do not make it a different word."""
+    validator = ClueValidator([_make_card(0, "CROWN")])
+
+    assert validator.is_valid(_make_clue(clue)) == (False, reason)
+
+
+def test_hyphenated_clue_is_a_compound_of_its_parts():
+    """A hyphenated clue contains each of its parts."""
+    validator = ClueValidator([_make_card(0, "RAIN")])
+
+    assert validator.is_valid(_make_clue("rain-soaked")) == (
+        False, "'rain-soaked' contains the board word 'rain'.")
+
+
+@pytest.mark.parametrize(("board_word", "clue", "expected"), [
+    ("SUN", "sunup", (False, "'sunup' contains the board word 'sun'.")),
+    ("CHILDCARE", "child", (False, "'child' is a component of the board word 'childcare'.")),
+    ("MOHAWK", "hawk", (True, "")),
+])
+def test_words_missing_from_morpholex_are_split(board_word, clue, expected):
+    """
+    For a word MorphoLex does not have ("sunup", "childcare", "mohawk"), the validator splits it in
+    two pieces of at least three letters, or a piece like "up". "mohawk" is not "mo" + "hawk".
+    """
+    validator = ClueValidator([_make_card(0, board_word)])
+
+    assert validator.is_valid(_make_clue(clue)) == expected
+
+
+def test_known_limitation_etymological_segmentation():
+    """
+    Known limitation: MorphoLex segments some words by their etymology, so a legal clue is flagged.
+    "tenant" is "ten" + "-ant" (from Latin "tenere"), so it is taken as a form of "ten".
+    """
+    validator = ClueValidator([_make_card(0, "TEN")])
+
+    assert validator.is_valid(_make_clue("tenant")) == (
+        False, "'tenant' is a derived form of the board word 'ten'.")
+
+
+def test_known_limitation_compound_taken_as_one_root():
+    """
+    Known limitation: MorphoLex takes some compounds for words of their own, so their parts pass.
+    "werewolf" is a single root in MorphoLex, so "wolf" is valid with "werewolf" visible.
+    """
+    validator = ClueValidator([_make_card(0, "WEREWOLF")])
+
+    assert validator.is_valid(_make_clue("wolf")) == (True, "")
 
 
 def test_valid_unrelated_clue(validator_hide):

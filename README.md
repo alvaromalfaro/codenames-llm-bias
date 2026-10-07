@@ -36,6 +36,7 @@ Computer Science at the **University of Castilla-La Mancha**.
 15. [Development](#development)
 16. [Related documentation](#related-documentation)
 17. [About](#about)
+18. [License](#license)
 
 ---
 
@@ -59,7 +60,7 @@ the same recorder, so what the experiment measures is what the UI plays.
 | Component | File | Responsibility |
 |---|---|---|
 | Engine | `backend/app/core/engine.py` | Duet rules: phases, keycards, reveals, timer tokens, sudden death, win/loss. An invalid clue is played with a penalty token, as in the rules. Owns the game state; seed-agnostic (an RNG is injected). |
-| Clue validator | `backend/app/core/clue_validator.py` | Flags clues that are not a single word, or that are a visible word, a morphological form of one, or a compound containing one (WordNet-backed). The engine plays a flagged clue with a penalty token. Repeating an earlier clue is allowed, as in the rules. |
+| Clue validator | `backend/app/core/clue_validator.py` | Flags clues that are not a single word, or that are a visible word, a form of one (inflected, derived, or a compound containing it), or a part of a visible compound. Forms and compounds come from the MorphoLex-en word segmentations in `data/morpholex/`, with WordNet for inflections and as a fallback. The engine plays a flagged clue with a penalty token. Repeating an earlier clue is allowed, as in the rules. |
 | Conductor | `backend/app/core/game_conductor.py` | Seat-parameterised turn orchestration (engine + service + recorder). No HTTP, no persistence — the caller injects `flush` / `on_reveal` hooks. |
 | LLM service | `backend/app/core/llm_service.py` | Prompt assembly from `data/prompt_templates/`, and the out-of-band **measurement** ranking elicited at the same pre-resolution state. |
 | Clients | `backend/app/core/llm/client{,_local,_openrouter}.py` | Provider adapters (Ollama / OpenRouter) with a bounded same-request retry over retriable errors, structured-output enforcement and degenerate-response detection. |
@@ -99,8 +100,10 @@ codenames-llm-bias/
 ├── board_generator/           standalone board-bank tool — see its own README
 ├── data/
 │   ├── boards/                the board bank + measurement_frame.json + balance_report.json
+│   ├── morpholex/             MorphoLex-en word segmentations for the clue validator (CC BY-NC-SA)
 │   └── prompt_templates/      system / user / one-shot templates, incl. the measurement prompts
-├── scripts/                   batch orchestrator CLI, analysis CLIs, embedding backfill
+├── scripts/                   batch orchestrator CLI, analysis CLIs, embedding backfill,
+│                              MorphoLex TSV build
 ├── tests/unit/                platform test suite (DB-backed tests gated on DATABASE_URL)
 ├── docker-compose.yml         db (pgvector) + ollama + app (FastAPI)
 ├── docker-compose.gpu.yml     optional override: reserves an NVIDIA GPU for ollama
@@ -362,6 +365,30 @@ The engine follows the Codenames Duet rules, apart from these deliberate choices
   Everything else about the count follows the rules: it is a hint, not a limit, and every turn still
   needs at least one guess.
 * **Fixed sudden-death order: model first, then human.** See [Interactive UI](#interactive-ui).
+* **The clue validator has known limitations, accepted on purpose.** It checks the rules about the
+  form of a clue: one word, not a visible word, not a form of one, and not a part of a visible
+  compound. It does not check the rules about meaning, such as a clue that points to letters or to
+  positions on the table. Forms and compounds come from the word segmentations of
+  [MorphoLex-en](data/morpholex/README.md), and the rules are applied as written: a clue that only
+  shares a part with a visible word is valid (*raincoat* with RAINBOW, *firearm* with ARMAMENT). An
+  invalid clue is played with a penalty token, as in the rules, so a limitation that flags a legal
+  clue costs a token. These are the known ones:
+  * **Etymological segmentations.** MorphoLex segments some words by their history, so a few legal
+    clues are flagged: *tenant* with TEN visible (from Latin *tenere*), *potent* with POTTER, *irony*
+    with IRONING, *dent* with DENTIST, *cookie* with COOKING.
+  * **Compounds and derivations taken for one word.** MorphoLex takes some of them for words of
+    their own, and they pass when WordNet does not link them either: *wolf* with WEREWOLF visible,
+    *asleep* with SLEEP, *repay* with PAY.
+  * **Words MorphoLex does not have.** About 2% of the board words and clues (*mohawk*,
+    *childcare*, *sunup*). For those, the validator falls back to WordNet's derivational links and
+    to splitting the word in two pieces of at least three letters, which misses "-ly" adverbs and
+    shorter pieces.
+
+  Replayed on the shipped data, which was played with an earlier validator, the current one lets
+  through the 4 legal clue attempts that the earlier one rejected (*river* with DRIVER twice,
+  *under* with THUNDER, the letter *b* with BOIL), keeps the other 89 rejections, and flags 7
+  accepted clues that are forms of a visible word (*astronomical* with ASTRONOMY, *geometric* with
+  GEOMETRY, *corporate* with CORPORATION in 4 games, *domesticated* with DOMESTIC).
 
 ---
 
@@ -708,3 +735,13 @@ Both halves of the project — this measurement platform and the
 [`board_generator`](board_generator/README.md) tool that builds its stimulus set — were written for
 that work, and the chapter references scattered through the module docstrings (sections 4.5.1, eqs
 4.1 and 4.6–4.14) point to the accompanying dissertation.
+
+---
+
+## License
+
+The code is under the MIT License (see [`LICENSE`](LICENSE)). The word segmentations in
+[`data/morpholex/`](data/morpholex/README.md) are adapted from MorphoLex-en and keep its license,
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0, so they cannot be used for commercial
+purposes. To reuse the platform commercially, remove them or replace them with word segmentations
+under a license that allows that use, in the same format.

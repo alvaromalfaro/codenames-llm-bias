@@ -53,8 +53,9 @@ logger = logging.getLogger("run_batch")
 # is aborted (its remaining cells skipped); the batch continues with the next pairing.
 _CONSECUTIVE_FAILURE_THRESHOLD = 5
 
-# A nonsense, non-English clue for the dry-run mock: no WordNet synset, so it can never be a board
-# word, a morphological form of one, or a compound component - it passes ClueValidator on any board.
+# A nonsense, non-English clue for the dry-run mock: in neither MorphoLex nor WordNet, so it can never
+# be a board word, a morphological or derived form of one, or a compound component - it passes
+# ClueValidator on any board.
 _DRY_RUN_CLUE = "ZZXQJ"
 
 
