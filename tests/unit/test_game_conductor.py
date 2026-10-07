@@ -148,16 +148,63 @@ async def test_conduct_clue_seat0_drives_engine_and_records():
     rec = _recorder(client)
     service = LLMService()
 
-    proposal = await conduct_clue(service, client, eng, rec, player_id=0)
+    clue_entry = await conduct_clue(service, client, eng, rec, player_id=0)
 
-    assert proposal.clue == "OCEAN"
+    assert clue_entry is eng.state.current_clue
+    assert clue_entry.clue == "OCEAN"
     assert eng.state.current_phase == GamePhase.GUESSING
-    assert eng.state.current_clue.clue == "OCEAN"
     # One normal turn opened, carrying the clue and the model attempt.
     assert len(rec.turns) == 1
     assert rec.turns[-1].clue.clue_word == "OCEAN"
+    assert rec.turns[-1].clue.invalid_reason is None
     assert rec.turns[-1].clue_giver_seat == 0
     assert len(rec.turns[-1].clue.llm_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_conduct_clue_plays_an_invalid_clue_with_a_penalty_token():
+    """The model's invalid clue (here a visible board word) is played with a penalty token, as the
+    rules say (§8.4), and recorded with the reason. It used to be regenerated, so a model was never
+    penalised."""
+    eng = CodenamesDuetEngine(_board())
+    eng.state.current_phase = GamePhase.GIVING_CLUE
+    eng.state.clue_giver = 0
+    eng.state.guesser = 1
+    client = _mock_client([_clue_json(clue="BUCKET", count=2)])
+    rec = _recorder(client)
+
+    clue_entry = await conduct_clue(LLMService(), client, eng, rec, player_id=0)
+
+    assert client.generate.await_count == 1
+    assert clue_entry.clue == "BUCKET"
+    assert clue_entry.invalid_reason == "'BUCKET' is a visible word on the board."
+    assert eng.state.current_phase == GamePhase.GUESSING
+    assert (eng.state.timer_tokens, eng.state.penalty_tokens) == (8, 1)
+    assert rec.turns[-1].clue.clue_word == "BUCKET"
+    assert rec.turns[-1].clue.invalid_reason == clue_entry.invalid_reason
+
+
+@pytest.mark.asyncio
+async def test_conduct_clue_records_an_invalid_clue_that_starts_sudden_death():
+    """A penalty that takes the last token starts sudden death and archives the clue at once. The
+    clue is still recorded on its own turn, from the entry the engine returns."""
+    eng = CodenamesDuetEngine(_board())
+    eng.state.current_phase = GamePhase.GIVING_CLUE
+    eng.state.clue_giver = 0
+    eng.state.guesser = 1
+    eng.state.timer_tokens = 1
+    client = _mock_client([_clue_json(clue="BUCKET", count=2)])
+    rec = _recorder(client)
+
+    clue_entry = await conduct_clue(LLMService(), client, eng, rec, player_id=0)
+
+    assert eng.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
+    assert eng.state.current_clue is None
+    assert eng.state.clue_history == [clue_entry]
+    assert len(rec.turns) == 1
+    assert rec.turns[-1].phase == "normal"
+    assert rec.turns[-1].clue.clue_word == "BUCKET"
+    assert rec.turns[-1].clue.invalid_reason is not None
 
 
 # conduct_guess

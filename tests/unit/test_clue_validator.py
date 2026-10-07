@@ -26,6 +26,17 @@ def validator_earthquake() -> ClueValidator:
     return ClueValidator([_make_card(0, "EARTHQUAKE")])
 
 
+@pytest.mark.parametrize("clue", ["washing machine", "Leonardo da Vinci"])
+def test_clue_of_several_words_is_invalid(validator_hide, clue):
+    """A clue is one word (§6.2), and so is a proper name (§8.1.10): "Michelangelo" is valid,
+    "Leonardo da Vinci" is not."""
+    valid, reason = validator_hide.is_valid(_make_clue(clue))
+
+    assert not valid
+    assert reason == f"'{clue}' is not a single word."
+    assert validator_hide.is_valid(_make_clue("Michelangelo")) == (True, "")
+
+
 def test_direct_match_exact(validator_hide):
     """A clue that exactly matches a visible board word is invalid."""
     valid, reason = validator_hide.is_valid(_make_clue("hide"))

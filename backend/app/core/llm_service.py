@@ -2,14 +2,11 @@ import hashlib
 import json
 from typing import TYPE_CHECKING, Optional
 from backend.app.core.llm.client import LLMClient
-from backend.app.core.clue_validator import ClueValidator
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage, LLMCallRecord, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat
-from backend.app.models.game_schemas import GameState, GamePhase, CardRole, ClueEntry, ConfidenceRanking, RankedCard
+from backend.app.models.game_schemas import GameState, GamePhase, CardRole, ConfidenceRanking, RankedCard
 
 if TYPE_CHECKING:
     from backend.app.core.engine import CodenamesDuetEngine
-
-MAX_CLUE_RETRIES = 3
 
 # The seat allowed to guess in each sudden-death phase, mirroring the engine's own invariant
 # (resolve_guess raises unless seat 1 acts in SUDDEN_DEATH_HUMAN / seat 0 in SUDDEN_DEATH_LLM).
@@ -121,7 +118,7 @@ class LLMService:
         return h.hexdigest()
 
     @staticmethod
-    def _call_record(request: LLMRequest, response: LLMResponse, role: str, retry_index: int = 0) -> LLMCallRecord:
+    def _call_record(request: LLMRequest, response: LLMResponse, role: str) -> LLMCallRecord:
         """Build the in-memory audit carrier from the paired request/response.
 
         The service only fills a field it already has in hand; it never touches persistence. The
@@ -131,7 +128,6 @@ class LLMService:
         usage = response.usage
         return LLMCallRecord(
             role=role,
-            retry_index=retry_index,
             rendered_prompt=list(request.messages),
             resolved_model=response.resolved_model,
             system_fingerprint=response.system_fingerprint,
@@ -147,11 +143,14 @@ class LLMService:
             raw_payload=response.raw_payload,
         )
 
-    async def propose_clue(self, llm_client: LLMClient, game_state: GameState, validator: ClueValidator, player_id: int = 0, seed: Optional[int] = None) -> ClueProposal:
+    async def propose_clue(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> ClueProposal:
         """
         Proposes a clue for the current game state. This method checks that the game is in the 
         correct phase and that the LLM is the clue giver before building the request, sending it to
         the LLM, and processing the response.
+
+        The clue is not checked against the validity rules here, and an invalid one is not
+        regenerated: as in the rules, the engine accepts it with a penalty token (§8.4).
 
         :param llm_client: The LLM client to use for generating responses.
         :param game_state: The current state of the game.
@@ -170,41 +169,11 @@ class LLMService:
         request = self._build_clue_request(
             game_state, llm_client.model_name, player_id, seed=seed)
 
-        reason = ""
-        # Audit every attempt (accepted + rejected), ordered by retry_index.
-        llm_calls: list[LLMCallRecord] = []
+        response = await llm_client.generate(request, expected_format=ClueJSONFormat)
+        proposal = self._build_clue_proposal(response)
+        proposal.llm_calls = [self._call_record(request, response, "clue_giver")]
 
-        for retry_index in range(MAX_CLUE_RETRIES):
-            response = await llm_client.generate(request, expected_format=ClueJSONFormat)
-            proposal = self._build_clue_proposal(response)
-            llm_calls.append(
-                self._call_record(request, response, "clue_giver", retry_index)
-            )
-
-            clue_entry = ClueEntry(
-                clue=proposal.clue,
-                count=proposal.count,
-                clue_giver=player_id,
-                turn_number=game_state.turn_number,
-            )
-            valid, reason = validator.is_valid(clue_entry)
-            if valid:
-                proposal.llm_calls = llm_calls
-                return proposal
-
-            print(
-                f"LLM proposed invalid clue '{proposal.clue}': {reason}. Retrying...")
-            request = self._build_clue_retry_request(
-                original_request=request,
-                invalid_response_text=response.text,
-                invalid_clue=proposal.clue,
-                reason=reason,
-            )
-
-        raise ValueError(
-            f"LLM failed to produce a valid clue after {MAX_CLUE_RETRIES} attempts. "
-            f"Last rejection: {reason}"
-        )
+        return proposal
 
     async def propose_guess(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> GuessProposal:
         """
@@ -443,40 +412,6 @@ class LLMService:
 
         return ClueProposal(clue=clue.strip(), count=count, reasoning=reasoning.strip(),
                             targets=targets, raw_payload=response.raw_payload)
-
-    def _build_clue_retry_request(
-        self,
-        original_request: LLMRequest,
-        invalid_response_text: str,
-        invalid_clue: str,
-        reason: str,
-    ) -> LLMRequest:
-        """
-        Builds a retry LLMRequest after the LLM proposed an invalid clue. The conversation is
-        extended with the failed attempt (as a user→assistant pair) followed by a new user message
-        that explains why the clue was rejected and asks for a fresh one.
-
-        The resulting message list is:
-            [system, (one-shot user), (one-shot assistant), original user, invalid assistant, correction user]
-        """
-        correction = (
-            f"Your previous clue was rejected.\n\n"
-            f"Rejected clue: \"{invalid_clue}\"\n"
-            f"Reason: {reason}\n\n"
-            f"Please provide a new valid clue using the same JSON format."
-        )
-        messages = list(original_request.messages) + [
-            LLMMessage(role="assistant", content=invalid_response_text),
-            LLMMessage(role="user", content=correction),
-        ]
-        return LLMRequest(
-            messages=messages,
-            model=original_request.model,
-            temperature=original_request.temperature,
-            max_tokens=original_request.max_tokens,
-            timeout_s=original_request.timeout_s,
-            seed=original_request.seed,
-        )
 
     def _build_guess_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
         """

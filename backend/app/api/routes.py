@@ -133,18 +133,20 @@ async def give_clue(game_id: str, clue: str = Form(...), count: int = Form(...),
 
     engine, _, recorder = game
     try:
-        engine.receive_clue(clue, count, player_id)
+        # An invalid clue is accepted with a penalty token (§8.4), which can start sudden death and
+        # archive the clue: render from the returned entry, not engine.state.current_clue.
+        clue_entry = engine.receive_clue(clue, count, player_id)
     except (ValueError, PermissionError) as e:
         return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
 
     # Human clue: no llm_calls and empty targets (record-only, never synthesized).
-    recorder.record_clue(engine.state.current_clue, proposal=None)
+    recorder.record_clue(clue_entry, proposal=None)
 
     log_html = templates.get_template("partials/_log_entry.html").render({
         "card": None,
         "result": "clue",
         "state": engine.state,
-        "clue": engine.state.current_clue,
+        "clue": clue_entry,
         "player": "Human"
     })
     clue_html = templates.get_template("partials/_clue_banner.html").render({
@@ -152,8 +154,14 @@ async def give_clue(game_id: str, clue: str = Form(...), count: int = Form(...),
         "game_id": game_id,
         "oob": True
     })
+    # The penalty changes the reserve, and may hand the cards to the human for sudden death.
+    stats_html = templates.get_template("partials/_game_stats.html").render({
+        "state": engine.state,
+        "oob": True
+    })
+    cards_html = _render_cards_oob(engine, game_id)
 
-    return HTMLResponse(content=log_html + clue_html)
+    return HTMLResponse(content=log_html + clue_html + stats_html + cards_html)
 
 
 @router.post("/play/{game_id}/guess")
@@ -259,7 +267,7 @@ async def llm_give_clue(game_id: str):
     engine, llm_client, recorder = game
 
     try:
-        await conduct_clue(_llm_service, llm_client, engine, recorder, player_id=0)
+        clue_entry = await conduct_clue(_llm_service, llm_client, engine, recorder, player_id=0)
     except (ValueError, PermissionError, LLMError) as e:
         return HTMLResponse(f"<div class='text-red-500 text-sm p-2'>{str(e)}</div>", status_code=400)
 
@@ -268,7 +276,7 @@ async def llm_give_clue(game_id: str):
         "card": None,
         "result": "clue",
         "state": engine.state,
-        "clue": engine.state.current_clue,
+        "clue": clue_entry,
         "player": "LLM"
     })
     clue_html = templates.get_template("partials/_clue_banner.html").render({
@@ -276,8 +284,13 @@ async def llm_give_clue(game_id: str):
         "game_id": game_id,
         "oob": True
     })
+    # An invalid clue's penalty changes the reserve (§8.4).
+    stats_html = templates.get_template("partials/_game_stats.html").render({
+        "state": engine.state,
+        "oob": True
+    })
 
-    return HTMLResponse(content=cards_html + log_html + clue_html)
+    return HTMLResponse(content=cards_html + log_html + clue_html + stats_html)
 
 
 @router.post("/play/{game_id}/llm-guess")

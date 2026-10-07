@@ -401,9 +401,10 @@ class ConfidenceRanking(BaseModel):
 
 
 class ClueEntry(BaseModel):
-    # Clue must be a non-empty string without spaces (more complex clue validation will be
-    # implemented in the game engine).
-    clue: str = Field(min_length=1, pattern=r"^\S+$")
+    # Clue must say something: at least one non-space character. Whether it is a valid clue - one
+    # word (§6.2, §8.1.10), not a visible word or a form of one (§8.1) - is checked by the engine's
+    # ClueValidator, and an invalid clue is played with a penalty token (§8.4).
+    clue: str = Field(pattern=r"\S")
     # Clue count must be a positive integer. This is a deliberate deviation from the Duet rules,
     # which allow a count of 0 (rules §6.2, §8.3): a "zero clue" means "avoid the words related to
     # this one", and the guesser must still make at least one guess. Supporting it would mean
@@ -423,6 +424,9 @@ class ClueEntry(BaseModel):
     # Out-of-band confidence ranking over all unrevealed cards, elicited at the pre-resolution
     # instant of this turn (measurement only; parallel to targets_resolved). None until measured.
     confidence_ranking: Optional[ConfidenceRanking] = None
+    # Why the clue breaks the validity rules (§8.1), or None for a valid clue. An invalid clue is
+    # still played: it costs a penalty token and the guesser guesses as if it were valid (§8.4).
+    invalid_reason: Optional[str] = None
     # LLM response payload
     raw_payload: Optional[dict] = None
 
@@ -475,8 +479,7 @@ class GameState(BaseModel):
     # last pending word (§6.8), and the winning turn's token. The rules say the winning turn also
     # spends a token (§10) but not whether it counts as a check (§14); here it does.
     check_tokens: int = 0
-    # Tokens discarded as a penalty for an invalid clue (§8.4). Always 0: the engine rejects an
-    # invalid clue instead of penalising it.
+    # Tokens discarded from the reserve as a penalty, one per invalid clue (§8.4).
     penalty_tokens: int = 0
 
     # LLM and human agents remaining (for win condition tracking)

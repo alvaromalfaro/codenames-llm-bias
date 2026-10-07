@@ -58,10 +58,10 @@ the same recorder, so what the experiment measures is what the UI plays.
 
 | Component | File | Responsibility |
 |---|---|---|
-| Engine | `backend/app/core/engine.py` | Duet rules: phases, keycards, reveals, timer tokens, sudden death, win/loss. Owns the game state; seed-agnostic (an RNG is injected). |
-| Clue validator | `backend/app/core/clue_validator.py` | Rejects clues that are a visible word, a morphological form of one, or a compound containing one (WordNet-backed). Repeating an earlier clue is allowed, as in the rules. |
+| Engine | `backend/app/core/engine.py` | Duet rules: phases, keycards, reveals, timer tokens, sudden death, win/loss. An invalid clue is played with a penalty token, as in the rules. Owns the game state; seed-agnostic (an RNG is injected). |
+| Clue validator | `backend/app/core/clue_validator.py` | Flags clues that are not a single word, or that are a visible word, a morphological form of one, or a compound containing one (WordNet-backed). The engine plays a flagged clue with a penalty token. Repeating an earlier clue is allowed, as in the rules. |
 | Conductor | `backend/app/core/game_conductor.py` | Seat-parameterised turn orchestration (engine + service + recorder). No HTTP, no persistence — the caller injects `flush` / `on_reveal` hooks. |
-| LLM service | `backend/app/core/llm_service.py` | Prompt assembly from `data/prompt_templates/`, bounded clue re-sampling, and the out-of-band **measurement** ranking elicited at the same pre-resolution state. |
+| LLM service | `backend/app/core/llm_service.py` | Prompt assembly from `data/prompt_templates/`, and the out-of-band **measurement** ranking elicited at the same pre-resolution state. |
 | Clients | `backend/app/core/llm/client{,_local,_openrouter}.py` | Provider adapters (Ollama / OpenRouter) with a bounded same-request retry over retriable errors, structured-output enforcement and degenerate-response detection. |
 | Recorder | `backend/app/db/recorder.py` | Pure in-memory accumulator for one game. No DB imports. |
 | Writer | `backend/app/db/writer.py` | Atomic terminal flush of a whole game in one transaction; `delete_run` tears a run down via cascade. |
@@ -93,7 +93,7 @@ codenames-llm-bias/
 │   │   ├── templates/         Jinja templates and partials
 │   │   ├── config.py          model roster + pinned local weight digests
 │   │   └── main.py            FastAPI entrypoint (startup ingestion)
-│   ├── migrations/            Alembic (head: 0005_run_delete_cascade)
+│   ├── migrations/            Alembic (head: 0006_clue_invalid_reason)
 │   ├── alembic.ini
 │   └── Dockerfile
 ├── board_generator/           standalone board-bank tool — see its own README
@@ -590,6 +590,9 @@ python scripts/diagnose_skill_by_board_type.py
 > database that already has the schema fails partway and leaves a half-loaded mess. Do not restore
 > over a database holding a run you care about.
 
+The analysis scripts read the dump as it is. To record new games into it, upgrade it to the current
+schema first (`alembic -c backend/alembic.ini upgrade head`).
+
 Add `--json` to any script to capture machine-readable output for downstream aggregation.
 
 ---
@@ -612,7 +615,7 @@ Add `--json` to any script to capture machine-readable output for downstream agg
 **Migrations.** Alembic is wired to `Base.metadata` and reads `DATABASE_URL` from the environment.
 
 ```sh
-alembic -c backend/alembic.ini upgrade head      # apply (head: 0005_run_delete_cascade)
+alembic -c backend/alembic.ini upgrade head      # apply (head: 0006_clue_invalid_reason)
 alembic -c backend/alembic.ini current           # inspect
 alembic -c backend/alembic.ini revision --autogenerate -m "..."   # after editing db/models.py
 ```

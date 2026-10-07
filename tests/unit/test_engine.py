@@ -55,6 +55,9 @@ def test_engine_receive_clue(valid_board_data: dict):
     assert engine.state.current_clue.turn_number == 1
     assert engine.state.clue_history == []
     assert engine.state.current_clue.raw_payload is None
+    # A valid clue costs no penalty token.
+    assert engine.state.current_clue.invalid_reason is None
+    assert (engine.state.timer_tokens, engine.state.penalty_tokens) == (9, 0)
     # Absent an intended target set, S is captured as empty (never None / never rejected).
     assert engine.state.current_clue.targets == []
     assert engine.state.current_clue.targets_resolved == []
@@ -110,7 +113,6 @@ def test_engine_resolve_target_snapshot_is_perspective_aware(valid_board_data: d
 @pytest.mark.parametrize("modification, expected_error", [
     ("invalid_phase", "Clues can only be given during the GIVING_CLUE phase."),
     ("invalid_player", "Only the clue giver can provide a clue."),
-    ("exact_match", "Invalid clue:")
 ])
 def test_engine_receive_clue_invalid_inputs(valid_board_data: dict, modification: str, expected_error: str):
     """
@@ -134,20 +136,18 @@ def test_engine_receive_clue_invalid_inputs(valid_board_data: dict, modification
     elif modification == "invalid_player":
         with pytest.raises(PermissionError, match=expected_error):
             engine.receive_clue(clue="TestClue", count=2, player_id=1)
-    elif modification == "exact_match":
-        with pytest.raises(ValueError, match=expected_error):
-            engine.receive_clue(
-                clue=valid_board_data["cards"][0]["text"], count=2, player_id=0)
 
 
 @pytest.mark.parametrize("clue, count", [
     ("", 2),
+    ("   ", 2),
     ("TestClue", 0),
 ])
 def test_engine_receive_clue_pydantic_validation(valid_board_data: dict, clue: str, count: int):
     """
     Validates that receive_clue raises ValueError (wrapping Pydantic ValidationError) for
-    structurally invalid clue entries — empty clue or non-positive count.
+    structurally invalid clue entries — empty clue or non-positive count. A malformed clue is not a
+    clue at all, so unlike an invalid one (§8.4) it is rejected and costs no token.
     """
     board = Board(**valid_board_data)
     engine = CodenamesDuetEngine(board=board)
@@ -157,6 +157,134 @@ def test_engine_receive_clue_pydantic_validation(valid_board_data: dict, clue: s
 
     with pytest.raises(ValueError):
         engine.receive_clue(clue=clue, count=count, player_id=0)
+
+    assert engine.state.current_phase == GamePhase.GIVING_CLUE
+    assert engine.state.current_clue is None
+    assert (engine.state.timer_tokens, engine.state.penalty_tokens) == (9, 0)
+
+
+def test_engine_invalid_clue_is_played_with_a_penalty_token(valid_board_data: dict):
+    """
+    An invalid clue is not rejected (§8.4): one token is discarded from the reserve as a penalty,
+    and the guesser guesses as if the clue were valid. The turn then ends as usual and spends its
+    own token, so the turn costs two tokens in all (§12).
+
+    The engine used to reject the clue, so the clue giver could give another one at no cost.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    LLM, HUMAN = 0, 1
+    BRICK = 1  # green on both faces
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = LLM
+    engine.state.guesser = HUMAN
+
+    def tokens() -> tuple[int, int, int, int]:
+        """(reserve, bystanders, checks, penalties), which must always add up to 9."""
+        state = engine.state
+        counts = (state.timer_tokens, state.bystander_tokens,
+                  state.check_tokens, state.penalty_tokens)
+        assert sum(counts) == 9
+        return counts
+
+    # BUCKET is a visible word on the board (§8.1.4).
+    entry = engine.receive_clue("bucket", 2, LLM)
+
+    assert entry is engine.state.current_clue
+    assert entry.clue == "bucket"
+    assert entry.invalid_reason == "'bucket' is a visible word on the board."
+    assert engine.state.current_phase == GamePhase.GUESSING
+    assert tokens() == (8, 0, 0, 1)
+
+    # The guesser plays it as a valid clue, and stops after a hit: the turn's own token.
+    assert engine.resolve_guess(card_id=BRICK, player_id=HUMAN) == "agent"
+    assert tokens() == (8, 0, 0, 1)
+    engine.pass_turn(HUMAN)
+    assert tokens() == (7, 0, 1, 1)
+
+    # The clue goes to the history like any other, still marked as invalid.
+    assert engine.state.clue_history == [entry]
+    assert (engine.state.clue_giver, engine.state.guesser) == (HUMAN, LLM)
+
+
+@pytest.mark.parametrize("clue, reason", [
+    # A form of a visible word (§8.1.5).
+    ("buckets", "'buckets' is a morphological form of the board word 'bucket'."),
+    # A name of several words (§6.2, §8.1.10). It used to fail ClueEntry's own validation, so it was
+    # rejected - and an LLM giving it lost the game to the error.
+    ("Leonardo da Vinci", "'Leonardo da Vinci' is not a single word."),
+])
+def test_engine_invalid_clue_penalty_comes_on_top_of_a_miss(valid_board_data: dict, clue: str,
+                                                            reason: str):
+    """
+    The penalty token is discarded on top of the token a miss puts on the word (§8.4, §12). Either
+    seat can be penalised: here the human gives the invalid clue.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param clue: The invalid clue.
+    :param reason: Why it is invalid.
+    """
+    LLM, HUMAN = 0, 1
+    FIDDLE = 6  # beige on both faces
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = HUMAN
+    engine.state.guesser = LLM
+
+    entry = engine.receive_clue(clue, 1, HUMAN)
+    assert entry.clue == clue
+    assert entry.invalid_reason == reason
+
+    assert engine.resolve_guess(card_id=FIDDLE, player_id=LLM) == "civilian"
+
+    state = engine.state
+    assert (state.timer_tokens, state.bystander_tokens,
+            state.check_tokens, state.penalty_tokens) == (7, 1, 0, 1)
+    assert state.current_phase == GamePhase.GIVING_CLUE
+
+
+@pytest.mark.parametrize("llm_pending, sudden_death_phase", [
+    (3, GamePhase.SUDDEN_DEATH_LLM),
+    (0, GamePhase.SUDDEN_DEATH_HUMAN),
+])
+def test_engine_invalid_clue_on_the_last_token_starts_sudden_death(
+        valid_board_data: dict, llm_pending: int, sudden_death_phase: GamePhase):
+    """
+    When the penalty takes the last token, the reserve is empty and words are still pending, so
+    sudden death starts at once (§7.3): no turn is left to guess on the clue. The rules do not cover
+    this case (§14). The clue stays in the history, as information both seats already have.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param llm_pending: The LLM's pending words, which decide who guesses first in sudden death.
+    :param sudden_death_phase: The sudden-death phase the penalty starts.
+    """
+    LLM, HUMAN = 0, 1
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    # The LLM gives the clue: with nothing pending it gives every clue (§6.8).
+    engine.state.clue_giver = LLM
+    engine.state.guesser = HUMAN
+    engine.state.agents_remaining = [llm_pending, 2]
+    engine.state.timer_tokens = 1
+    engine.state.check_tokens = 8
+    turn_before = engine.state.turn_number
+
+    entry = engine.receive_clue("bucket", 1, LLM)
+
+    state = engine.state
+    assert entry.invalid_reason is not None
+    assert (state.timer_tokens, state.bystander_tokens,
+            state.check_tokens, state.penalty_tokens) == (0, 0, 8, 1)
+    assert state.current_phase == sudden_death_phase
+    assert state.sd_measurement_pending is True
+    assert state.current_clue is None
+    assert state.clue_history == [entry]
+    assert state.turn_number == turn_before + 1
+    assert state.is_game_over is False
 
 
 def test_engine_receive_clue_accepts_a_repeated_clue(valid_board_data: dict):

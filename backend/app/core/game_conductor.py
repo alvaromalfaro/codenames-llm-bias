@@ -15,8 +15,7 @@ from __future__ import annotations
 import logging
 from typing import Callable, Optional
 
-from backend.app.models.game_schemas import WordCard
-from backend.app.models.llm_schemas import ClueProposal
+from backend.app.models.game_schemas import ClueEntry, WordCard
 
 logger = logging.getLogger(__name__)
 
@@ -27,25 +26,28 @@ RevealHook = Callable[[int, str, WordCard], None]
 
 
 async def conduct_clue(service, client, engine, recorder, *, player_id: int,
-                       seed: Optional[int] = None) -> ClueProposal:
+                       seed: Optional[int] = None) -> ClueEntry:
     """Conduct one LLM clue-giving turn for ``player_id``.
 
-    Returns the ``ClueProposal`` (the interactive caller renders from ``engine.state`` instead).
+    Returns the ``ClueEntry`` the engine accepted. Callers should render from it, not from
+    ``engine.state.current_clue``: when an invalid clue's penalty takes the last token, the engine
+    starts sudden death and the clue is already archived.
     """
     proposal = await service.propose_clue(
-        client, engine.state, engine.clue_validator, player_id=player_id, seed=seed)
+        client, engine.state, player_id=player_id, seed=seed)
 
-    engine.receive_clue(proposal.clue, proposal.count,
-                        player_id=player_id, raw_payload=proposal.raw_payload,
-                        targets=proposal.targets)
+    # An invalid clue is accepted with a penalty token (§8.4).
+    clue_entry = engine.receive_clue(proposal.clue, proposal.count,
+                                     player_id=player_id, raw_payload=proposal.raw_payload,
+                                     targets=proposal.targets)
 
-    # Record the clue with all its model attempts (accepted + rejected) from the proposal.
-    recorder.record_clue(engine.state.current_clue, proposal=proposal)
+    # Record the clue with its model call from the proposal.
+    recorder.record_clue(clue_entry, proposal=proposal)
 
     print(
         f"LLM proposed clue: {proposal.clue} ({proposal.count}) with reasoning: {proposal.reasoning}")
 
-    return proposal
+    return clue_entry
 
 
 async def conduct_guess(service, client, engine, recorder, *, player_id: int,

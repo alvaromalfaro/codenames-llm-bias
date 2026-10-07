@@ -6,7 +6,6 @@ from backend.app.core.llm import client as client_module
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.models.llm_errors import LLMEmptyResponseError
-from backend.app.core.clue_validator import ClueValidator
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal
 from backend.app.models.game_schemas import GamePhase, ClueEntry, ResolvedTarget
 
@@ -58,7 +57,7 @@ async def test_llm_service_propose_clue_success(game_state_cg):
 
     # Call the propose_clue method, capture the result, and assert that it matches the expected
     # ClueProposal based on the mock response
-    result = await service.propose_clue(mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+    result = await service.propose_clue(mock_client, game_state_cg)
 
     assert isinstance(result, ClueProposal)
     assert result.clue == "battle"  # "battle" is not a board word so validation passes
@@ -85,7 +84,7 @@ async def test_llm_service_propose_clue_wrong_phase(game_state_cg):
 
     with pytest.raises(ValueError,
                        match="Cannot propose a clue when the game is not in the GIVING_CLUE phase."):
-        await service.propose_clue(mock_client, game_state_cg, MagicMock())
+        await service.propose_clue(mock_client, game_state_cg)
 
 
 @pytest.mark.asyncio
@@ -102,7 +101,7 @@ async def test_llm_service_propose_clue_wrong_player(game_state_cg):
     game_state_cg.clue_giver = 1  # Set clue giver to player 1 instead of player 0
 
     with pytest.raises(ValueError, match="The player must be the clue giver to propose a clue."):
-        await service.propose_clue(mock_client, game_state_cg, MagicMock())
+        await service.propose_clue(mock_client, game_state_cg)
 
 
 @pytest.mark.asyncio
@@ -323,47 +322,25 @@ def test_llm_service_build_guess_proposal_json_error(llm_response):
 
 
 @pytest.mark.asyncio
-async def test_propose_clue_retries_on_invalid_clue(game_state_cg):
+async def test_propose_clue_returns_an_invalid_clue_without_retrying(game_state_cg):
     """
-    Tests that propose_clue retries when the LLM returns a clue that fails ClueValidator
-    (a direct board-word match), and returns the valid proposal from the second attempt.
-    The retry request must include the failed attempt as an assistant message followed by
-    a correction user message.
-    """
-    invalid_text = '{"clue": "BUCKET", "count": 2, "reasoning": "bucket reasoning"}'
-    valid_text = '{"clue": "battle", "count": 2, "reasoning": "battle reasoning"}'
+    An invalid clue (here a visible board word) is returned as it is, from a single call: the
+    engine plays it with a penalty token (§8.4), so the model is not asked for another one.
 
+    It used to be regenerated, up to three attempts, which meant a model was never penalised.
+    """
     mock_client = MagicMock(spec=LLMClient)
     mock_client.model_name = "test_model"
-    mock_client.generate = AsyncMock(side_effect=[
-        _mock_response(invalid_text),
-        _mock_response(valid_text),
-    ])
+    mock_client.generate = AsyncMock(return_value=_mock_response(
+        '{"clue": "BUCKET", "count": 2, "reasoning": "bucket reasoning"}'))
 
-    service = LLMService()
-    result = await service.propose_clue(mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+    result = await LLMService().propose_clue(mock_client, game_state_cg)
 
-    assert isinstance(result, ClueProposal)
-    assert result.clue == "battle"
-    assert mock_client.generate.await_count == 2
-
-    # The retry request's last two messages must be the failed assistant response and the
-    # correction user message annotating the rejection.
-    retry_request = mock_client.generate.await_args_list[1][0][0]
-    messages = retry_request.messages
-    assert messages[-2].role == "assistant"
-    assert "BUCKET" in messages[-2].content
-    assert messages[-1].role == "user"
-    assert "BUCKET" in messages[-1].content
-    assert "rejected" in messages[-1].content.lower()
-
-    # Audit carrier: BOTH attempts (rejected + accepted) are captured, in order, with retry_index,
-    # and each carries the messages it was sent (rendered_prompt).
-    assert [c.retry_index for c in result.llm_calls] == [0, 1]
-    assert all(c.role == "clue_giver" for c in result.llm_calls)
-    # The accepted (last) attempt's rendered prompt is the retry request (has the correction turns).
-    assert any("rejected" in m.content.lower()
-               for m in result.llm_calls[1].rendered_prompt)
+    assert result.clue == "BUCKET"
+    assert result.count == 2
+    assert mock_client.generate.await_count == 1
+    assert [c.retry_index for c in result.llm_calls] == [0]
+    assert result.llm_calls[0].role == "clue_giver"
 
 
 @pytest.mark.asyncio
@@ -374,8 +351,7 @@ async def test_propose_clue_success_records_single_accepted_call(game_state_cg):
     mock_client.generate = AsyncMock(return_value=_mock_response(
         '{"clue": "battle", "count": 2, "reasoning": "r"}'))
 
-    result = await LLMService().propose_clue(
-        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+    result = await LLMService().propose_clue(mock_client, game_state_cg)
 
     assert len(result.llm_calls) == 1
     assert result.llm_calls[0].role == "clue_giver"
@@ -396,8 +372,7 @@ async def test_propose_clue_accepts_a_repeated_clue(game_state_cg):
     mock_client.generate = AsyncMock(return_value=_mock_response(
         '{"clue": "battle", "count": 2, "reasoning": "r"}'))
 
-    result = await LLMService().propose_clue(
-        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+    result = await LLMService().propose_clue(mock_client, game_state_cg)
 
     assert result.clue == "battle"
     assert mock_client.generate.await_count == 1
@@ -423,26 +398,6 @@ async def test_propose_guess_records_llm_call(game_state_guessing):
 
 
 @pytest.mark.asyncio
-async def test_propose_clue_raises_after_max_retries(game_state_cg):
-    """
-    Tests that propose_clue raises a ValueError after exhausting all retry attempts
-    without receiving a valid clue from the LLM.
-    """
-    invalid_text = '{"clue": "BUCKET", "count": 2, "reasoning": "bucket reasoning"}'
-
-    mock_client = MagicMock(spec=LLMClient)
-    mock_client.model_name = "test_model"
-    mock_client.generate = AsyncMock(return_value=_mock_response(invalid_text))
-
-    service = LLMService()
-
-    with pytest.raises(ValueError, match="LLM failed to produce a valid clue after"):
-        await service.propose_clue(mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
-
-    assert mock_client.generate.await_count == 3
-
-
-@pytest.mark.asyncio
 async def test_propose_clue_parses_targets_onto_proposal(game_state_cg):
     """
     propose_clue extracts the intended target set S from the clue JSON and places it, verbatim,
@@ -458,8 +413,7 @@ async def test_propose_clue_parses_targets_onto_proposal(game_state_cg):
     mock_client.model_name = "test_model"
     mock_client.generate = AsyncMock(return_value=mock_response)
 
-    result = await LLMService().propose_clue(
-        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+    result = await LLMService().propose_clue(mock_client, game_state_cg)
 
     assert isinstance(result, ClueProposal)
     assert result.targets == ["NAPOLEON", "RIFLE", "RUSSIA"]
@@ -477,8 +431,7 @@ async def test_propose_clue_missing_targets_defaults_empty(game_state_cg):
     mock_client.model_name = "test_model"
     mock_client.generate = AsyncMock(return_value=mock_response)
 
-    result = await LLMService().propose_clue(
-        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+    result = await LLMService().propose_clue(mock_client, game_state_cg)
 
     assert result.targets == []
 
@@ -501,8 +454,7 @@ async def test_propose_clue_records_malformed_targets_without_retry(game_state_c
     mock_client.model_name = "test_model"
     mock_client.generate = AsyncMock(return_value=mock_response)
 
-    result = await LLMService().propose_clue(
-        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+    result = await LLMService().propose_clue(mock_client, game_state_cg)
 
     # Accepted and stored despite the malformation, and generated exactly once (no S-driven retry).
     assert result.clue == "battle"
@@ -603,28 +555,9 @@ async def test_propose_clue_seed_reaches_request(game_state_cg):
     client = _mock_client_seq(
         ['{"clue": "battle", "count": 2, "reasoning": "r"}'])
 
-    await LLMService().propose_clue(
-        client, game_state_cg, ClueValidator(game_state_cg.board.cards), seed=555)
+    await LLMService().propose_clue(client, game_state_cg, seed=555)
 
     assert client.generate.await_args_list[0][0][0].seed == 555
-
-
-@pytest.mark.asyncio
-async def test_propose_clue_retry_preserves_seed(game_state_cg):
-    """A clue rejected once then accepted issues both generate calls with the same injected seed, so 
-    the retry (with a changed prompt) is drawn from the same seed."""
-    client = _mock_client_seq([
-        # rejected (board word)
-        '{"clue": "BUCKET", "count": 2, "reasoning": "r"}',
-        '{"clue": "battle", "count": 2, "reasoning": "r"}',   # accepted
-    ])
-
-    await LLMService().propose_clue(
-        client, game_state_cg, ClueValidator(game_state_cg.board.cards), seed=8080)
-
-    assert client.generate.await_count == 2
-    assert client.generate.await_args_list[0][0][0].seed == 8080
-    assert client.generate.await_args_list[1][0][0].seed == 8080
 
 
 @pytest.mark.asyncio
@@ -674,14 +607,13 @@ async def test_propose_clue_survives_empty_draw_and_audits_the_resample(game_sta
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
         service = LLMService()
 
-        result = await service.propose_clue(
-            client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+        result = await service.propose_clue(client, game_state_cg)
 
         assert isinstance(result, ClueProposal)
         assert result.clue == "battle"
         assert mock_chat.call_count == 2
-        # One clue-legality attempt (retry_index 0) that internally absorbed one empty draw. The two
-        # counters are distinct axes and must not be conflated.
+        # One call (retry_index 0) that internally absorbed one empty draw: the re-sample is not a
+        # separate call.
         assert len(result.llm_calls) == 1
         assert result.llm_calls[0].retry_index == 0
         assert result.llm_calls[0].raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 1
@@ -698,8 +630,7 @@ async def test_propose_clue_still_fails_when_every_draw_is_empty(game_state_cg):
         service = LLMService()
 
         with pytest.raises(LLMEmptyResponseError):
-            await service.propose_clue(
-                client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+            await service.propose_clue(client, game_state_cg)
         assert mock_chat.call_count == 4  # max_retries=3 -> 4 attempts, then raise
 
 

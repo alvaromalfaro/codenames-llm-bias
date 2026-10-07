@@ -156,12 +156,13 @@ class LLMCallRecord(BaseModel):
     a partial or provider-specific response never blocks capture.
 
     ``rendered_prompt`` is the messages list as sent (``LLMRequest.messages``); the writer serialises
-    it to JSONB. ``retry_index`` marks clue-legality regenerations (> 0 = a rejected/regenerated
-    attempt), so both accepted and rejected clue attempts can be audited.
+    it to JSONB. ``retry_index`` marked clue-legality regenerations (> 0 = a rejected/regenerated
+    attempt). Invalid clues are no longer regenerated but played with a penalty (§8.4), so it is
+    always 0 now; it stays for the games recorded before that change.
     """
     # The role of the call: 'clue_giver' | 'guesser' | 'guesser_sd' | 'measurement' | 'measurement_sd'.
     role: str
-    # 0 for the first attempt; incremented for each clue-legality regeneration.
+    # Always 0 now (see the class docstring); > 0 only in games recorded with clue regenerations.
     retry_index: int = 0
     # The messages exactly as sent to the provider (LLMRequest.messages).
     rendered_prompt: list[LLMMessage] = Field(default_factory=list)
@@ -201,8 +202,9 @@ class ClueProposal(BaseModel):
     targets: list[str] = Field(default_factory=list)
     # The raw payload returned by the LLM provider for the proposal
     raw_payload: dict[str, Any] = Field(default_factory=dict)
-    # In-memory audit carriers for EVERY clue attempt (accepted + rejected), ordered by attempt with
-    # retry_index. Never sent to a provider; consumed only by the persistence write-path.
+    # In-memory audit carriers for the model calls that produced the clue: a single call, since an
+    # invalid clue is not regenerated (§8.4). Never sent to a provider; consumed only by the
+    # persistence write-path.
     llm_calls: list[LLMCallRecord] = Field(default_factory=list)
 
     @model_validator(mode="after")

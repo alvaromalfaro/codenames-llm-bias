@@ -145,6 +145,13 @@ def test_prompt_capture_columns():
     assert template_version.nullable is True
 
 
+def test_clue_invalid_reason_column():
+    """0006: clue.invalid_reason is nullable text, NULL for a valid clue."""
+    invalid_reason = Base.metadata.tables["clue"].c.invalid_reason
+    assert isinstance(invalid_reason.type, sa.Text)
+    assert invalid_reason.nullable is True
+
+
 def test_unique_constraints():
     tables = Base.metadata.tables
     assert frozenset({"board_id", "card_id"}) in _unique_column_sets(

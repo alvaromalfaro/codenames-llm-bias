@@ -26,13 +26,21 @@
         <div class="w-0.5 flex-1 bg-slate-200 dark:bg-slate-700 my-1"></div>
     </div>
     <div class="pb-2">
-        <div class="text-[10px] font-mono text-slate-400 mb-1">Turn {{ state.turn_number }}</div>
+        {# The clue's own turn: a penalty that takes the last token has already ended it #}
+        <div class="text-[10px] font-mono text-slate-400 mb-1">Turn {{ clue.turn_number }}</div>
         <div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-200 dark:border-slate-600 shadow-sm">
             <div class="font-semibold text-slate-900 dark:text-slate-200 text-sm mb-1">{{ player }} clue</div>
             <div class="font-mono text-xs text-slate-700 dark:text-slate-300">
                 &gt; Clue: "{{ clue.clue }}"<br />
                 &gt; Count: {{ clue.count }}
             </div>
+            {% if clue.invalid_reason %}
+            {# Invalid clue: played anyway, with a penalty token (rules §8.4) #}
+            <div class="text-amber-600 text-xs font-medium flex items-start mt-1">
+                <span class="material-symbols-outlined text-[14px] mr-1">timer</span>
+                <span>Invalid clue: {{ clue.invalid_reason }} Penalty - timer token discarded.</span>
+            </div>
+            {% endif %}
         </div>
     </div>
 </div>

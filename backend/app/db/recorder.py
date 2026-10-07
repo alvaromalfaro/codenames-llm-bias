@@ -56,6 +56,8 @@ class ClueRecord:
     targets_raw: list  # verbatim intended target set S, unresolved
     targets_resolved: list[ResolvedTarget]
     llm_calls: list[LLMCallRecord]
+    # Why the clue broke the validity rules, or None for a valid clue (ClueEntry.invalid_reason).
+    invalid_reason: Optional[str] = None
 
 
 @dataclass
@@ -171,6 +173,7 @@ class GameRecorder:
             targets_raw=list(clue_entry.targets),
             targets_resolved=list(clue_entry.targets_resolved),
             llm_calls=llm_calls,
+            invalid_reason=clue_entry.invalid_reason,
         )
         self.turns.append(
             TurnRecord(

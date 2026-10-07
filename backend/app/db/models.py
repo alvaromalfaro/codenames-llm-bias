@@ -391,9 +391,12 @@ class LlmCallModel(Base):
 class ClueModel(Base):
     """The clue-giver's action for a turn (one per turn). 
 
-    llm_call_id points to the accepted call; retries live in llm_call with retry_index > 0.
+    llm_call_id points to the accepted call; retries live in llm_call with retry_index > 0 (only in
+    games recorded before invalid clues were played with a penalty).
     targets_raw stores the model's raw intended-target list verbatim; the resolved form lives in 
     clue_target.
+    invalid_reason is why the clue broke the validity rules, NULL for a valid clue. An invalid clue
+    is played anyway and costs a penalty token (rules §8.4).
     """
     __tablename__ = "clue"
     __table_args__ = (
@@ -418,6 +421,7 @@ class ClueModel(Base):
     targets_raw: Mapped[list] = mapped_column(
         postgresql.JSONB, nullable=False, server_default=sa_text("'[]'")
     )
+    invalid_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ClueTargetModel(Base):

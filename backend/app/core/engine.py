@@ -46,9 +46,19 @@ class CodenamesDuetEngine:
         self.clue_validator = ClueValidator(board.cards)
 
     def receive_clue(self, clue: str, count: int, player_id: int, raw_payload: Optional[dict] = None,
-                     targets: Optional[list[str]] = None):
+                     targets: Optional[list[str]] = None) -> ClueEntry:
         """
         Processes a clue provided by the clue-giving player.
+
+        A clue that breaks the validity rules (§8.1) is accepted all the same, as the rules say
+        (§8.4): one token is discarded from the reserve as a penalty, and the guesser guesses as if
+        the clue were valid, so the turn usually spends another token when it ends. The reason is
+        recorded on the clue (``ClueEntry.invalid_reason``). Only a malformed clue - blank, or with
+        a count below 1 - is rejected, since it is not a clue at all.
+
+        If the penalty takes the last token, sudden death starts at once (§7.3): the reserve is
+        empty, so no turn is left to guess on, and the clue goes to the history as information both
+        seats already have. The rules do not cover this case (§14).
 
         :param clue: The clue word provided by the clue-giving player.
         :param count: The number of cards the clue relates to.
@@ -59,7 +69,10 @@ class CodenamesDuetEngine:
             for measurement only. It never affects clue legality and is never transmitted to the
             guesser. A malformed or empty list is captured as-is, never rejected.
 
-        :raises ValueError: If the clue is invalid or if it's not the clue-giving player's turn.
+        :return: The accepted ClueEntry. Callers should read it from here: when the penalty starts
+            sudden death, ``state.current_clue`` is already None.
+
+        :raises ValueError: If the clue is malformed or if the game is not in the GIVING_CLUE phase.
         :raises PermissionError: If a player other than the clue giver attempts to provide a clue.
         """
         if self.state.current_phase != GamePhase.GIVING_CLUE:
@@ -71,7 +84,7 @@ class CodenamesDuetEngine:
         targets = targets or []
         try:
             clue_entry = ClueEntry(
-                clue=clue,
+                clue=clue.strip(),
                 count=count,
                 clue_giver=player_id,
                 turn_number=self.state.turn_number,
@@ -83,7 +96,7 @@ class CodenamesDuetEngine:
             raise ValueError(str(e)) from e
         valid, reason = self.clue_validator.is_valid(clue_entry)
         if not valid:
-            raise ValueError(f"Invalid clue: {reason}")
+            clue_entry.invalid_reason = reason
 
         # Store the clue
         self.state.current_clue = clue_entry
@@ -91,6 +104,18 @@ class CodenamesDuetEngine:
 
         # Transition to the guessing phase
         self.state.current_phase = GamePhase.GUESSING
+
+        if not valid:
+            # Penalty for an invalid clue (§8.4): one token is discarded, on top of the one the turn
+            # spends when it ends.
+            self.state.timer_tokens -= 1
+            self.state.penalty_tokens += 1
+            # With the reserve empty there is no turn left: _switch_roles archives the clue and
+            # starts sudden death.
+            if self.state.timer_tokens == 0:
+                self._switch_roles()
+
+        return clue_entry
 
     def _resolve_targets(self, targets: list[str], player_id: int) -> list[ResolvedTarget]:
         """

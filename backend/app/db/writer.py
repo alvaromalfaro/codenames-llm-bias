@@ -187,6 +187,7 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
             count=turn.clue.count,
             reasoning=turn.clue.reasoning,
             targets_raw=list(turn.clue.targets_raw),
+            invalid_reason=turn.clue.invalid_reason,
         )
         session.add(clue_row)
         session.flush()

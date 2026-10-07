@@ -7,8 +7,8 @@ class ClueValidator:
     """
     Validates clues based on different criteria defined in the game rules. The validation checks
     include:
-        - The clue must be a single word (e.g., "machine" is valid, but "washing machine" is not).
-            (Already enforced by the Pydantic model for ClueEntry).
+        - The clue must be a single word (e.g., "machine" is valid, but "washing machine" is not),
+            and so must a proper name ("Michelangelo" is valid, "Leonardo da Vinci" is not).
         - The number provided with the clue must be a positive integer and cannot exceed the number
             of remaining words on the board. (Already enforced by the Pydantic model for ClueEntry).
         - The clue cannot be the same as any of the visible words on the board. A word is considered
@@ -46,6 +46,10 @@ class ClueValidator:
         :return: A tuple containing a boolean indicating validity and a reason message if invalid.
         """
         normalized_clue = clue.clue.strip().lower()
+
+        # A clue is one word (§6.2), and a proper name of several words is not allowed (§8.1.10)
+        if len(normalized_clue.split()) > 1:
+            return False, f"'{clue.clue}' is not a single word."
 
         # Direct match
         if normalized_clue in self.visible_words:

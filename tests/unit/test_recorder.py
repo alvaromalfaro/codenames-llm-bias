@@ -125,6 +125,19 @@ def test_human_clue_has_no_calls_and_empty_targets():
     assert turn.clue.llm_calls == []
     assert turn.clue.targets_raw == []
     assert turn.clue.reasoning is None
+    assert turn.clue.invalid_reason is None
+
+
+def test_record_clue_keeps_why_a_clue_was_invalid():
+    """An invalid clue is played with a penalty token (§8.4), so the turn records why it was
+    invalid."""
+    rec = _recorder()
+    entry = _clue_entry(clue="bucket")
+    entry.invalid_reason = "'bucket' is a visible word on the board."
+
+    rec.record_clue(entry, proposal=None)
+
+    assert rec.turns[0].clue.invalid_reason == "'bucket' is a visible word on the board."
 
 
 def test_play_proposal_and_reveal_index_alignment():

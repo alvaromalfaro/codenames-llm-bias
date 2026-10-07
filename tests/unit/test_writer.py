@@ -231,6 +231,35 @@ def test_clue_llm_calls_carry_clue_giver_seat():
             assert all(c.seat_index == clue_giver for c in clue_calls)
 
 
+def test_persist_invalid_clue_keeps_its_reason():
+    """An invalid clue is played with a penalty token (§8.4): its row says why it was invalid, and a
+    valid clue's row holds NULL."""
+    from backend.app.db import writer
+    from backend.app.db.models import ClueModel, TurnModel
+    from backend.app.db.session import session_scope
+
+    with session_scope() as session:
+        board_id, _ = _insert_board(session)
+
+    rec = _recorder(board_id)
+    reason = "'alpha' is a visible word on the board."
+    rec.record_clue(ClueEntry(clue="alpha", count=1, clue_giver=1, turn_number=0,
+                              invalid_reason=reason), proposal=None)
+    rec.record_clue(ClueEntry(clue="battle", count=1, clue_giver=0, turn_number=1),
+                    proposal=None)
+    rec.set_outcome("loss_time", 6)
+
+    writer.persist_game(rec, status="completed")
+
+    with session_scope() as session:
+        rows = session.execute(
+            select(TurnModel.turn_number, ClueModel.invalid_reason)
+            .join(ClueModel, ClueModel.turn_id == TurnModel.id)
+            .where(TurnModel.game_id == rec.game_id)
+            .order_by(TurnModel.turn_number)).all()
+        assert [tuple(row) for row in rows] == [(0, reason), (1, None)]
+
+
 def test_persist_sudden_death_game():
     from backend.app.db import writer
     from backend.app.db.models import ClueModel, GuessProposalModel, TurnModel
