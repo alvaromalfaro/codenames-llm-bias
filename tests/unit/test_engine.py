@@ -17,6 +17,9 @@ def test_engine_initialization(valid_board_data: dict):
     assert engine.state.board == board
     assert engine.state.current_phase == GamePhase.GIVING_CLUE
     assert engine.state.timer_tokens == 9
+    assert engine.state.bystander_tokens == 0
+    assert engine.state.check_tokens == 0
+    assert engine.state.penalty_tokens == 0
     assert engine.state.current_clue is None
     assert engine.state.guesses_made_this_turn == 0
     assert engine.state.clue_giver in [0, 1]
@@ -273,6 +276,9 @@ def test_engine_resolve_guess_victory(valid_board_data: dict):
     assert engine.state.current_phase == GamePhase.GAME_OVER
     assert engine.state.is_game_over is True
     assert engine.state.result == "victory"
+    # The winning turn also spends a token (§10), and it counts as a check.
+    assert engine.state.timer_tokens == 8
+    assert engine.state.check_tokens == 1
 
 
 def test_engine_resolve_guess_assassin(valid_board_data: dict):
@@ -320,6 +326,8 @@ def test_engine_resolve_guess_civilian(valid_board_data: dict):
     assert engine.state.board.cards[5].revealed_by == []
     assert 1 in engine.state.board.cards[5].time_marker_by
     assert engine.state.timer_tokens == 8
+    assert engine.state.bystander_tokens == 1
+    assert engine.state.check_tokens == 0
     # Should switch roles after guessing a civilian
     assert engine.state.clue_giver == 1
     assert engine.state.guesser == 0
@@ -549,6 +557,7 @@ def test_engine_resolve_guess_sudden_death(valid_board_data: dict):
     engine = CodenamesDuetEngine(board=board)
 
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
+    engine.state.timer_tokens = 0
     # Only one agent left for the guesser
     engine.state.agents_remaining[1] = 1
     # Only one agent left for the LLM
@@ -561,6 +570,9 @@ def test_engine_resolve_guess_sudden_death(valid_board_data: dict):
     assert engine.state.current_phase == GamePhase.GAME_OVER
     assert engine.state.is_game_over is True
     assert engine.state.result == "victory_sd"
+    # The reserve is already empty in sudden death: the win spends no token.
+    assert engine.state.timer_tokens == 0
+    assert engine.state.check_tokens == 0
 
 
 @pytest.mark.parametrize("modification, result", [
@@ -741,6 +753,8 @@ def test_engine_pass_turn(valid_board_data: dict):
     assert engine.state.guesser == 0
     assert engine.state.current_phase == GamePhase.GIVING_CLUE
     assert engine.state.timer_tokens == 8
+    assert engine.state.check_tokens == 1
+    assert engine.state.bystander_tokens == 0
 
 
 def test_engine_pass_turn_save_clue(valid_board_data: dict):
@@ -979,6 +993,61 @@ def test_engine_last_pending_word_on_the_last_token_starts_sudden_death(
     assert engine.state.timer_tokens == 0
     assert engine.state.current_phase == sudden_death_phase
     assert engine.state.sd_measurement_pending is True
+
+
+def test_engine_tokens_add_up_to_nine_through_a_won_game(valid_board_data: dict):
+    """
+    Every spent token is accounted for - on a word, as a check or as a penalty - so at every moment
+    reserve + bystanders + checks + penalties == 9 (§12), which is what the optional score needs
+    (§10). The winning turn also spends a token, and it counts as a check.
+
+    The winning turn's token used to stay in the reserve: this game, won with 5 tokens left,
+    reported 6.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    LLM, HUMAN = 0, 1
+    LLM_GREENS = [1, 8, 17, 4, 11, 12, 15, 19, 24]  # the human's pending words, shared ones first
+    HUMAN_ONLY_GREENS = [2, 5, 9, 16, 20, 21]  # the LLM's pending words left after the shared ones
+    BUCKET = 0  # beige on both faces
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = LLM
+    engine.state.guesser = HUMAN
+
+    def tokens() -> tuple[int, int, int, int]:
+        """(reserve, bystanders, checks, penalties), which must always add up to 9."""
+        state = engine.state
+        counts = (state.timer_tokens, state.bystander_tokens,
+                  state.check_tokens, state.penalty_tokens)
+        assert sum(counts) == 9
+        return counts
+
+    # Turn 1: the human finds 8 words and stops - a check.
+    engine.receive_clue("battle", 8, LLM)
+    for card_id in LLM_GREENS[:-1]:
+        assert engine.resolve_guess(card_id=card_id, player_id=HUMAN) == "agent"
+        assert tokens() == (9, 0, 0, 0)
+    engine.pass_turn(HUMAN)
+    assert tokens() == (8, 0, 1, 0)
+
+    # Turn 2: the LLM hits an innocent bystander - a token on the word.
+    engine.receive_clue("insect", 1, HUMAN)
+    assert engine.resolve_guess(card_id=BUCKET, player_id=LLM) == "civilian"
+    assert tokens() == (7, 1, 1, 0)
+
+    # Turn 3: the human covers its last pending word, which ends the turn as a stop (§6.8).
+    engine.receive_clue("church", 1, LLM)
+    assert engine.resolve_guess(card_id=LLM_GREENS[-1], player_id=HUMAN) == "agent_turn_end"
+    assert tokens() == (6, 1, 2, 0)
+
+    # Turn 4: the LLM finds its last six words; the winning turn spends its token as a check.
+    engine.receive_clue("ocean", 6, HUMAN)
+    for card_id in HUMAN_ONLY_GREENS[:-1]:
+        assert engine.resolve_guess(card_id=card_id, player_id=LLM) == "agent"
+    assert engine.resolve_guess(card_id=HUMAN_ONLY_GREENS[-1], player_id=LLM) == "victory"
+    assert tokens() == (5, 1, 3, 0)
 
 
 def test_engine_seeded_rng_is_deterministic(valid_board_data: dict):

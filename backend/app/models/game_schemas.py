@@ -465,8 +465,19 @@ class GameState(BaseModel):
     # Guess tracking
     guesses_made_this_turn: int = 0
 
-    # Timer tokens for the game
+    # Timer tokens left in the reserve: the turns, and clues, still left (§6.5).
     timer_tokens: int = 9
+    # Where the spent tokens went, which is what the optional score needs (§10). At every moment
+    # timer_tokens + bystander_tokens + check_tokens + penalty_tokens == 9 (§12).
+    # Tokens on words, each marking an innocent bystander hit in normal play.
+    bystander_tokens: int = 0
+    # Tokens the guesser took, check face up, to stop after a hit: pass_turn, the stop forced by the
+    # last pending word (§6.8), and the winning turn's token. The rules say the winning turn also
+    # spends a token (§10) but not whether it counts as a check (§14); here it does.
+    check_tokens: int = 0
+    # Tokens discarded as a penalty for an invalid clue (§8.4). Always 0: the engine rejects an
+    # invalid clue instead of penalising it.
+    penalty_tokens: int = 0
 
     # LLM and human agents remaining (for win condition tracking)
     # [LLM agents remaining, Human agents remaining]

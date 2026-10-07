@@ -246,6 +246,10 @@ async def test_conduct_guess_flush_sees_game_over_on_terminal_reveal():
     assert flush_states == [True]  # flush observed the game-over state
     assert eng.state.is_game_over
 
+    # Persisted with the winning turn's token already spent (§10).
+    [reveal] = rec.turns[-1].reveals
+    assert reveal.timer_tokens_after == 8
+
 
 @pytest.mark.asyncio
 async def test_conduct_guess_reraises_proposal_error():

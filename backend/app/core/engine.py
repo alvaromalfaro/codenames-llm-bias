@@ -254,8 +254,9 @@ class CodenamesDuetEngine:
             raise ValueError(
                 "The guesser must make at least one guess before passing.")
 
-        # Decrement the timer token
+        # The guesser takes a token from the reserve and keeps it, check face up (§6.5)
         self.state.timer_tokens -= 1
+        self.state.check_tokens += 1
 
         self._switch_roles()
 
@@ -309,6 +310,7 @@ class CodenamesDuetEngine:
             if len(card.time_marker_by) == 2:
                 self.clue_validator.remove_word(card.text)
             self.state.timer_tokens -= 1
+            self.state.bystander_tokens += 1
             self._switch_roles()
 
             return "civilian"
@@ -332,8 +334,9 @@ class CodenamesDuetEngine:
     def _reveal_agent(self, card: WordCard, guessed_by: int):
         """
         Reveals an agent card and updates the game state accordingly. Checks for win conditions
-        after revealing the card. In normal play, if the guesser has no pending words left after the
-        reveal, its turn ends on the spot as a voluntary stop (§6.8).
+        after revealing the card; a win in normal play spends the turn's token as a check (§10). In
+        normal play, if the guesser has no pending words left after the reveal, its turn ends on the
+        spot as a voluntary stop (§6.8).
 
         :param card: The WordCard object representing the guessed card.
         :param guessed_by: The identifier of the player who made the guess that revealed the agent
@@ -356,6 +359,12 @@ class CodenamesDuetEngine:
         if self.state.agents_remaining[0] == 0 and self.state.agents_remaining[1] == 0:
             in_sd = self.state.current_phase in [
                 GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]
+            # The winning turn also spends a token (§10). The rules do not say whether it counts as
+            # a check (§14); here it does, since the turn ends on a hit, just as a voluntary stop.
+            # In sudden death the reserve is already empty, so there is nothing to spend.
+            if not in_sd:
+                self.state.timer_tokens -= 1
+                self.state.check_tokens += 1
             res = "victory_sd" if in_sd else "victory"
             self._finish_game(result=res)
             return res
