@@ -213,14 +213,37 @@ class Board(BaseModel):
     def rules_validation(self) -> "Board":
         """
         Validates the rules of the game for a duet game:
+        - The card ids must be 0..24, in board order (so they are unique and ``id`` is the grid
+          position, as the database's ``card_id BETWEEN 0 AND 24`` expects).
+        - The 25 words must be distinct, ignoring case (§3), since words are matched to cards
+          case-insensitively (``get_card_id_by_word``, the writer's word -> card_id map).
         - There must be exactly 9 agent cards for both LLM and human players (3 shared between them).
         - There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human).
         - The rest of the cards will be civilian cards.
+
+        The id and word checks run first: the role checks below collect card ids into sets, so a
+        duplicated id would otherwise slip through them or surface as a misleading count error.
 
         :return: The validated Board instance.
         """
 
         cards = self.cards
+
+        # Card ids (0..24, in board order)
+        ids = [card.id for card in cards]
+        if ids != list(range(len(cards))):
+            raise ValueError(
+                f"Card ids must be 0..24 in board order; got {ids}."
+            )
+
+        # Distinct words, ignoring case
+        words = [card.text.lower() for card in cards]
+        repeated_words = sorted({word for word in words if words.count(word) > 1})
+
+        if repeated_words:
+            raise ValueError(
+                f"The 25 words on the board must be distinct (ignoring case); repeated: {repeated_words}."
+            )
 
         # Agent cards (9 for both LLM and human players, with 3 shared between them)
         agents_llm = set(

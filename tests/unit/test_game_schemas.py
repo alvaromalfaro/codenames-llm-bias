@@ -165,3 +165,44 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
 
     with pytest.raises(ValidationError, match=re.escape(expected_error)):
         Board(**data)
+
+
+@pytest.mark.parametrize("repeated_text", ["CAVE", "cave"])
+def test_board_rejects_repeated_word(valid_board_data, repeated_text):
+    """
+    Validates that a board with the same word on two cards fails validation, even when the two
+    spellings differ only in case: words are matched to cards case-insensitively, so the second
+    card could never be addressed by its word (§3: 25 distinct words).
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param repeated_text: The text written over a second card, duplicating "CAVE" (card 5).
+    """
+    data = valid_board_data.copy()
+    # Card 0 (BUCKET) is civilian on both faces, so the key-card counts stay valid.
+    data["cards"][0]["text"] = repeated_text
+
+    with pytest.raises(ValidationError, match=re.escape("must be distinct (ignoring case); repeated: ['cave']")):
+        Board(**data)
+
+
+@pytest.mark.parametrize("modification", ["duplicated_id", "out_of_range_id", "out_of_order_ids"])
+def test_board_rejects_bad_card_ids(valid_board_data, modification):
+    """
+    Validates that the card ids must be exactly 0..24 in board order: unique, in range (the
+    database only accepts ``card_id BETWEEN 0 AND 24``) and equal to the card's grid position.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param modification: The way the ids are broken.
+    """
+    data = valid_board_data.copy()
+    cards = data["cards"]
+
+    if modification == "duplicated_id":
+        cards[1]["id"] = 0
+    elif modification == "out_of_range_id":
+        cards[24]["id"] = 25
+    elif modification == "out_of_order_ids":
+        cards[0]["id"], cards[1]["id"] = 1, 0
+
+    with pytest.raises(ValidationError, match=re.escape("Card ids must be 0..24 in board order")):
+        Board(**data)
