@@ -102,10 +102,12 @@ class LLMService:
     def template_fingerprint(self) -> str:
         """Deterministic SHA-256 hex fingerprint of the LOADED template texts (not the directory).
 
-        Hashing the loaded texts - rather than the files on disk - means a ``_default_*`` fallback
-        produces a different fingerprint than the real file, which is the whole point: the run row
-        records exactly which prompt texts were sent. Stable across processes: templates are sorted
-        by key and each contributes ``key\\0text\\0`` to the digest.
+        Hashing the loaded texts - rather than the files on disk - is the whole point: the run row
+        records exactly which prompt texts were sent, whether they came from a file or from a
+        ``_default_*`` fallback. The defaults are verbatim copies of the files, so a fallback alone
+        leaves the fingerprint unchanged; a default that drifted from its file would change it.
+        Stable across processes: templates are sorted by key and each contributes
+        ``key\\0text\\0`` to the digest.
         """
         h = hashlib.sha256()
         for key, text in sorted(self._loaded_template_texts().items()):
@@ -530,10 +532,11 @@ class LLMService:
     def _build_guess_sd_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
         """
         Builds an LLMRequest for sudden death guessing. No current clue is available; the LLM
-        receives full clue history and must identify all remaining agents from memory. Seat-
-        parameterized: it reports the guesser's own remaining agent count and the SAME guessable-word
-        predicate (``card.is_guessable_by(player_id)``) as _build_measurement_sd_request, so it
-        generalizes to either seat in an LLM-vs-LLM run.
+        receives full clue history and must identify all remaining agents from memory. It is not
+        told how many are left: the rules never say it (§9), and a player cannot work it out from
+        its own key side. Seat-parameterized: it uses the SAME guessable-word predicate
+        (``card.is_guessable_by(player_id)``) as _build_measurement_sd_request, so it generalizes
+        to either seat in an LLM-vs-LLM run.
 
         :param game_state: The current state of the game (sudden death).
         :param model: The LLM model to use.
@@ -550,7 +553,6 @@ class LLMService:
         user_prompt = self._user_prompt_sd_gg.format(
             clue_history=clue_history or "No clues were given.",
             words_remaining=words_remaining,
-            agents_remaining=game_state.agents_remaining[player_id],
         )
 
         print("DEBUG: User prompt for sudden death guess:\n" + user_prompt)
@@ -638,8 +640,8 @@ class LLMService:
     def _build_measurement_sd_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
         """
         Builds the out-of-band measurement request for the sudden-death phase. Mirrors
-        _build_guess_sd_request but is seat-parameterized: it reports the guesser's own remaining
-        agent count and the SAME guessable-word filter from that seat's perspective, so it
+        _build_guess_sd_request: it does not say how many agents are left (§9), and it is
+        seat-parameterized, with the SAME guessable-word filter from that seat's perspective, so it
         generalizes to either seat in an LLM-vs-LLM run.
 
         :param game_state: The current state of the game (sudden death).
@@ -659,7 +661,6 @@ class LLMService:
         user_prompt = self._user_prompt_meas_sd.format(
             clue_history=clue_history or "No clues were given.",
             words_remaining=words_remaining,
-            agents_remaining=game_state.agents_remaining[player_id],
         )
 
         messages = [
@@ -806,7 +807,9 @@ class LLMService:
     def _load_prompt_template(self, template_path: str, prompt_type: int) -> str:
         """
         Loads a prompt template from the specified file path. If the file is not found, it returns
-        a default prompt based on the type of prompt requested (system or user).
+        a default prompt based on the type of prompt requested (system or user). Every
+        ``_default_*`` text is a verbatim copy of its file (``tests/unit/test_llm_service.py``
+        checks it), so editing a template file means editing its default too.
 
         :param template_path: The file path to the prompt template.
         :param prompt_type: An integer indicating the type of prompt (0 for system, 1 for user).
@@ -876,7 +879,7 @@ class LLMService:
             "You are a strategic master clue giver in a game of Codenames Duet. Your goal is to "
             "connect as many 'Agent' words as possible with a single clue, while maintaining zero "
             "semantic similarity to the 'Assassin' words and very low similarity to the 'Civilian' "
-            "words.\n\n"
+            "words. \n\n"
             "### RULES ###\n"
             "1. The clue must be exactly ONE valid English word.\n"
             "2. The clue must not be any word currently visible on the board.\n"
@@ -896,18 +899,14 @@ class LLMService:
             "- ASSASSINS: The deadly words you must absolutely avoid.\n"
             "- CIVILIANS: Neutral words you should try to avoid.\n\n"
             "### OUTPUT FORMAT ###\n"
-            "You must respond ONLY with a valid JSON object. Do not include markdown formatting, "
+            "You must respond ONLY with a valid JSON object. DO NOT INCLUDE markdown formatting, "
             "conversational text, or any characters outside the JSON structure.\n\n"
             "{\n"
-            "   \"reasoning\": \"Step 1: Identify semantic clusters among Agent words. Step "
-            "2: Brainstorm candidate clues for the best clusters. Step 3: RUN THE ASSASSIN CHECK - "
-            "strictly evaluate your top candidates against EVERY Assassin word to guarantee zero "
-            "semantic proximity. Step 4: Evaluate against Civilian and Revealed words to minimize "
-            "distraction. Step 5: Verify the final candidate violates no structural game rules "
-            "(e.g., substrings, homophones).\",\n"
-            "   \"clue\": \"your_single_word_clue\",\n"
-            "   \"count\": x,\n"
-            "   \"targets\": [\"exact_board_word\", \"...\"]\n"
+            "    \"reasoning\": \"Briefly state the semantic link for your target words and confirm "
+            "that safety checks against Assassins/Civilians passed. Strictly maximum 100 words.\",\n"
+            "    \"clue\": \"your_single_word_clue\",\n"
+            "    \"count\": x,\n"
+            "    \"targets\": [\"exact_board_word\", \"...\"]\n"
             "}\n\n"
             "The \"targets\" field lists the exact board words your clue is meant for."
         )
@@ -953,7 +952,7 @@ class LLMService:
             "1. You only see the unrevealed words on the board. You DO NOT know which are Agents, "
             "Civilians, or Assassins.\n"
             "2. UNLIMITED GUESSES: In Codenames Duet, there is no limit to the number of guesses "
-            "you can make in a single turn.\n"
+            "you can make in a single turn. \n"
             "3. The \"count\" provided with the clue is a hint about how many words the clue-giver "
             "intended to connect. It is a target, not a hard limit.\n"
             "4. You may stop guessing early (proposing fewer than count) if the semantic ambiguity "
@@ -967,22 +966,21 @@ class LLMService:
             "- Step 2: Rank the candidate words by confidence.\n"
             "- Step 3: Establish a strict confidence threshold. If the probability of a word being "
             "an Agent drops below this safety threshold, STOP immediately. In Codenames Duet, "
-            "precision is infinitely more valuable than coverage.\n"
+            "precision is infinitely more valuable than coverage. \n"
             "- Step 4: Evaluate previous unsolved clues. If a board word strongly matches a past "
             "clue and meets your confidence threshold, include it in your proposal sequence.\n\n"
             "### OUTPUT FORMAT ###\n"
             "You must respond ONLY with a valid JSON object. Do not include formatting wrappers "
             "like ```json. Start your response immediately with the { character.\n\n"
             "{\n"
-            "   \"reasoning\": \"Analyze the semantic links between the clue and board words. Rank "
-            "the top candidates. Define your safety threshold and explicitly state why the risk of "
-            "ambiguity outweighs the reward for any words below it.\",\n"
-            "   \"stop_reason\": \"Explain the exact logic used to terminate the guess sequence "
+            "    \"reasoning\": \"Briefly state why you chose the proposed words and define your "
+            "safety threshold. Strictly maximum 100 words.\",\n"
+            "    \"stop_reason\": \"Explain the exact logic used to terminate the guess sequence "
             "(e.g., reached the target count, semantic distance too high, etc.).\",\n"
-            "   \"proposals\": [\n"
-            "       {\"word\": \"exact_board_word\", \"confidence\": 0.95},\n"
-            "       {\"word\": \"another_word\", \"confidence\": 0.88}\n"
-            "   ]\n"
+            "    \"proposals\": [\n"
+            "        {\"word\": \"exact_board_word\", \"confidence\": 0.95},\n"
+            "        {\"word\": \"another_word\", \"confidence\": 0.88}\n"
+            "    ]\n"
             "}"
         )
 
@@ -1015,6 +1013,9 @@ class LLMService:
         example file is not found.
         """
         return (
+            "### YOUR TASK ###\n"
+            "Propose a clue and a count for the guessing player, and list the exact board words your "
+            "clue is for. Remember the rules for valid clues and counts.\n\n"
             "Turn: 1\n\n"
             "### BOARD STATUS ###\n"
             "AGENTS (Words to connect):\n"
@@ -1025,12 +1026,9 @@ class LLMService:
             "- BRIDGE\n\n"
             "CIVILIANS (Neutral - try to avoid):\n"
             "- TOWER\n"
-            "- KNIGHT\n"
+            "- KNIGHT\n\n"
             "REVEALED WORDS (Already guessed, no longer valid targets):\n"
-            "No words revealed yet.\n\n"
-            "### YOUR TASK ###\n"
-            "Propose a clue and a count for the guessing player, and list the exact board words your "
-            "clue is for. Remember the rules for valid clues and counts."
+            "No words revealed yet."
         )
 
     def _default_os_assistant_cg(self) -> str:
@@ -1059,6 +1057,11 @@ class LLMService:
         example file is not found.
         """
         return (
+            "### YOUR TASK ###\n"
+            "Propose your optimal sequence of guesses.\n"
+            "Remember: You may stop early if the risk is high, or guess MORE than the target count "
+            "if you find strong matches for previous clues.\n"
+            "Follow the required JSON format exactly.\n\n"
             "Turn: 2\n\n"
             "### CURRENT CLUE ###\n"
             "- Clue: cold\n"
@@ -1072,12 +1075,7 @@ class LLMService:
             "- WAVE\n"
             "- DESERT\n"
             "- FROST\n"
-            "- SHIP\n"
-            "### YOUR TASK ###\n"
-            "Propose your optimal sequence of guesses.\n"
-            "Remember: You may stop early if the risk is high, or guess MORE than the target count "
-            "if you find strong matches for previous clues.\n"
-            "Follow the required JSON format exactly."
+            "- SHIP"
         )
 
     def _default_os_assistant_gg(self) -> str:
@@ -1118,25 +1116,25 @@ class LLMService:
             "### OUTPUT FORMAT ###\n"
             "Respond ONLY with a valid JSON object. No markdown wrappers.\n\n"
             "{\n"
-            "   \"reasoning\": \"Recall which unrevealed words your partner's clues pointed to. "
-            "For each candidate, state your confidence that it is one of your agents.\",\n"
-            "   \"stop_reason\": \"Explain why you stopped proposing guesses.\",\n"
-            "   \"proposals\": [\n"
-            "       {\"word\": \"exact_board_word\", \"confidence\": 0.95}\n"
-            "   ]\n"
+            "    \"reasoning\": \"Briefly state which past clues led you to your proposed agents. "
+            "Strictly maximum 100 words.\",\n"
+            "    \"stop_reason\": \"Explain why you stopped proposing guesses.\",\n"
+            "    \"proposals\": [\n"
+            "        {\"word\": \"exact_board_word\", \"confidence\": 0.95}\n"
+            "    ]\n"
             "}"
         )
 
     def _default_user_prompt_sd_gg(self) -> str:
         return (
             "### YOUR TASK ###\n"
-            "You have {agents_remaining} agent(s) left to find. \n"
-            "Identify them from the unrevealed words using the clue history as your guide.\n"
+            "Identify your remaining agent cards from the unrevealed words using the clue history as "
+            "your guide.\n"
             "Follow the required JSON format exactly.\n\n"
             "### CLUE HISTORY (all clues given to you during the game) ###\n"
             "{clue_history}\n\n"
             "### UNREVEALED BOARD WORDS ###\n"
-            "{words_remaining}\n\n"
+            "{words_remaining}"
         )
 
     def _default_system_prompt_meas_gg(self) -> str:
@@ -1162,19 +1160,19 @@ class LLMService:
             "Respond ONLY with a valid JSON object. Do not include markdown wrappers like ```json. "
             "Start your response immediately with the { character.\n\n"
             "{\n"
-            "   \"reasoning\": \"Briefly explain how each unrevealed word relates to the clue.\",\n"
-            "   \"rankings\": [\n"
-            "       {\"word\": \"exact_board_word\", \"confidence\": 0.95},\n"
-            "       {\"word\": \"another_word\", \"confidence\": 0.10}\n"
-            "   ]\n"
-            "}"
+            "    \"reasoning\": \"Briefly summarize the semantic link. Strictly maximum 250 words.\",\n"
+            "    \"rankings\": [\n"
+            "        {\"word\": \"exact_board_word\", \"confidence\": 0.95},\n"
+            "        {\"word\": \"another_word\", \"confidence\": 0.10}\n"
+            "    ]\n"
+            "}\n"
         )
 
     def _default_user_prompt_meas_gg(self) -> str:
         """Default user prompt for the standard confidence-ranking measurement call."""
         return (
             "### YOUR TASK ###\n"
-            "For every unrevealed board word listed above, assign a confidence in [0.0, 1.0] that "
+            "For every unrevealed board word listed below, assign a confidence in [0.0, 1.0] that "
             "the current clue points to it. Score every word. Follow the required JSON format "
             "exactly.\n\n"
             "### CURRENT CLUE ###\n"
@@ -1183,7 +1181,7 @@ class LLMService:
             "### PREVIOUS CLUES (context only) ###\n"
             "{previous_clues_history}\n\n"
             "### UNREVEALED BOARD WORDS ###\n"
-            "{words_remaining}\n\n"
+            "{words_remaining}"
         )
 
     def _default_system_prompt_meas_sd(self) -> str:
@@ -1193,8 +1191,8 @@ class LLMService:
         """
         return (
             "You are scoring a board in Codenames Duet during SUDDEN DEATH. There are no more clues; "
-            "you are given the full clue history, how many of your agent cards remain, and the list "
-            "of unrevealed board words. Your task is purely mechanical.\n\n"
+            "you are given the full clue history and the list of unrevealed board words. Your task "
+            "is purely mechanical.\n\n"
             "### TASK ###\n"
             "For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that the word "
             "is one of YOUR remaining agent cards. 0.0 means it clearly is not one of your agents; "
@@ -1208,24 +1206,23 @@ class LLMService:
             "Respond ONLY with a valid JSON object. Do not include markdown wrappers like ```json. "
             "Start your response immediately with the { character.\n\n"
             "{\n"
-            "   \"reasoning\": \"Briefly explain how each unrevealed word relates to the clue "
-            "history and your remaining agents.\",\n"
-            "   \"rankings\": [\n"
-            "       {\"word\": \"exact_board_word\", \"confidence\": 0.95},\n"
-            "       {\"word\": \"another_word\", \"confidence\": 0.10}\n"
-            "   ]\n"
-            "}"
+            "    \"reasoning\": \"Briefly summarize the semantic link. Strictly maximum 250 words.\",\n"
+            "    \"rankings\": [\n"
+            "        {\"word\": \"exact_board_word\", \"confidence\": 0.95},\n"
+            "        {\"word\": \"another_word\", \"confidence\": 0.10}\n"
+            "    ]\n"
+            "}\n"
         )
 
     def _default_user_prompt_meas_sd(self) -> str:
         """Default user prompt for the sudden-death confidence-ranking measurement call."""
         return (
             "### YOUR TASK ###\n"
-            "You have {agents_remaining} agent(s) left to find. For every unrevealed board word "
-            "listed above, assign a confidence in [0.0, 1.0] that it is one of your remaining agent "
-            "cards. Score every word. Follow the required JSON format exactly.\n\n"
+            "For every unrevealed board word listed below, assign a confidence in [0.0, 1.0] that it "
+            "is one of your remaining agent cards. Score every word. Follow the required JSON format "
+            "exactly.\n\n"
             "### CLUE HISTORY (all clues given to you during the game) ###\n"
             "{clue_history}\n\n"
             "### UNREVEALED BOARD WORDS ###\n"
-            "{words_remaining}\n\n"
+            "{words_remaining}"
         )

@@ -1,6 +1,5 @@
 ### YOUR TASK ###
-You have {agents_remaining} agent(s) left to find. 
-Identify them from the unrevealed words using the clue history as your guide.
+Identify your remaining agent cards from the unrevealed words using the clue history as your guide.
 Follow the required JSON format exactly.
 
 ### CLUE HISTORY (all clues given to you during the game) ###

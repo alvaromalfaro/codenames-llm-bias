@@ -701,3 +701,30 @@ async def test_propose_clue_still_fails_when_every_draw_is_empty(game_state_cg):
             await service.propose_clue(
                 client, game_state_cg, ClueValidator(game_state_cg.board.cards))
         assert mock_chat.call_count == 4  # max_retries=3 -> 4 attempts, then raise
+
+
+# Every hardcoded _default_* fallback is a verbatim copy of its template file, so a missing file
+# never changes the prompt that is sent.
+
+@pytest.mark.parametrize("path_attr, default_name", [
+    ("SYSTEM_TEMP_CG_PATH", "_default_system_prompt_cg"),
+    ("USER_TEMP_CG_PATH", "_default_user_prompt_cg"),
+    ("SYSTEM_TEMP_GG_PATH", "_default_system_prompt_gg"),
+    ("USER_TEMP_GG_PATH", "_default_user_prompt_gg"),
+    ("SYSTEM_TEMP_SD_GG_PATH", "_default_system_prompt_sd_gg"),
+    ("USER_TEMP_SD_GG_PATH", "_default_user_prompt_sd_gg"),
+    ("SYSTEM_TEMP_MEAS_GG_PATH", "_default_system_prompt_meas_gg"),
+    ("USER_TEMP_MEAS_GG_PATH", "_default_user_prompt_meas_gg"),
+    ("SYSTEM_TEMP_MEAS_SD_PATH", "_default_system_prompt_meas_sd"),
+    ("USER_TEMP_MEAS_SD_PATH", "_default_user_prompt_meas_sd"),
+    ("ONE_SHOT_USER_CG_PATH", "_default_os_user_cg"),
+    ("ONE_SHOT_ASSISTANT_CG_PATH", "_default_os_assistant_cg"),
+    ("ONE_SHOT_USER_GG_PATH", "_default_os_user_gg"),
+    ("ONE_SHOT_ASSISTANT_GG_PATH", "_default_os_assistant_gg"),
+])
+def test_default_template_matches_its_file(path_attr, default_name):
+    # Read the way the service reads it: text mode, so a CRLF checkout compares as LF.
+    with open(getattr(LLMService, path_attr), "r", encoding="utf-8") as f:
+        on_disk = f.read()
+
+    assert getattr(LLMService(), default_name)() == on_disk

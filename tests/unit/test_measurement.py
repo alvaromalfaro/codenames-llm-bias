@@ -485,9 +485,9 @@ def test_seat1_measurement_builder_matches_seat1_guess_words(valid_board_data):
     assert "ANT" not in _board_words_in(meas, board_words)
 
 
-def test_seat1_sd_builders_use_seat1_agents_and_reveals(valid_board_data):
-    """The seat-1 SD guess + measurement builders both report seat 1's remaining agent count and the
-    same seat-1 unrevealed-word set (they mirror each other for the second SD seat)."""
+def test_seat1_sd_builders_use_seat1_reveals(valid_board_data):
+    """The seat-1 SD guess + measurement builders both list the same seat-1 unrevealed-word set
+    (they mirror each other for the second SD seat)."""
     board = Board(**valid_board_data)
     engine = CodenamesDuetEngine(board)
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
@@ -502,14 +502,36 @@ def test_seat1_sd_builders_use_seat1_agents_and_reveals(valid_board_data):
     meas = svc._build_measurement_sd_request(
         engine.state, "m", player_id=1).messages[-1].content
 
-    # agents_remaining[1], not seat 0's 3
-    assert "5 agent" in guess and "5 agent" in meas
-    assert "3 agent" not in guess
     assert _board_words_in(
         guess, board_words) == _board_words_in(meas, board_words)
     assert "BRICK" in _board_words_in(guess, board_words)
     assert "BUCKET" not in _board_words_in(guess, board_words)
     assert "ANT" not in _board_words_in(guess, board_words)
+
+
+@pytest.mark.parametrize("seat, phase", [(0, GamePhase.SUDDEN_DEATH_LLM),
+                                         (1, GamePhase.SUDDEN_DEATH_HUMAN)])
+def test_sd_prompts_do_not_reveal_how_many_agents_are_left(valid_board_data, seat, phase):
+    """Nobody is told how many words they still have to guess (§9). The number depends on the
+    partner's key side, so the SD guess and measurement prompts must not change with it: the same
+    board with 1 or 4 agents left renders the same messages, system and user alike."""
+    engine = CodenamesDuetEngine(Board(**valid_board_data))
+    engine.state.current_phase = phase
+    engine.state.clue_history = [
+        ClueEntry(clue="battle", count=3, clue_giver=1 - seat, turn_number=1)]
+    svc = LLMService()
+
+    def render(agents_left: int) -> list[str]:
+        engine.state.agents_remaining = [agents_left, agents_left]
+        guess = svc._build_guess_sd_request(engine.state, "m", player_id=seat)
+        meas = svc._build_measurement_sd_request(engine.state, "m", player_id=seat)
+        return [m.content for m in guess.messages + meas.messages]
+
+    one_left = render(1)
+    assert one_left == render(4)
+    for content in one_left:
+        assert "left to find" not in content
+        assert "agent cards remain" not in content
 
 
 def test_both_seats_reach_sudden_death_hold_both_rankings(valid_board_data):

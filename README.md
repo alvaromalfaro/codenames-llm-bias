@@ -669,7 +669,9 @@ Never point them at the experiment database.
 **Prompt templates** live in `data/prompt_templates/` — system, user and one-shot templates for the
 clue giver and guesser, plus the sudden-death and out-of-band **measurement** variants. Editing one
 changes the run's `prompt_template_version` fingerprint, which is exactly the point: a run is
-comparable only to runs sharing its fingerprint.
+comparable only to runs sharing its fingerprint. `llm_service.py` keeps a verbatim `_default_*` copy
+of each template, used when the file is missing, so edit both together:
+`tests/unit/test_llm_service.py` fails if they drift apart.
 
 **Model roster** lives in `backend/app/config.py`: `llm_models` (what the UI offers, what the batch
 defaults to, and what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the

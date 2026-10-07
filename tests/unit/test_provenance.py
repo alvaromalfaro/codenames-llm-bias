@@ -29,8 +29,9 @@ def test_template_fingerprint_content_sensitive():
 
 
 def test_template_fingerprint_reflects_default_fallback(monkeypatch):
-    """The whole point of hashing loaded texts: a service that fell back to a ``_default_*`` template
-    (because the file was 'missing') fingerprints differently than one that read the real file."""
+    """The whole point of hashing loaded texts: the fingerprint follows the text a ``_default_*``
+    fallback really loaded. The defaults are verbatim copies of the files, so falling back alone
+    keeps the fingerprint; a default that drifted from its file changes it."""
     real = LLMService().template_fingerprint()
 
     # Simulate the CLUE_GIVER system template file being absent, forcing the _default_* fallback.
@@ -45,7 +46,13 @@ def test_template_fingerprint_reflects_default_fallback(monkeypatch):
     fallback = LLMService()
     # The loaded text really is the hardcoded default now, not the file.
     assert fallback._system_prompt_cg == fallback._default_system_prompt_cg()
-    assert fallback.template_fingerprint() != real
+    assert fallback.template_fingerprint() == real
+
+    monkeypatch.setattr(LLMService, "_default_system_prompt_cg",
+                        lambda self: "a default that drifted from its file")
+    drifted = LLMService()
+    assert drifted._system_prompt_cg == "a default that drifted from its file"
+    assert drifted.template_fingerprint() != real
 
 
 # model_registry_snapshot shape + asymmetry

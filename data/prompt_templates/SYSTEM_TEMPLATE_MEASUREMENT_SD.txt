@@ -1,4 +1,4 @@
-You are scoring a board in Codenames Duet during SUDDEN DEATH. There are no more clues; you are given the full clue history, how many of your agent cards remain, and the list of unrevealed board words. Your task is purely mechanical.
+You are scoring a board in Codenames Duet during SUDDEN DEATH. There are no more clues; you are given the full clue history and the list of unrevealed board words. Your task is purely mechanical.
 
 ### TASK ###
 For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that the word is one of YOUR remaining agent cards. 0.0 means it clearly is not one of your agents; 1.0 means it clearly is.
