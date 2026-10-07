@@ -19,7 +19,10 @@ class ClueValidator:
         - The clue cannot be a compound containing the clue word as a substring (e.g., if "hide" is
             visible, then "rawhide" or "hideout" would not be valid clues).
         - The clue cannot be an inflected form of a compound component (e.g., if "earthquake" is
-            visible, then "quaking" would not be a valid clue). 
+            visible, then "quaking" would not be a valid clue).
+
+    Repeating a clue already given in the game is allowed, as in the Duet rules (§8.1), so the
+    validator takes no clue history.
     """
 
     def __init__(self, word_list: list[WordCard]):
@@ -29,7 +32,7 @@ class ClueValidator:
             word: self._word_lemmas(word) for word in self.visible_words
         }
 
-    def is_valid(self, clue: ClueEntry, clue_history: list[ClueEntry] = None) -> tuple[bool, str]:
+    def is_valid(self, clue: ClueEntry) -> tuple[bool, str]:
         """
         Validates the given clue against the visible words on the board.
 
@@ -47,10 +50,6 @@ class ClueValidator:
         # Direct match
         if normalized_clue in self.visible_words:
             return False, f"'{clue.clue}' is a visible word on the board."
-
-        # Clue has already been used in this game
-        if clue_history is not None and clue.clue in [c.clue for c in clue_history]:
-            return False, f"'{clue.clue}' has already been used as a clue in this game."
 
         # Lemma match
         clue_lemmas = self._word_lemmas(normalized_clue)

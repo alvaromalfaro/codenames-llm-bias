@@ -156,6 +156,34 @@ def test_engine_receive_clue_pydantic_validation(valid_board_data: dict, clue: s
         engine.receive_clue(clue=clue, count=count, player_id=0)
 
 
+def test_engine_receive_clue_accepts_a_repeated_clue(valid_board_data: dict):
+    """
+    Repeating a clue already given in the game is legal (§8.1), whichever seat gave it first: the
+    clue is validated against the board only, never against the clue history.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    LLM, HUMAN = 0, 1
+    BUCKET, FIDDLE = 0, 6  # beige on both faces
+
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = LLM
+    engine.state.guesser = HUMAN
+
+    engine.receive_clue("battle", 1, LLM)
+    assert engine.resolve_guess(card_id=BUCKET, player_id=HUMAN) == "civilian"
+
+    # The roles alternate: the human repeats the LLM's clue, and then the LLM repeats it again.
+    engine.receive_clue("battle", 1, HUMAN)
+    assert engine.resolve_guess(card_id=FIDDLE, player_id=LLM) == "civilian"
+    engine.receive_clue("battle", 1, LLM)
+
+    assert [entry.clue for entry in engine.state.clue_history] == ["battle", "battle"]
+    assert engine.state.current_clue.clue == "battle"
+    assert engine.state.current_phase == GamePhase.GUESSING
+
+
 def test_engine_resolve_guess_normal_agent(valid_board_data: dict):
     """
     Validates that the resolve_guess method correctly processes a valid guess of an agent card and

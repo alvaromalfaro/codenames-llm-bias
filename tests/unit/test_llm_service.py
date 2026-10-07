@@ -384,6 +384,27 @@ async def test_propose_clue_success_records_single_accepted_call(game_state_cg):
 
 
 @pytest.mark.asyncio
+async def test_propose_clue_accepts_a_repeated_clue(game_state_cg):
+    """
+    Repeating a clue already given in the game is legal (§8.1): a clue that is already in the clue
+    history is accepted on the first attempt, with no retry.
+    """
+    game_state_cg.clue_history.append(
+        ClueEntry(clue="battle", count=2, clue_giver=1, turn_number=0))
+    mock_client = MagicMock(spec=LLMClient)
+    mock_client.model_name = "test_model"
+    mock_client.generate = AsyncMock(return_value=_mock_response(
+        '{"clue": "battle", "count": 2, "reasoning": "r"}'))
+
+    result = await LLMService().propose_clue(
+        mock_client, game_state_cg, ClueValidator(game_state_cg.board.cards))
+
+    assert result.clue == "battle"
+    assert mock_client.generate.await_count == 1
+    assert [c.retry_index for c in result.llm_calls] == [0]
+
+
+@pytest.mark.asyncio
 async def test_propose_guess_records_llm_call(game_state_guessing):
     """propose_guess attaches a single 'guesser' llm_call carrying the messages as sent."""
     mock_client = MagicMock(spec=LLMClient)

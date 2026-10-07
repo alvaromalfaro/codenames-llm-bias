@@ -59,7 +59,7 @@ the same recorder, so what the experiment measures is what the UI plays.
 | Component | File | Responsibility |
 |---|---|---|
 | Engine | `backend/app/core/engine.py` | Duet rules: phases, keycards, reveals, timer tokens, sudden death, win/loss. Owns the game state; seed-agnostic (an RNG is injected). |
-| Clue validator | `backend/app/core/clue_validator.py` | Rejects clues that are a visible word, a morphological form of one, a compound containing one, or a repeat from the clue history (WordNet-backed). |
+| Clue validator | `backend/app/core/clue_validator.py` | Rejects clues that are a visible word, a morphological form of one, or a compound containing one (WordNet-backed). Repeating an earlier clue is allowed, as in the rules. |
 | Conductor | `backend/app/core/game_conductor.py` | Seat-parameterised turn orchestration (engine + service + recorder). No HTTP, no persistence — the caller injects `flush` / `on_reveal` hooks. |
 | LLM service | `backend/app/core/llm_service.py` | Prompt assembly from `data/prompt_templates/`, bounded clue re-sampling, and the out-of-band **measurement** ranking elicited at the same pre-resolution state. |
 | Clients | `backend/app/core/llm/client{,_local,_openrouter}.py` | Provider adapters (Ollama / OpenRouter) with a bounded same-request retry over retriable errors, structured-output enforcement and degenerate-response detection. |
