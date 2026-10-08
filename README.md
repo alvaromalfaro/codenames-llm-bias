@@ -557,7 +557,8 @@ stderr. Bootstrap defaults are `B = 2000` replicates, seed `2026`, percentile CI
   gender load is congruent with the clue's polarity are ranked above incongruent ones. **0.5 means no
   association**, not zero. It reads the out-of-band **measurement** ranking
   (`guess_proposal.kind='measurement'`), never the play proposal, so it reports belief uncontaminated
-  by game strategy.
+  by game strategy. For the same reason, only the play prompt shows the guesser its own side of the
+  key card, as the rules do: the measurement prompt leaves it out.
 * **conc-SD** — the sudden-death analogue of CIT, where the giver is silent and the guesser works from
   the clue *history* it received. The unit is the game, clue polarity is a history mean, and thematic
   proximity is measured against the whole history. Pre-registered power rule: **PRIMARY** for a model

@@ -7,7 +7,7 @@ from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.models.llm_errors import LLMEmptyResponseError
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal
-from backend.app.models.game_schemas import GamePhase, ClueEntry, ResolvedTarget
+from backend.app.models.game_schemas import CardRole, GamePhase, ClueEntry, ResolvedTarget
 
 
 def _mock_response(text, raw_payload=None):
@@ -488,6 +488,76 @@ async def test_targets_never_reach_guesser_prompt(game_state_guessing):
 
     for message in request.messages:
         assert sentinel not in message.content
+
+
+# The guesser sees its own side of the key card (§3, §4.3), in the standard and the SD guess
+# prompts alike.
+
+def _own_key_section(user_prompt: str) -> list[list[str]]:
+    """The black, green and beige blocks of a guess prompt's key-card section, as lists of lines."""
+    section = user_prompt.split("### YOUR SIDE OF THE KEY CARD ###\n", 1)[1]
+    section = section.split("\n\n### UNREVEALED BOARD WORDS ###", 1)[0]
+    return [block.splitlines() for block in section.split("\n\n")]
+
+
+@pytest.mark.parametrize("seat", [0, 1])
+def test_guess_prompt_shows_the_guesser_own_key_side(game_state_guessing, seat):
+    """The guesser gets its own side, not its partner's: its 3 black words, and its green and beige
+    words, in board order."""
+    def own_words(role):
+        return [f"- {c.text}" for c in game_state_guessing.board.cards
+                if (c.llm_perspective_role if seat == 0 else c.human_perspective_role) == role]
+
+    prompt = LLMService()._build_guess_request(
+        game_state_guessing, "m", player_id=seat).messages[-1].content
+    black, green, beige = _own_key_section(prompt)
+
+    expected_black = ["- ANT", "- LEMONADE", "- MAKEUP"] if seat == 0 else [
+        "- LEMONADE", "- LOCUST", "- PINE"]
+    assert black == ["Black on your side (all 3):", *expected_black]
+    assert green == ["Green on your side (only the words you can still guess):",
+                     *own_words(CardRole.AGENT)]
+    assert beige == ["Beige on your side (only the words you can still guess):",
+                     *own_words(CardRole.CIVILIAN)]
+
+
+def test_own_key_side_states_what_the_guesser_found_on_its_black_words(game_state_guessing):
+    """A black word the guesser can no longer touch says what its guess showed: an agent card means
+    it was the guesser's agent, its own time token means it was a civilian. The green and beige lists
+    keep only the words the guesser can still guess."""
+    cards = {c.text: c for c in game_state_guessing.board.cards}
+    cards["ANT"].revealed = True  # black for seat 0, an agent for it
+    cards["ANT"].revealed_by = [0, 1]
+    cards["MAKEUP"].time_marker_by = [0]  # black for seat 0, a civilian for it
+    cards["BRICK"].revealed = True  # green for seat 0, covered
+    cards["RUSSIA"].time_marker_by = [0]  # green for seat 0, seat 0's own token
+    cards["BUCKET"].time_marker_by = [1]  # beige for seat 0, the partner's token only
+
+    prompt = LLMService()._build_guess_request(
+        game_state_guessing, "m", player_id=0).messages[-1].content
+    black, green, beige = _own_key_section(prompt)
+
+    assert black == [
+        "Black on your side (all 3):",
+        "- ANT (covered by an agent card: you guessed it, and it was an Agent for you)",
+        "- LEMONADE",
+        "- MAKEUP (your time token is on it: you guessed it, and it was a Civilian for you)",
+    ]
+    assert "- BRICK" not in green and "- RUSSIA" not in green
+    assert "- BUCKET" in beige
+
+
+def test_sd_guess_prompt_shows_the_same_own_key_side(game_state_guessing):
+    """Sudden death keeps the key side: the SD guess prompt renders the same section."""
+    service = LLMService()
+    game_state_guessing.board.cards[2].revealed = True  # ANT
+
+    standard = service._build_guess_request(
+        game_state_guessing, "m", player_id=0).messages[-1].content
+    sudden_death = service._build_guess_sd_request(
+        _sd_llm_state(game_state_guessing), "m", player_id=0).messages[-1].content
+
+    assert _own_key_section(sudden_death) == _own_key_section(standard)
 
 
 # An optional per-call seed flows method -> builder -> LLMRequest.seed.

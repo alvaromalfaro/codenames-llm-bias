@@ -3,7 +3,7 @@ Propose your optimal sequence of guesses.
 Remember: You may stop early if the risk is high, or guess MORE than the target count if you find strong matches for previous clues.
 Follow the required JSON format exactly.
 
-Turn: 2
+Turn: 3
 
 ### CURRENT CLUE ###
 - Clue: cold
@@ -11,6 +11,21 @@ Turn: 2
 
 ### PREVIOUS CLUES (Optional context for backtracking) ###
 - Turn: 1, Clue: ocean, Count: 2
+
+### YOUR SIDE OF THE KEY CARD ###
+Black on your side (all 3):
+- CORAL (covered by an agent card: you guessed it, and it was an Agent for you)
+- WAVE
+- SHIP
+
+Green on your side (only the words you can still guess):
+- ICE
+- FIRE
+
+Beige on your side (only the words you can still guess):
+- WIND
+- DESERT
+- FROST
 
 ### UNREVEALED BOARD WORDS ###
 - ICE

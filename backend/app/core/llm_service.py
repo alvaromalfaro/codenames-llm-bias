@@ -415,9 +415,10 @@ class LLMService:
 
     def _build_guess_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
         """
-        Builds an LLMRequest for proposing guesses based on the current game state. This method 
-        extracts relevant information from the game state, formats it into a user prompt, and 
-        constructs the list of messages for the LLM request.
+        Builds an LLMRequest for proposing guesses based on the current game state. This method
+        extracts relevant information from the game state, formats it into a user prompt, and
+        constructs the list of messages for the LLM request. The prompt carries the guesser's own
+        side of the key card (see _format_own_key).
 
         :param game_state: The current state of the game.
         :param model: The LLM model to use for generating the guess.
@@ -445,6 +446,7 @@ class LLMService:
             clue=clue,
             count=count,
             previous_clues_history=previous_clues_history if previous_clues_history else "No previous clues.",
+            own_key=self._format_own_key(game_state, player_id),
             words_remaining=words_remaining
         )
 
@@ -469,7 +471,8 @@ class LLMService:
         Builds an LLMRequest for sudden death guessing. No current clue is available; the LLM
         receives full clue history and must identify all remaining agents from memory. It is not
         told how many are left: the rules never say it (§9), and a player cannot work it out from
-        its own key side. Seat-parameterized: it uses the SAME guessable-word predicate
+        its own key side. It does get that key side, as in the standard guess prompt (see
+        _format_own_key). Seat-parameterized: it uses the SAME guessable-word predicate
         (``card.is_guessable_by(player_id)``) as _build_measurement_sd_request, so it generalizes
         to either seat in an LLM-vs-LLM run.
 
@@ -487,6 +490,7 @@ class LLMService:
         ])
         user_prompt = self._user_prompt_sd_gg.format(
             clue_history=clue_history or "No clues were given.",
+            own_key=self._format_own_key(game_state, player_id),
             words_remaining=words_remaining,
         )
 
@@ -538,7 +542,9 @@ class LLMService:
         count, the previous-clue history, and the SAME guessable-word filter - so the measurement
         observes the identical game state as the play-guess request. The clue-giver's intended target
         set S is never read here (only ``current_clue.clue``/``.count`` and history clue/count),
-        preserving the guardrail that S never reaches the guesser side.
+        preserving the guardrail that S never reaches the guesser side. It also leaves out the
+        guesser's own key side, which the play request carries: the measurement scores what the
+        clue points to, and the key side would mix the risk of each word into that score.
 
         :param game_state: The current state of the game.
         :param model: The LLM model to use.
@@ -577,7 +583,8 @@ class LLMService:
         Builds the out-of-band measurement request for the sudden-death phase. Mirrors
         _build_guess_sd_request: it does not say how many agents are left (§9), and it is
         seat-parameterized, with the SAME guessable-word filter from that seat's perspective, so it
-        generalizes to either seat in an LLM-vs-LLM run.
+        generalizes to either seat in an LLM-vs-LLM run. Like _build_measurement_request, it leaves
+        out the guesser's own key side.
 
         :param game_state: The current state of the game (sudden death).
         :param model: The LLM model to use.
@@ -637,6 +644,53 @@ class LLMService:
 
         return ConfidenceRanking(
             reasoning=reasoning.strip(), rankings=ranked, raw_payload=response.raw_payload)
+
+    def _format_own_key(self, game_state: GameState, player_id: int) -> str:
+        """
+        Renders the guesser's own side of the key card for the guess prompts. Every player sees
+        their own side (§3) and may reason with it (§4.3), although only the partner's side decides
+        what a guess is (§6.3). The section states facts and leaves the deductions to the model:
+
+        - All 3 black words, with what this seat's own earlier guesses showed about them. Only this
+          seat can have touched one: the partner touching it is resolved on this side, as an
+          assassin, and ends the game. So an agent card on it means it was this seat's black agent,
+          and this seat's own time token on it means it was the civilian.
+        - The green and the beige words this seat can still guess, with the same filter as the
+          words offered for guessing (``card.is_guessable_by(player_id)``).
+
+        The measurement builders never call this: the measurement scores what the clue points to.
+
+        :param game_state: The current state of the game.
+        :param player_id: The seat of the guesser (0 for LLM).
+
+        :return: The rendered section, without its heading.
+        """
+        def own_role(card) -> CardRole:
+            return card.llm_perspective_role if player_id == 0 else card.human_perspective_role
+
+        def black_line(card) -> str:
+            if card.revealed:
+                return (f"- {card.text} (covered by an agent card: you guessed it, and it was an "
+                        "Agent for you)")
+            if player_id in card.time_marker_by:
+                return (f"- {card.text} (your time token is on it: you guessed it, and it was a "
+                        "Civilian for you)")
+            return f"- {card.text}"
+
+        def still_guessable(role: CardRole) -> list[str]:
+            words = [f"- {card.text}" for card in game_state.board.cards
+                     if own_role(card) == role and card.is_guessable_by(player_id)]
+            return words or ["None."]
+
+        black = [black_line(card) for card in game_state.board.cards
+                 if own_role(card) == CardRole.ASSASSIN]
+        return "\n".join([
+            "Black on your side (all 3):", *black, "",
+            "Green on your side (only the words you can still guess):",
+            *still_guessable(CardRole.AGENT), "",
+            "Beige on your side (only the words you can still guess):",
+            *still_guessable(CardRole.CIVILIAN),
+        ])
 
     def _get_llm_perspective_agent_words(self, game_state: GameState) -> list[str]:
         """
@@ -883,8 +937,9 @@ class LLMService:
             "- Maximize correct Agent guesses while strictly managing the risk of hitting an "
             "Assassin or Civilian.\n\n"
             "### GAME RULES & CONSTRAINTS ###\n"
-            "1. You only see the unrevealed words on the board. You DO NOT know which are Agents, "
-            "Civilians, or Assassins.\n"
+            "1. What each word is for you (Agent, Civilian or Assassin) is decided ONLY by your "
+            "partner's side of the key card, which you cannot see. An Agent for you is a word that "
+            "is green on your partner's side.\n"
             "2. UNLIMITED GUESSES: In Codenames Duet, there is no limit to the number of guesses "
             "you can make in a single turn. \n"
             "3. The \"count\" provided with the clue is a hint about how many words the clue-giver "
@@ -894,6 +949,16 @@ class LLMService:
             "5. You may guess MORE than the count if you have high confidence in words from "
             "previous turns' clues.\n"
             "6. DO NOT invent words; you must select exactly from the provided board words.\n\n"
+            "### YOUR SIDE OF THE KEY CARD ###\n"
+            "You can see your own side of the key card. It colors the 25 words: 9 green, 3 black "
+            "and 13 beige. It does NOT show your Agents: your green words are the ones YOUR PARTNER "
+            "must find. It does tell you how risky each word is, because every key card follows "
+            "the same pattern:\n"
+            "- Your 3 BLACK words: 1 is an Agent for you, 1 is an Assassin, 1 is a Civilian.\n"
+            "- Your 9 GREEN words: 3 are Agents for you, 1 is an Assassin, 5 are Civilians.\n"
+            "- Your 13 BEIGE words: 5 are Agents for you, 1 is an Assassin, 7 are Civilians.\n"
+            "If you have already found the black word that was an Agent for you, do not guess your "
+            "other black words.\n\n"
             "### DECISION POLICY (OPTIMAL STOPPING) ###\n"
             "- Step 1: Compute the semantic relation between the current clue and EVERY word on "
             "the board.\n"
@@ -902,7 +967,10 @@ class LLMService:
             "an Agent drops below this safety threshold, STOP immediately. In Codenames Duet, "
             "precision is infinitely more valuable than coverage. \n"
             "- Step 4: Evaluate previous unsolved clues. If a board word strongly matches a past "
-            "clue and meets your confidence threshold, include it in your proposal sequence.\n\n"
+            "clue and meets your confidence threshold, include it in your proposal sequence.\n"
+            "- Step 5: Choose words because the clues point to them, never because of their color. "
+            "Then check each proposal against your side of the key card: its color tells you how "
+            "risky the word is.\n\n"
             "### OUTPUT FORMAT ###\n"
             "You must respond ONLY with a valid JSON object. Do not include formatting wrappers "
             "like ```json. Start your response immediately with the { character.\n\n"
@@ -937,6 +1005,8 @@ class LLMService:
             "- Target Count: {count}\n\n"
             "### PREVIOUS CLUES (Optional context for backtracking) ###\n"
             "{previous_clues_history}\n\n"
+            "### YOUR SIDE OF THE KEY CARD ###\n"
+            "{own_key}\n\n"
             "### UNREVEALED BOARD WORDS ###\n"
             "{words_remaining}"
         )
@@ -996,12 +1066,24 @@ class LLMService:
             "Remember: You may stop early if the risk is high, or guess MORE than the target count "
             "if you find strong matches for previous clues.\n"
             "Follow the required JSON format exactly.\n\n"
-            "Turn: 2\n\n"
+            "Turn: 3\n\n"
             "### CURRENT CLUE ###\n"
             "- Clue: cold\n"
             "- Target Count: 2\n\n"
             "### PREVIOUS CLUES (Optional context for backtracking) ###\n"
             "- Turn: 1, Clue: ocean, Count: 2\n\n"
+            "### YOUR SIDE OF THE KEY CARD ###\n"
+            "Black on your side (all 3):\n"
+            "- CORAL (covered by an agent card: you guessed it, and it was an Agent for you)\n"
+            "- WAVE\n"
+            "- SHIP\n\n"
+            "Green on your side (only the words you can still guess):\n"
+            "- ICE\n"
+            "- FIRE\n\n"
+            "Beige on your side (only the words you can still guess):\n"
+            "- WIND\n"
+            "- DESERT\n"
+            "- FROST\n\n"
             "### UNREVEALED BOARD WORDS ###\n"
             "- ICE\n"
             "- FIRE\n"
@@ -1022,31 +1104,44 @@ class LLMService:
         reason, all formatted in the correct JSON structure.
         """
         return (
-            "{\"reasoning\": \"Current clue is 'cold' (count 2). Ranking board words by semantic "
-            "proximity to 'cold': ICE (0.97) — direct synonym, highest confidence. FROST (0.93) — "
-            "near-synonym for cold/frozen, very strong match. WIND (0.55) — cold wind is common but "
-            "'wind' alone is ambiguous, below my threshold. FIRE (0.02) — antonym, ignore. DESERT "
-            "(0.10) — can be cold but strong association with heat, too risky. WAVE and SHIP have "
-            "no meaningful connection to 'cold'. Previous clue was 'ocean' (count 2) — WAVE (0.91) "
-            "and SHIP (0.72) are strong matches and still unrevealed. WAVE exceeds my threshold so "
-            "I add it as a third guess for the previous clue. SHIP is below threshold (0.72 < 0.80), "
-            "stopping there.\", \"stop_reason\": \"Proposed ICE and FROST for current clue 'cold' "
-            "(both above 0.90 threshold). Added WAVE as backtrack guess for previous clue 'ocean'. "
-            "Stopped before SHIP as 0.72 confidence is below the 0.80 safety threshold.\", "
-            "\"proposals\": [{\"word\": \"ICE\", \"confidence\": 0.97}, {\"word\": \"FROST\", "
-            "\"confidence\": 0.93}, {\"word\": \"WAVE\", \"confidence\": 0.91}]}"
+            "{\"reasoning\": \"Current clue is 'cold' (count 2). ICE (0.97) is a direct synonym and "
+            "FROST (0.93) a near-synonym: both are above my 0.80 threshold. I pick them for the "
+            "clue, not for their colors. WIND (0.55) is ambiguous, DESERT (0.10) is mostly about "
+            "heat, and FIRE (0.02) is an antonym. Previous clue 'ocean' (count 2): WAVE (0.91) and "
+            "SHIP (0.72) match it, but both are black on my side, and I already found my black "
+            "Agent, CORAL. So WAVE and SHIP are an Assassin and a Civilian for me.\", "
+            "\"stop_reason\": \"Proposed ICE and FROST for 'cold', both above the 0.80 threshold. "
+            "Did not add WAVE or SHIP for 'ocean': they are my other black words, and my black "
+            "Agent is already found.\", \"proposals\": [{\"word\": \"ICE\", \"confidence\": 0.97}, "
+            "{\"word\": \"FROST\", \"confidence\": 0.93}]}"
         )
 
     def _default_system_prompt_sd_gg(self) -> str:
         return (
             "You are the guessing player in Codenames Duet. The game has entered SUDDEN DEATH: the "
-            "timer tokens have run out. There are no more clues - you must now identify all your "
-            "remaining agent cards directly from the board.\n\n"
+            "timer tokens have run out. There are no more clues - you must now find all your "
+            "remaining Agents directly from the board.\n\n"
             "### RULES ###\n"
-            "1. You must identify every word on the board that is one of YOUR remaining agent cards.\n"
+            "1. You must identify every remaining word on the board that is an Agent for you. What "
+            "each word is for you (Agent, Civilian or Assassin) is decided ONLY by your partner's "
+            "side of the key card, which you cannot see. An Agent for you is a word that is green "
+            "on your partner's side.\n"
             "2. Guessing a Civilian or Assassin card causes an IMMEDIATE LOSS. Be precise.\n"
             "3. Use the full clue history to recall which words your partner was hinting at.\n"
-            "4. DO NOT invent words; select only from the provided unrevealed board words.\n\n"
+            "4. Choose words because the clues point to them, never because of their color. Then "
+            "check each proposal against your side of the key card: its color tells you how risky "
+            "the word is.\n"
+            "5. DO NOT invent words; select only from the provided unrevealed board words.\n\n"
+            "### YOUR SIDE OF THE KEY CARD ###\n"
+            "You can see your own side of the key card. It colors the 25 words: 9 green, 3 black "
+            "and 13 beige. It does NOT show your Agents: your green words are the ones YOUR PARTNER "
+            "must find. It does tell you how risky each word is, because every key card follows "
+            "the same pattern:\n"
+            "- Your 3 BLACK words: 1 is an Agent for you, 1 is an Assassin, 1 is a Civilian.\n"
+            "- Your 9 GREEN words: 3 are Agents for you, 1 is an Assassin, 5 are Civilians.\n"
+            "- Your 13 BEIGE words: 5 are Agents for you, 1 is an Assassin, 7 are Civilians.\n"
+            "If you have already found the black word that was an Agent for you, do not guess your "
+            "other black words.\n\n"
             "### OUTPUT FORMAT ###\n"
             "Respond ONLY with a valid JSON object. No markdown wrappers.\n\n"
             "{\n"
@@ -1062,11 +1157,13 @@ class LLMService:
     def _default_user_prompt_sd_gg(self) -> str:
         return (
             "### YOUR TASK ###\n"
-            "Identify your remaining agent cards from the unrevealed words using the clue history as "
+            "Identify your remaining Agents from the unrevealed words using the clue history as "
             "your guide.\n"
             "Follow the required JSON format exactly.\n\n"
             "### CLUE HISTORY (all clues given to you during the game) ###\n"
             "{clue_history}\n\n"
+            "### YOUR SIDE OF THE KEY CARD ###\n"
+            "{own_key}\n\n"
             "### UNREVEALED BOARD WORDS ###\n"
             "{words_remaining}"
         )

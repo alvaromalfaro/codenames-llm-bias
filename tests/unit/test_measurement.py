@@ -254,6 +254,24 @@ async def test_measurement_does_not_influence_play_prompt(valid_board_data):
         m.content for m in after.messages]
 
 
+@pytest.mark.parametrize("seat", [0, 1])
+def test_measurement_prompts_leave_out_the_guesser_key_side(valid_board_data, seat):
+    """The play prompts carry the guesser's own key side; the measurement prompts, standard and SD,
+    do not, so the ranking scores only what the clue points to."""
+    engine = _guessing_engine(valid_board_data)
+    svc = LLMService()
+
+    play = svc._build_guess_request(engine.state, "m", player_id=seat)
+    measurements = [svc._build_measurement_request(engine.state, "m", player_id=seat),
+                    svc._build_measurement_sd_request(engine.state, "m", player_id=seat)]
+
+    assert "KEY CARD" in play.messages[-1].content
+    for request in measurements:
+        for message in request.messages:
+            assert "KEY CARD" not in message.content
+            assert "Black on your side" not in message.content
+
+
 def test_measurement_request_is_standalone(valid_board_data):
     """The measurement request carries only a system + user message (no shared conversation)."""
     engine = _guessing_engine(valid_board_data)
@@ -419,8 +437,10 @@ def _seat1_guessing_engine(valid_board_data: dict) -> CodenamesDuetEngine:
 
 
 def _board_words_in(text: str, words: set[str]) -> set[str]:
-    """The board words listed (as '- WORD') in a rendered prompt."""
-    return {w for w in words if f"- {w}" in text}
+    """The board words offered for guessing: listed (as '- WORD') under UNREVEALED BOARD WORDS. The
+    guess prompts also list words in the guesser's key-card section, which is not the offer."""
+    offered = text.split("### UNREVEALED BOARD WORDS ###", 1)[1]
+    return {w for w in words if f"- {w}" in offered}
 
 
 def _mark_discriminating_cards(cards) -> None:

@@ -1,10 +1,18 @@
-You are the guessing player in Codenames Duet. The game has entered SUDDEN DEATH: the timer tokens have run out. There are no more clues - you must now identify all your remaining agent cards directly from the board.
+You are the guessing player in Codenames Duet. The game has entered SUDDEN DEATH: the timer tokens have run out. There are no more clues - you must now find all your remaining Agents directly from the board.
 
 ### RULES ###
-1. You must identify every word on the board that is one of YOUR remaining agent cards.
+1. You must identify every remaining word on the board that is an Agent for you. What each word is for you (Agent, Civilian or Assassin) is decided ONLY by your partner's side of the key card, which you cannot see. An Agent for you is a word that is green on your partner's side.
 2. Guessing a Civilian or Assassin card causes an IMMEDIATE LOSS. Be precise.
 3. Use the full clue history to recall which words your partner was hinting at.
-4. DO NOT invent words; select only from the provided unrevealed board words.
+4. Choose words because the clues point to them, never because of their color. Then check each proposal against your side of the key card: its color tells you how risky the word is.
+5. DO NOT invent words; select only from the provided unrevealed board words.
+
+### YOUR SIDE OF THE KEY CARD ###
+You can see your own side of the key card. It colors the 25 words: 9 green, 3 black and 13 beige. It does NOT show your Agents: your green words are the ones YOUR PARTNER must find. It does tell you how risky each word is, because every key card follows the same pattern:
+- Your 3 BLACK words: 1 is an Agent for you, 1 is an Assassin, 1 is a Civilian.
+- Your 9 GREEN words: 3 are Agents for you, 1 is an Assassin, 5 are Civilians.
+- Your 13 BEIGE words: 5 are Agents for you, 1 is an Assassin, 7 are Civilians.
+If you have already found the black word that was an Agent for you, do not guess your other black words.
 
 ### OUTPUT FORMAT ###
 Respond ONLY with a valid JSON object. No markdown wrappers.

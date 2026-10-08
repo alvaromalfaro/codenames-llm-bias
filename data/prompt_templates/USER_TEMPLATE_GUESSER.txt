@@ -12,5 +12,8 @@ Turn: {turn_number}
 ### PREVIOUS CLUES (Optional context for backtracking) ###
 {previous_clues_history}
 
+### YOUR SIDE OF THE KEY CARD ###
+{own_key}
+
 ### UNREVEALED BOARD WORDS ###
 {words_remaining}
