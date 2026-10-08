@@ -252,6 +252,58 @@ def test_llm_service_build_clue_request_player0(game_state_cg):
             0]
 
 
+# The clue giver sees the board as it is on the table (§8.2): covered words are out of play, and a
+# word its partner can no longer touch is still visible.
+
+def _clue_giver_lists(game_state, seat) -> dict[str, list[str]]:
+    """The word lists of a clue-giver prompt, by list name, as '- WORD' lines."""
+    prompt = LLMService()._build_clue_request(
+        game_state, "m", player_id=seat).messages[-1].content
+    blocks = prompt.split("### BOARD STATUS ###\n", 1)[1].split("\n\n")
+    return {block.splitlines()[0].split(" (")[0]: block.splitlines()[1:] for block in blocks}
+
+
+# For each seat: one of its black words and one of its beige words that are green for the partner,
+# so this seat covers them as the guesser.
+@pytest.mark.parametrize("seat, black, beige", [(0, "ANT", "CAVE"), (1, "PINE", "RUSSIA")])
+def test_clue_giver_prompt_shows_the_board_as_it_is_on_the_table(game_state_cg, seat, black, beige):
+    """A covered word is out of play and no longer visible, so it is no word to avoid: a covered
+    green word is listed as revealed, a covered black or beige word nowhere. A beige word with the
+    partner's time token is still visible (§8.2), so it is listed apart, not as a civilian. A word
+    with the giver's own token stays where it was: the partner can still touch it."""
+    cards = {c.text: c for c in game_state_cg.board.cards}
+    for covered in (black, beige, "BRICK"):  # BRICK is green on both sides
+        cards[covered].revealed = True
+    cards["BUCKET"].time_marker_by = [1 - seat]  # the partner touched it
+    cards["FIDDLE"].time_marker_by = [seat]  # the giver touched it
+
+    lists = _clue_giver_lists(game_state_cg, seat)
+
+    listed = [line for lines in lists.values() for line in lines]
+    assert f"- {black}" not in listed and f"- {beige}" not in listed
+    assert "- BRICK" not in lists["AGENTS"]
+    assert lists["REVEALED WORDS"] == ["- BRICK"]
+    assert lists["OTHER WORDS STILL ON THE BOARD"] == ["- BUCKET"]
+    assert "- BUCKET" not in lists["CIVILIANS"]
+    assert "- FIDDLE" in lists["CIVILIANS"]
+
+
+@pytest.mark.parametrize("seat", [0, 1])
+def test_clue_giver_prompt_drops_a_word_once_two_time_tokens_cover_it(game_state_cg, seat):
+    """A word under the partner's time token is still on the board. Once the second token covers it
+    (§6.6), it is out of play and no longer visible, and drops out of every list."""
+    bucket = next(c for c in game_state_cg.board.cards if c.text == "BUCKET")
+    bucket.time_marker_by = [1 - seat]
+    assert _clue_giver_lists(game_state_cg, seat)[
+        "OTHER WORDS STILL ON THE BOARD"] == ["- BUCKET"]
+
+    bucket.time_marker_by = [1 - seat, seat]
+    lists = _clue_giver_lists(game_state_cg, seat)
+
+    assert lists["OTHER WORDS STILL ON THE BOARD"] == ["None."]
+    assert all("- BUCKET" not in lines for lines in lists.values())
+
+
 def test_llm_service_build_guess_request(game_state_guessing):
     """
     Tests that _build_guess_request correctly formats the clue, count, and unrevealed board

@@ -36,6 +36,7 @@ def llm_request_cg() -> LLMRequest:
                       for i in cards if i["llm_perspective_role"] == CardRole.ASSASSIN]
     civilian_words = [i["text"]
                       for i in cards if i["llm_perspective_role"] == CardRole.CIVILIAN]
+    other_words = []
     revealed_words = []
 
     user_prompt = user_prompt.format(
@@ -43,6 +44,7 @@ def llm_request_cg() -> LLMRequest:
         agent_words=agent_words,
         assassin_words=assassin_words,
         civilian_words=civilian_words,
+        other_words=other_words,
         revealed_words=revealed_words
     )
 

@@ -16,5 +16,8 @@ CIVILIANS (Neutral - try to avoid):
 - TOWER
 - KNIGHT
 
+OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one of them or a form of one):
+None.
+
 REVEALED WORDS (Already guessed, no longer valid targets):
 No words revealed yet.

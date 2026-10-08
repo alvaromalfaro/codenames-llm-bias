@@ -13,5 +13,8 @@ ASSASSINS (Terminal state - strictly avoid):
 CIVILIANS (Neutral - try to avoid):
 {civilian_words}
 
+OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one of them or a form of one):
+{other_words}
+
 REVEALED WORDS (Already guessed, no longer valid targets):
 {revealed_words}

@@ -336,35 +336,22 @@ class LLMService:
         :return: An instance of LLMRequest containing the messages and parameters for the LLM
             generation.
         """
-        # Extract relevant information from the game state
-        turn_number = game_state.turn_number
-        # As some plays will be automated between two LLM agents, we need to determine which
-        # words are relevant based on the player ID.
-        if player_id == 0:
-            # LLM is the clue giver, so we consider its perspective for the agent and dangerous words
-            agent_words = self._get_llm_perspective_agent_words(game_state)
-            assassin_words = self._get_llm_perspective_assassin_words(
-                game_state)
-            civilian_words = self._get_llm_perspective_civilian_words(
-                game_state)
-            rev_words = self._get_llm_perspective_revealed_words(game_state)
-        else:
-            # Same as above, but from the human player's perspective
-            agent_words = self._get_human_perspective_agent_words(game_state)
-            assassin_words = self._get_human_perspective_assassin_words(
-                game_state)
-            civilian_words = self._get_human_perspective_civilian_words(
-                game_state)
-            rev_words = self._get_human_perspective_revealed_words(game_state)
+        # The board as this seat sees it on the table (seat-parameterized, so either seat of an
+        # LLM-vs-LLM game gets its own side of the key card).
+        board = self._clue_giver_board(game_state, player_id)
+
+        def listed(key: str) -> str:
+            return "\n".join(board[key]) or "None."
 
         # Format the user prompt with the current game state information
         user_prompt = self._user_prompt_cg.format(
-            turn_number=turn_number,
-            agent_words="\n".join(agent_words),
-            assassin_words="\n".join(assassin_words),
-            civilian_words="\n".join(civilian_words),
+            turn_number=game_state.turn_number,
+            agent_words=listed("agents"),
+            assassin_words=listed("assassins"),
+            civilian_words=listed("civilians"),
+            other_words=listed("other_visible"),
             revealed_words="\n".join(
-                rev_words) if rev_words else "No words revealed yet."
+                board["revealed"]) or "No words revealed yet."
         )
 
         print("DEBUG: User prompt for clue proposal:\n" +
@@ -692,106 +679,45 @@ class LLMService:
             *still_guessable(CardRole.CIVILIAN),
         ])
 
-    def _get_llm_perspective_agent_words(self, game_state: GameState) -> list[str]:
+    def _clue_giver_board(self, game_state: GameState, player_id: int) -> dict[str, list[str]]:
         """
-        Extracts the non-revealed agent words from the game state based on the LLM's perspective.
+        Sorts the board words the way the clue giver at ``player_id`` sees them on the table: by its
+        own side of the key card and by what sits on each word. It is derived from the board on
+        every call, so a word drops out as soon as an agent card or a second time token covers it.
+
+        - ``agents``: its green words not yet covered, the ones its partner still has to find.
+        - ``assassins`` / ``civilians``: its black and beige words its partner can still touch.
+        - ``other_visible``: words its partner can no longer touch, because the partner's own time
+          token sits on them (they are beige on this side). They carry no risk, but they are still
+          visible (§8.2), so the clue cannot be one of them or a form of one.
+        - ``revealed``: its green words already covered by an agent card.
+
+        A word covered by an agent card or by two time tokens is out of play and no longer visible,
+        so it is in none of the lists, except a covered green word, which is listed in ``revealed``.
 
         :param game_state: The current state of the game.
+        :param player_id: The seat of the clue giver (0 for LLM).
 
-        :return: A list of agent words that are not revealed from the LLM's perspective.
+        :return: The ``- WORD`` lines of each list, in board order.
         """
-        return [f"- {card.text}" for card in game_state.board.cards if card.llm_perspective_role ==
-                CardRole.AGENT and 1 not in card.revealed_by]
-
-    def _get_llm_perspective_assassin_words(self, game_state: GameState) -> list[str]:
-        """
-        Extracts the assassin words from the game state based on the LLM's perspective. Words that 
-        are marked with a time marker are ignored to keep the final prompt concise.
-
-        :param game_state: The current state of the game.
-
-        :return: A list of assassin words that are not marked with a time marker from the LLM's
-            perspective.
-        """
-        return [f"- {card.text}" for card in game_state.board.cards if card.llm_perspective_role ==
-                CardRole.ASSASSIN]
-
-    def _get_llm_perspective_civilian_words(self, game_state: GameState) -> list[str]:
-        """
-        Extracts the civilian words from the game state based on the LLM's perspective. Words that 
-        are marked with a time marker are ignored to keep the final prompt concise.
-
-        :param game_state: The current state of the game.
-
-        :return: A list of civilian words that are not marked with a time marker from the LLM's
-            perspective.
-        """
-        return [f"- {card.text}" for card in game_state.board.cards if card.llm_perspective_role ==
-                CardRole.CIVILIAN and 1 not in card.time_marker_by]
-
-    def _get_llm_perspective_revealed_words(self, game_state: GameState) -> list[str]:
-        """
-        Extracts the revealed words from the game state based on the LLM's perspective.
-
-        :param game_state: The current state of the game.
-
-        :return: A list of revealed words from the LLM's perspective.
-        """
-        return [
-            f"- {card.text}" for card in game_state.board.cards if 1 in card.revealed_by and
-            card.llm_perspective_role == CardRole.AGENT
-        ]
-
-    def _get_human_perspective_agent_words(self, game_state: GameState) -> list[str]:
-        """
-        Extracts the agent words from the game state based on the human's perspective. Words that are
-        marked with a time marker are ignored to keep the final prompt concise.
-
-        :param game_state: The current state of the game.
-
-        :return: A list of agent words that are not revealed from the human's perspective.
-        """
-        return [f"- {card.text}" for card in game_state.board.cards if card.human_perspective_role ==
-                CardRole.AGENT and 0 not in card.revealed_by]
-
-    def _get_human_perspective_assassin_words(self, game_state: GameState) -> list[str]:
-        """
-        Extract the assassin words from the game state based on the human's perspective. Words that 
-        are marked with a time marker are ignored to keep the final prompt concise.
-
-        :param game_state: The current state of the game.
-
-        :return: A list of assassin words that are not marked with a time marker from the human's
-            perspective.
-        """
-        return [f"- {card.text}" for card in game_state.board.cards if card.human_perspective_role ==
-                CardRole.ASSASSIN]
-
-    def _get_human_perspective_civilian_words(self, game_state: GameState) -> list[str]:
-        """
-        Extract the civilian words from the game state based on the human's perspective. Words that 
-        are marked with a time marker are ignored to keep the final prompt concise.
-
-        :param game_state: The current state of the game.
-
-        :return: A list of civilian words that are not marked with a time marker from the human's
-            perspective.
-        """
-        return [f"- {card.text}" for card in game_state.board.cards if card.human_perspective_role ==
-                CardRole.CIVILIAN and 0 not in card.time_marker_by]
-
-    def _get_human_perspective_revealed_words(self, game_state: GameState) -> list[str]:
-        """
-        Extracts the revealed words from the game state based on the human's perspective.
-
-        :param game_state: The current state of the game.
-
-        :return: A list of revealed words from the human's perspective.
-        """
-        return [
-            f"- {card.text}" for card in game_state.board.cards if 0 in card.revealed_by
-            and card.human_perspective_role == CardRole.AGENT
-        ]
+        partner = 1 - player_id
+        board: dict[str, list[str]] = {
+            "agents": [], "assassins": [], "civilians": [], "other_visible": [], "revealed": []}
+        for card in game_state.board.cards:
+            role = card.llm_perspective_role if player_id == 0 else card.human_perspective_role
+            line = f"- {card.text}"
+            if card.is_covered:
+                if card.revealed and role == CardRole.AGENT:
+                    board["revealed"].append(line)
+            elif not card.is_guessable_by(partner):
+                board["other_visible"].append(line)
+            elif role == CardRole.AGENT:
+                board["agents"].append(line)
+            elif role == CardRole.ASSASSIN:
+                board["assassins"].append(line)
+            else:
+                board["civilians"].append(line)
+        return board
 
     def _load_prompt_template(self, template_path: str, prompt_type: int) -> str:
         """
@@ -885,7 +811,13 @@ class LLMService:
             "You will receive the board state as lists of words categorized as:\n"
             "- AGENTS: The words you want your partner to guess.\n"
             "- ASSASSINS: The deadly words you must absolutely avoid.\n"
-            "- CIVILIANS: Neutral words you should try to avoid.\n\n"
+            "- CIVILIANS: Neutral words you should try to avoid.\n"
+            "- OTHER WORDS STILL ON THE BOARD: Words your partner already touched and cannot touch "
+            "again. They carry no risk, but they are still on the board, so rules 2, 3 and 4 apply "
+            "to them.\n"
+            "- REVEALED WORDS: Your agents that are already found. They are covered, so they are no "
+            "longer on the board.\n"
+            "The words in the first four lists are the words currently visible on the board.\n\n"
             "### OUTPUT FORMAT ###\n"
             "You must respond ONLY with a valid JSON object. DO NOT INCLUDE markdown formatting, "
             "conversational text, or any characters outside the JSON structure.\n\n"
@@ -918,6 +850,9 @@ class LLMService:
             "{assassin_words}\n\n"
             "CIVILIANS (Neutral - try to avoid):\n"
             "{civilian_words}\n\n"
+            "OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one of "
+            "them or a form of one):\n"
+            "{other_words}\n\n"
             "REVEALED WORDS (Already guessed, no longer valid targets):\n"
             "{revealed_words}"
         )
@@ -1031,6 +966,9 @@ class LLMService:
             "CIVILIANS (Neutral - try to avoid):\n"
             "- TOWER\n"
             "- KNIGHT\n\n"
+            "OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one of "
+            "them or a form of one):\n"
+            "None.\n\n"
             "REVEALED WORDS (Already guessed, no longer valid targets):\n"
             "No words revealed yet."
         )
