@@ -117,7 +117,7 @@ def _guessing_engine(guesser: int, agents=(5, 5)) -> CodenamesDuetEngine:
     st.guesser = guesser
     st.clue_giver = 1 - guesser
     st.turn_number = 1
-    st.agents_remaining = list(agents)
+    st.pending_words = list(agents)
     st.guesses_made_this_turn = 0
     st.current_clue = ClueEntry(clue="OCEAN", count=1,
                                 clue_giver=1 - guesser, turn_number=1)
@@ -130,7 +130,7 @@ def _sd_engine(phase: GamePhase, clue_giver: int, agents=(2, 3)) -> CodenamesDue
     st.current_phase = phase
     st.clue_giver = clue_giver
     st.guesser = 1 - clue_giver
-    st.agents_remaining = list(agents)
+    st.pending_words = list(agents)
     st.sd_measurement_pending = True
     st.sudden_death = None
     return eng
@@ -552,7 +552,7 @@ async def test_conduct_sd_guess_skips_unplayable_item_and_continues(caplog):
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
     # Seat 0 had 2 agents and found one; with the proposal exhausted it concedes (see
     # test_conduct_sd_guess_concedes_when_the_proposal_runs_out_with_words_pending).
-    assert eng.state.agents_remaining[0] == 1
+    assert eng.state.pending_words[0] == 1
     assert eng.state.result == "loss_stopped_sd"
 
     # The whole ordered proposal is preserved on the single SD turn, but only the valid item produced
@@ -584,7 +584,7 @@ async def test_conduct_sd_guess_concedes_when_nothing_is_playable():
     assert reveals == []
     assert eng.state.current_phase == GamePhase.GAME_OVER
     assert eng.state.result == "loss_stopped_sd"
-    assert eng.state.agents_remaining == [2, 3]
+    assert eng.state.pending_words == [2, 3]
     # The terminal flush fired after the concession, so the game is persisted as ended.
     flush.assert_called_once_with(eng, rec)
     # The seat's single SD play is on record, with no reveal.
@@ -606,7 +606,7 @@ async def test_conduct_sd_guess_concedes_when_the_proposal_runs_out_with_words_p
                                      flush=flush, on_reveal=None)
 
     assert [(cid, r) for cid, r, _ in reveals] == [(4, "agent"), (11, "agent")]
-    assert eng.state.agents_remaining == [0, 1]
+    assert eng.state.pending_words == [0, 1]
     assert eng.state.result == "loss_stopped_sd"
     # One flush per reveal, then the one after the concession.
     assert flush.call_count == 3
@@ -631,7 +631,7 @@ async def test_conduct_sd_guess_stops_at_the_handoff_without_conceding(caplog):
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
     assert eng.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
     assert eng.state.is_game_over is False
-    assert eng.state.agents_remaining == [0, 3]
+    assert eng.state.pending_words == [0, 3]
     assert eng.state.board.cards[4].revealed is False
     assert "Skipping unplayable SD guess" not in caplog.text
 

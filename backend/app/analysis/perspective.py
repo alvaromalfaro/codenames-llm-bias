@@ -11,10 +11,10 @@ Two rules are derived from this mapping. This module deliberately builds no sets
   * **guesser target-agent set** for seat ``s`` = the cards whose ``perspective_column(1 - s)`` is
     ``'agent'``. The guesser is hunting the *giver's* agents, which is the opposite seat's column.
 
-WARNING - do not use ``engine.state.agents_remaining[s]`` (``backend/app/core/engine.py:297-303``)
-as "seat s's own agents". That counter is **guesser-indexed**: it tracks how many agents seat ``s``
-still has to find, which is the opposite seat's column, ``perspective_column(1 - s)``. Reading it as
-the seat's own agent set inverts the perspective on every two-seat metric.
+WARNING - ``engine.state.pending_words[s]`` is not "seat s's own agents". That counter is
+**guesser-indexed**: it counts the words seat ``s`` still has to find, which are agents in the
+opposite seat's column, ``perspective_column(1 - s)``. Reading it as the seat's own agent set inverts
+the perspective on every two-seat metric.
 """
 
 from __future__ import annotations

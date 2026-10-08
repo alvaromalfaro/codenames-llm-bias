@@ -482,9 +482,13 @@ class GameState(BaseModel):
     # Tokens discarded from the reserve as a penalty, one per invalid clue (§8.4).
     penalty_tokens: int = 0
 
-    # LLM and human agents remaining (for win condition tracking)
-    # [LLM agents remaining, Human agents remaining]
-    agents_remaining: list[int] = Field(default_factory=lambda: [9, 9])
+    # Pending words per seat, indexed by the GUESSING seat: pending_words[p] counts the words that
+    # are green on the OTHER seat's side and not yet covered by an agent card, i.e. what p still
+    # has to find (§2). It is not seat p's own green words. A time token does not take a word out:
+    # it stays pending. Both reach 0 at the 15th agent card (victory, §7.1), and a seat at 0 gives
+    # every remaining clue (§6.8). The engine updates it in _reveal_agent; it must always match the
+    # board.
+    pending_words: list[int] = Field(default_factory=lambda: [9, 9])
 
     # Clue history
     clue_history: list[ClueEntry] = Field(default_factory=list)

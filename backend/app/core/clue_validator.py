@@ -163,8 +163,6 @@ class ClueValidator:
     include:
         - The clue must be a single word (e.g., "machine" is valid, but "washing machine" is not),
             and so must a proper name ("Michelangelo" is valid, "Leonardo da Vinci" is not).
-        - The number provided with the clue must be a positive integer and cannot exceed the number
-            of remaining words on the board. (Already enforced by the Pydantic model for ClueEntry).
         - The clue cannot be the same as any of the visible words on the board (§8.1.4). A word is
             considered "visible" until it is guessed (if it is an agent) or until it is covered by
             two timer tokens (if it is an innocent civilian). Case, surrounding punctuation and a
@@ -189,6 +187,10 @@ class ClueValidator:
 
     Repeating a clue already given in the game is allowed, as in the Duet rules (§8.1), so the
     validator takes no clue history.
+
+    The count is not checked here. ClueEntry requires it to be at least 1 (the platform does not
+    support zero clues, see "Deviations from the Duet rules" in the README), and the rules set no
+    maximum (§14).
 
     Known limitations, accepted on purpose (see "Deviations from the Duet rules" in the README):
         - MorphoLex segments some words by their etymology, so a few legal clues are flagged:

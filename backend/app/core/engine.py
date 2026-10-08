@@ -224,7 +224,7 @@ class CodenamesDuetEngine:
             raise PermissionError(
                 "Only the LLM can guess during SUDDEN_DEATH_LLM phase.")
 
-        if self.state.current_phase in _sd_phases and self.state.agents_remaining[player_id] == 0:
+        if self.state.current_phase in _sd_phases and self.state.pending_words[player_id] == 0:
             raise PermissionError(
                 "The player has already revealed all of their agents and cannot make more guesses.")
 
@@ -374,14 +374,15 @@ class CodenamesDuetEngine:
         card.revealed_by.append(guessed_by)
         self.clue_validator.remove_word(card.text)
 
-        # Update the count of remaining agents for the guessing player (or both if it's a shared agent)
-        self.state.agents_remaining[guessed_by] -= 1
+        # The word stops being pending for the guesser, and also for the giver if it is a shared agent
+        # (green on both sides).
+        self.state.pending_words[guessed_by] -= 1
         if card.llm_perspective_role == card.human_perspective_role == CardRole.AGENT:
-            self.state.agents_remaining[1 - guessed_by] -= 1
+            self.state.pending_words[1 - guessed_by] -= 1
             card.revealed_by.append(1 - guessed_by)
 
         # Check for win condition
-        if self.state.agents_remaining[0] == 0 and self.state.agents_remaining[1] == 0:
+        if self.state.pending_words[0] == 0 and self.state.pending_words[1] == 0:
             in_sd = self.state.current_phase in [
                 GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]
             # The winning turn also spends a token (§10). The rules do not say whether it counts as
@@ -399,7 +400,7 @@ class CodenamesDuetEngine:
         # The turn ends here as a voluntary stop - one token, exactly as pass_turn - and
         # _switch_roles hands every remaining guess to the partner.
         if (self.state.current_phase == GamePhase.GUESSING
-                and self.state.agents_remaining[guessed_by] == 0):
+                and self.state.pending_words[guessed_by] == 0):
             self.pass_turn(guessed_by)
             return "agent_turn_end"
 
@@ -408,9 +409,9 @@ class CodenamesDuetEngine:
         # measurement flag so seat 1's sudden-death confidence ranking is elicited once, at its own
         # pre-first-selection instant (consumed at that seat's SD proposal entry).
         if (self.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
-                and self.state.agents_remaining[0] == 0):
+                and self.state.pending_words[0] == 0):
             self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
-            if self.state.agents_remaining[1] > 0:
+            if self.state.pending_words[1] > 0:
                 self.state.sd_measurement_pending = True
 
         return "agent"
@@ -420,8 +421,9 @@ class CodenamesDuetEngine:
         Finishes the game by setting the game over flag, updating the current phase to GAME_OVER, 
         and storing the result.
 
-        :param result: A string indicating the result of the game ("victory", "loss_assassin", 
-            "loss_civilian", etc.).
+        :param result: A string indicating the result of the game: "victory", "loss_assassin", or a
+            sudden-death ending: "victory_sd", "loss_civilian_sd", "loss_assassin_sd",
+            "loss_stopped_sd".
         """
         self.state.is_game_over = True
         self.state.current_phase = GamePhase.GAME_OVER
@@ -433,14 +435,14 @@ class CodenamesDuetEngine:
         the seat that would guess next has no pending words left, in which case the roles are kept -
         the seat with nothing left to guess gives every remaining clue and the other is always the
         guesser (§6.8). Also resets the current clue and count and updates the turn number. If the
-        timer tokens have run out and there are still agents remaining, transitions to the
+        timer tokens have run out and there are still pending words, transitions to the
         SUDDEN_DEATH phase.
         """
         next_giver, next_guesser = self.state.guesser, self.state.clue_giver
         # Handing the guess to a seat with nothing pending would force it to touch a word that is
         # beige or black on the giver's face (it cannot pass without a guess). Both seats can never
         # be at 0 here: that is a victory, which ends the game without switching roles.
-        if self.state.agents_remaining[next_guesser] == 0:
+        if self.state.pending_words[next_guesser] == 0:
             next_giver, next_guesser = next_guesser, next_giver
         self.state.clue_giver, self.state.guesser = next_giver, next_guesser
         self.state.current_phase = GamePhase.GIVING_CLUE
@@ -451,14 +453,14 @@ class CodenamesDuetEngine:
             self.state.clue_history.append(self.state.current_clue)
         self.state.current_clue = None
 
-        # If the timer tokens have run out and there are still agents remaining, transition to the
-        # sudden death phase - LLM goes first unless they have no agents left. When both seats have
+        # If the timer tokens have run out and there are still pending words, transition to the
+        # sudden death phase - LLM goes first unless it has nothing pending. When both seats have
         # words pending the rules let them guess in any order (§7.3); fixing the order LLM -> human
         # is a deliberate deviation that gives every seat a single sudden-death play: the human may
         # only guess once the LLM has found all its words. A seat that stops before that concedes
         # (concede_sudden_death).
-        if self.state.timer_tokens <= 0 and self._any_agents_remaining():
-            if self.state.agents_remaining[0] == 0:
+        if self.state.timer_tokens <= 0 and self._any_pending_words():
+            if self.state.pending_words[0] == 0:
                 self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
             else:
                 self.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
@@ -467,10 +469,10 @@ class CodenamesDuetEngine:
             # the LLM's sudden-death proposal entry.
             self.state.sd_measurement_pending = True
 
-    def _any_agents_remaining(self) -> bool:
+    def _any_pending_words(self) -> bool:
         """
-        Checks if there are any agents remaining for either player.
+        Checks if either player still has pending words.
 
-        :return: True if there are any agents remaining for either player, False otherwise.
+        :return: True if either player still has words to find, False otherwise.
         """
-        return any(agents > 0 for agents in self.state.agents_remaining)
+        return any(pending > 0 for pending in self.state.pending_words)

@@ -20,7 +20,7 @@ def test_sudden_death_banner_does_not_reveal_how_many_agents_are_left(valid_boar
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
 
     def render(agents_left: int) -> str:
-        engine.state.agents_remaining = [0, agents_left]
+        engine.state.pending_words = [0, agents_left]
         return template.render(state=engine.state, game_id="g", oob=False)
 
     one_left = render(1)

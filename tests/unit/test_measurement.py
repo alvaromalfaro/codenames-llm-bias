@@ -57,7 +57,7 @@ def _state_snapshot(state: GameState) -> dict:
         "guesser": state.guesser,
         "turn_number": state.turn_number,
         "timer_tokens": state.timer_tokens,
-        "agents_remaining": list(state.agents_remaining),
+        "pending_words": list(state.pending_words),
         "is_game_over": state.is_game_over,
         "result": state.result,
         "clue_history_len": len(state.clue_history),
@@ -511,7 +511,7 @@ def test_seat1_sd_builders_use_seat1_reveals(valid_board_data):
     board = Board(**valid_board_data)
     engine = CodenamesDuetEngine(board)
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
-    engine.state.agents_remaining = [3, 5]
+    engine.state.pending_words = [3, 5]
     cards = engine.state.board.cards
     _mark_discriminating_cards(cards)
 
@@ -542,7 +542,7 @@ def test_sd_prompts_do_not_reveal_how_many_agents_are_left(valid_board_data, sea
     svc = LLMService()
 
     def render(agents_left: int) -> list[str]:
-        engine.state.agents_remaining = [agents_left, agents_left]
+        engine.state.pending_words = [agents_left, agents_left]
         guess = svc._build_guess_sd_request(engine.state, "m", player_id=seat)
         meas = svc._build_measurement_sd_request(engine.state, "m", player_id=seat)
         return [m.content for m in guess.messages + meas.messages]
@@ -560,7 +560,7 @@ def test_both_seats_reach_sudden_death_hold_both_rankings(valid_board_data):
     SUDDEN_DEATH_HUMAN handoff, and rankings_by_seat carries both."""
     engine = CodenamesDuetEngine(Board(**valid_board_data))
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
-    engine.state.agents_remaining = [1, 1]
+    engine.state.pending_words = [1, 1]
     engine.state.sd_measurement_pending = True
 
     r0 = ConfidenceRanking(
@@ -570,7 +570,7 @@ def test_both_seats_reach_sudden_death_hold_both_rankings(valid_board_data):
 
     # Seat 0 reveals its last SD agent (CAVE id 5: human=AGENT, llm=CIVILIAN -> seat-0-only).
     assert engine.resolve_guess(5, player_id=0) == "agent"
-    assert engine.state.agents_remaining[0] == 0
+    assert engine.state.pending_words[0] == 0
     assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
     # Re-armed at the handoff so seat 1 is measured at its own pre-first-selection instant.
     assert engine.state.sd_measurement_pending is True

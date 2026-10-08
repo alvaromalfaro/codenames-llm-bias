@@ -25,7 +25,7 @@ def test_engine_initialization(valid_board_data: dict):
     assert engine.state.clue_giver in [0, 1]
     assert engine.state.guesser in [0, 1]
     assert engine.state.clue_giver != engine.state.guesser
-    assert engine.state.agents_remaining == [9, 9]
+    assert engine.state.pending_words == [9, 9]
 
 
 def test_engine_receive_clue(valid_board_data: dict):
@@ -268,7 +268,7 @@ def test_engine_invalid_clue_on_the_last_token_starts_sudden_death(
     # The LLM gives the clue: with nothing pending it gives every clue (§6.8).
     engine.state.clue_giver = LLM
     engine.state.guesser = HUMAN
-    engine.state.agents_remaining = [llm_pending, 2]
+    engine.state.pending_words = [llm_pending, 2]
     engine.state.timer_tokens = 1
     engine.state.check_tokens = 8
     turn_before = engine.state.turn_number
@@ -336,8 +336,8 @@ def test_engine_resolve_guess_normal_agent(valid_board_data: dict):
     assert engine.state.board.cards[4].revealed is True
     assert 1 in engine.state.board.cards[4].revealed_by
     # Agent count for player 1 should decrease by 1
-    assert engine.state.agents_remaining[1] == 8
-    assert engine.state.agents_remaining[0] == 9
+    assert engine.state.pending_words[1] == 8
+    assert engine.state.pending_words[0] == 9
     # Should still be guessing phase after a correct guess
     assert engine.state.current_phase == GamePhase.GUESSING
 
@@ -363,8 +363,8 @@ def test_engine_resolve_guess_shared_agent(valid_board_data: dict):
     assert engine.state.board.cards[1].revealed is True
     assert 1 in engine.state.board.cards[1].revealed_by
     # Agent count for both players should decrease by 1 since it's a shared agent
-    assert engine.state.agents_remaining[0] == 8
-    assert engine.state.agents_remaining[1] == 8
+    assert engine.state.pending_words[0] == 8
+    assert engine.state.pending_words[1] == 8
     # Should still be guessing phase after a correct guess
     assert engine.state.current_phase == GamePhase.GUESSING
 
@@ -395,8 +395,8 @@ def test_engine_resolve_guess_victory(valid_board_data: dict):
     engine.state.board.cards[1].revealed_by = []
 
     # Set remaining agents to 1 for testing victory condition
-    engine.state.agents_remaining[1] = 1
-    engine.state.agents_remaining[0] = 1
+    engine.state.pending_words[1] = 1
+    engine.state.pending_words[0] = 1
 
     result = engine.resolve_guess(card_id=1, player_id=1)
 
@@ -556,7 +556,7 @@ def test_engine_resolve_guess_invalid_inputs(valid_board_data: dict, modificatio
             engine.resolve_guess(card_id=0, player_id=1)
     elif modification == "sudden_death_no_agents_left":
         engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
-        engine.state.agents_remaining[1] = 0  # No agents left for the guesser
+        engine.state.pending_words[1] = 0  # No agents left for the guesser
         with pytest.raises(PermissionError, match=expected_error):
             engine.resolve_guess(card_id=0, player_id=1)
 
@@ -687,9 +687,9 @@ def test_engine_resolve_guess_sudden_death(valid_board_data: dict):
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
     engine.state.timer_tokens = 0
     # Only one agent left for the guesser
-    engine.state.agents_remaining[1] = 1
+    engine.state.pending_words[1] = 1
     # Only one agent left for the LLM
-    engine.state.agents_remaining[0] = 1
+    engine.state.pending_words[0] = 1
 
     # Guess the last agent card correctly (card 1 is a shared agent, so both drop to 0 → victory)
     result = engine.resolve_guess(card_id=1, player_id=1)
@@ -722,9 +722,9 @@ def test_engine_resolve_guess_sudden_death_loss_civilian(valid_board_data: dict,
 
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
     # Only one agent left for the guesser
-    engine.state.agents_remaining[1] = 1
+    engine.state.pending_words[1] = 1
     # Only one agent left for the LLM
-    engine.state.agents_remaining[0] = 1
+    engine.state.pending_words[0] = 1
 
     if modification == "guess_assassin":
         # Guess the assassin card
@@ -749,13 +749,13 @@ def test_engine_sudden_death_llm_to_human_transition(valid_board_data: dict):
     engine = CodenamesDuetEngine(board=board)
 
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
-    engine.state.agents_remaining[0] = 1   # LLM has one agent left
-    engine.state.agents_remaining[1] = 3   # human still has agents
+    engine.state.pending_words[0] = 1   # LLM has one agent left
+    engine.state.pending_words[1] = 3   # human still has agents
 
     result = engine.resolve_guess(card_id=2, player_id=0)
 
     assert result == "agent"
-    assert engine.state.agents_remaining[0] == 0
+    assert engine.state.pending_words[0] == 0
     assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
 
 
@@ -771,8 +771,8 @@ def test_engine_sudden_death_skip_human_if_done(valid_board_data: dict):
     engine.state.guesser = 1
     engine.state.current_phase = GamePhase.GUESSING
     engine.state.timer_tokens = 1
-    engine.state.agents_remaining[1] = 0   # human already done
-    engine.state.agents_remaining[0] = 3   # LLM still has agents
+    engine.state.pending_words[1] = 0   # human already done
+    engine.state.pending_words[0] = 3   # LLM still has agents
 
     # Guess a civilian to drain the last timer token and trigger _switch_roles
     # ensure card 16 is clean
@@ -802,16 +802,16 @@ def test_engine_concede_sudden_death_ends_the_game_as_a_loss(
     :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
     :param player_id: The seat guessing in sudden death.
     :param phase: That seat's sudden-death phase.
-    :param agents: agents_remaining when sudden death starts.
+    :param agents: pending_words when sudden death starts.
     :param card_id: One of this seat's words, found before it stops.
-    :param agents_after: agents_remaining after that hit.
+    :param agents_after: pending_words after that hit.
     """
     board = Board(**valid_board_data)
     engine = CodenamesDuetEngine(board=board)
 
     engine.state.current_phase = phase
     engine.state.timer_tokens = 0
-    engine.state.agents_remaining = agents
+    engine.state.pending_words = agents
 
     assert engine.resolve_guess(card_id=card_id, player_id=player_id) == "agent"
     assert engine.state.current_phase == phase
@@ -821,7 +821,7 @@ def test_engine_concede_sudden_death_ends_the_game_as_a_loss(
     assert engine.state.is_game_over is True
     assert engine.state.result == "loss_stopped_sd"
     # Conceding touches no card and spends nothing.
-    assert engine.state.agents_remaining == agents_after
+    assert engine.state.pending_words == agents_after
     assert engine.state.timer_tokens == 0
     assert [c.id for c in engine.state.board.cards if c.revealed] == [card_id]
 
@@ -977,7 +977,7 @@ def test_engine_seat_without_pending_words_gives_every_remaining_clue(valid_boar
     for card_id in LLM_GREENS[:-1]:
         assert engine.resolve_guess(card_id=card_id, player_id=HUMAN) == "agent"
     assert engine.resolve_guess(card_id=LLM_GREENS[-1], player_id=HUMAN) == "agent_turn_end"
-    assert engine.state.agents_remaining == [6, 0]
+    assert engine.state.pending_words == [6, 0]
 
     # Turn 2: the LLM still has pending words, so the roles alternate as usual.
     assert (engine.state.clue_giver, engine.state.guesser) == (HUMAN, LLM)
@@ -994,7 +994,7 @@ def test_engine_seat_without_pending_words_gives_every_remaining_clue(valid_boar
 
     # The last token is gone: sudden death for the only seat with pending words.
     assert engine.state.timer_tokens == 0
-    assert engine.state.agents_remaining == [5, 0]
+    assert engine.state.pending_words == [5, 0]
     assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
 
 
@@ -1031,8 +1031,8 @@ def test_engine_seat_can_run_out_of_pending_words_on_the_partners_turn(valid_boa
     engine.receive_clue("ocean", 3, exhausted)
     for card_id in SHARED_GREENS:
         assert engine.resolve_guess(card_id=card_id, player_id=other) == "agent"
-    assert engine.state.agents_remaining[exhausted] == 0
-    assert engine.state.agents_remaining[other] == 6
+    assert engine.state.pending_words[exhausted] == 0
+    assert engine.state.pending_words[other] == 6
     engine.pass_turn(other)
 
     # Turn 3: the seat with nothing pending gives the clue again instead of guessing.
@@ -1073,7 +1073,7 @@ def test_engine_turn_ends_when_the_guesser_covers_its_last_pending_word(valid_bo
     assert engine.state.current_phase == GamePhase.GUESSING
 
     assert engine.resolve_guess(card_id=RUSSIA, player_id=HUMAN) == "agent_turn_end"
-    assert engine.state.agents_remaining == [6, 0]
+    assert engine.state.pending_words == [6, 0]
 
     # Closed exactly like pass_turn: one token, clue archived, next turn with the LLM guessing.
     assert engine.state.timer_tokens == 8
@@ -1114,8 +1114,8 @@ def test_engine_last_pending_word_on_the_last_token_starts_sudden_death(
     engine.state.guesser = exhausted
     engine.state.current_phase = GamePhase.GUESSING
     engine.state.timer_tokens = 1
-    engine.state.agents_remaining[exhausted] = 1
-    engine.state.agents_remaining[other] = 3
+    engine.state.pending_words[exhausted] = 1
+    engine.state.pending_words[other] = 3
 
     assert engine.resolve_guess(card_id=last_word, player_id=exhausted) == "agent_turn_end"
     assert engine.state.timer_tokens == 0
@@ -1176,6 +1176,89 @@ def test_engine_tokens_add_up_to_nine_through_a_won_game(valid_board_data: dict)
         assert engine.resolve_guess(card_id=card_id, player_id=LLM) == "agent"
     assert engine.resolve_guess(card_id=HUMAN_ONLY_GREENS[-1], player_id=LLM) == "victory"
     assert tokens() == (5, 1, 3, 0)
+
+
+def test_engine_pending_words_always_match_the_board(valid_board_data: dict):
+    """
+    pending_words is a counter kept apart from the board, so it must always say what the board says
+    (§2): pending_words[p] is the number of words green on the OTHER seat's side and not covered by
+    an agent card. A game that goes through every case that moves it - a shared agent, a word
+    under a time token that stays pending and is found later, the stop forced by the last pending
+    word (§6.8), the roles kept for the seat with nothing left, and sudden death up to the win -
+    checks the counter against the board after every play.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    """
+    LLM, HUMAN = 0, 1
+    board = Board(**valid_board_data)
+    engine = CodenamesDuetEngine(board=board)
+    engine.state.clue_giver = LLM
+    engine.state.guesser = HUMAN
+
+    def pending() -> list[int]:
+        """The counter, after checking it against the words the board still has pending."""
+        def side(card, seat):
+            return card.llm_perspective_role if seat == LLM else card.human_perspective_role
+
+        on_board = [sum(1 for card in engine.state.board.cards
+                        if side(card, 1 - seat) == CardRole.AGENT and not card.revealed)
+                    for seat in (LLM, HUMAN)]
+        assert engine.state.pending_words == on_board
+        return on_board
+
+    # Turn 1: the human finds BRICK (shared: pending for both) and RUSSIA, then touches CAVE, which
+    # is beige for the LLM: a time token, and CAVE stays pending for the LLM (green for the human).
+    engine.receive_clue("battle", 2, LLM)
+    assert engine.resolve_guess(card_id=1, player_id=HUMAN) == "agent"
+    assert pending() == [8, 8]
+    assert engine.resolve_guess(card_id=4, player_id=HUMAN) == "agent"
+    assert pending() == [8, 7]
+    assert engine.resolve_guess(card_id=5, player_id=HUMAN) == "civilian"
+    assert pending() == [8, 7]
+
+    # Turn 2: the LLM finds CAVE under the human's token, then TATTOO (shared), and stops.
+    engine.receive_clue("insect", 2, HUMAN)
+    assert engine.resolve_guess(card_id=5, player_id=LLM) == "agent"
+    assert pending() == [7, 7]
+    assert engine.resolve_guess(card_id=8, player_id=LLM) == "agent"
+    assert pending() == [6, 6]
+    engine.pass_turn(LLM)
+
+    # Turn 3: the human finds its last six words; the last one ends the turn as a stop (§6.8).
+    engine.receive_clue("battle", 6, LLM)
+    for card_id in (11, 12, 15, 17, 19):
+        assert engine.resolve_guess(card_id=card_id, player_id=HUMAN) == "agent"
+        pending()
+    assert engine.resolve_guess(card_id=24, player_id=HUMAN) == "agent_turn_end"
+    assert pending() == [5, 0]
+
+    # Turns 4 to 9: the human has nothing left, so it gives every clue (§6.8). The LLM finds ANT
+    # (black on its side, green on the human's) and RANCH, and loses a token on each miss.
+    engine.receive_clue("insect", 1, HUMAN)
+    assert engine.resolve_guess(card_id=2, player_id=LLM) == "agent"
+    assert pending() == [4, 0]
+    assert engine.resolve_guess(card_id=0, player_id=LLM) == "civilian"
+    assert (engine.state.clue_giver, engine.state.guesser) == (HUMAN, LLM)
+
+    engine.receive_clue("insect", 1, HUMAN)
+    assert engine.resolve_guess(card_id=9, player_id=LLM) == "agent"
+    assert pending() == [3, 0]
+    engine.pass_turn(LLM)
+
+    for bystander in (6, 7, 13, 18):  # FIDDLE, VAMPIRE, IGLOO, GOLF: beige on the human's side
+        engine.receive_clue("insect", 1, HUMAN)
+        assert engine.resolve_guess(card_id=bystander, player_id=LLM) == "civilian"
+        assert pending() == [3, 0]
+
+    # Sudden death: the reserve is empty and the LLM still has 3 words. It finds them and wins.
+    assert engine.state.timer_tokens == 0
+    assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
+    assert engine.resolve_guess(card_id=16, player_id=LLM) == "agent"
+    assert pending() == [2, 0]
+    assert engine.resolve_guess(card_id=20, player_id=LLM) == "agent"
+    assert pending() == [1, 0]
+    assert engine.resolve_guess(card_id=21, player_id=LLM) == "victory_sd"
+    assert pending() == [0, 0]
 
 
 def test_engine_seeded_rng_is_deterministic(valid_board_data: dict):
