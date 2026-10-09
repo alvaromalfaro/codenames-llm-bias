@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 from typing import TYPE_CHECKING, Optional
 from backend.app import config
 from backend.app.core.llm.client import LLMClient
@@ -8,6 +9,16 @@ from backend.app.models.game_schemas import GameState, GamePhase, CardRole, Conf
 
 if TYPE_CHECKING:
     from backend.app.core.engine import CodenamesDuetEngine
+
+logger = logging.getLogger(__name__)
+
+
+def text_digest(text: str) -> str:
+    """A short, stable id for a prompt text: the first 12 hex digits of its SHA-256. The call log
+    names the constant messages of a request (system prompt, one-shot example) by this id instead of
+    repeating them; whoever configures the log can print each template once with the same id."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
 
 # The seat allowed to guess in each sudden-death phase, mirroring the engine's own invariant
 # (resolve_guess raises unless seat 1 acts in SUDDEN_DEATH_HUMAN / seat 0 in SUDDEN_DEATH_LLM).
@@ -145,6 +156,47 @@ class LLMService:
             raw_payload=response.raw_payload,
         )
 
+    @staticmethod
+    async def _generate(llm_client: LLMClient, request: LLMRequest, expected_format,
+                        role: str, player_id: int) -> LLMResponse:
+        """
+        Sends one request and logs the exchange: every model call of the game goes through here.
+
+        DEBUG records what was sent and what came back: the constant messages (system prompt,
+        one-shot example) by their ``text_digest``, the last message - the rendered game state - in
+        full, then the raw response text and its telemetry. A call that fails is logged as an error
+        before the exception propagates.
+
+        :param llm_client: The client to send the request with.
+        :param request: The request to send.
+        :param expected_format: The response schema the client validates against.
+        :param role: What the call is for ("clue_giver", "guesser", "measurement", ...).
+        :param player_id: The seat making the call.
+
+        :return: The client's response.
+        """
+        *constant, last = request.messages
+        logger.debug(
+            "llm request role=%s seat=%s model=%s seed=%s temperature=%s constant_messages=[%s]\n"
+            "--- %s message ---\n%s\n--- end of message ---",
+            role, player_id, request.model, request.seed, request.temperature,
+            ", ".join(f"{m.role}:{text_digest(m.content)}" for m in constant), last.role,
+            last.content)
+        try:
+            response = await llm_client.generate(request, expected_format=expected_format)
+        except Exception:
+            logger.error("llm call failed role=%s seat=%s model=%s seed=%s",
+                         role, player_id, request.model, request.seed, exc_info=True)
+            raise
+        usage = response.usage
+        logger.debug(
+            "llm response role=%s seat=%s model=%s latency_ms=%s prompt_tokens=%s "
+            "completion_tokens=%s finish_reason=%s\n--- response ---\n%s\n--- end of response ---",
+            role, player_id, response.model_used, response.latency_ms,
+            usage.prompt_tokens if usage else None, usage.completion_tokens if usage else None,
+            response.finish_reason, response.text)
+        return response
+
     async def propose_clue(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> ClueProposal:
         """
         Proposes a clue for the current game state. This method checks that the game is in the 
@@ -171,7 +223,8 @@ class LLMService:
         request = self._build_clue_request(
             game_state, llm_client.model_name, player_id, seed=seed)
 
-        response = await llm_client.generate(request, expected_format=ClueJSONFormat)
+        response = await self._generate(
+            llm_client, request, ClueJSONFormat, "clue_giver", player_id)
         proposal = self._build_clue_proposal(response)
         proposal.llm_calls = [self._call_record(request, response, "clue_giver")]
 
@@ -207,7 +260,8 @@ class LLMService:
             game_state, llm_client.model_name, player_id, seed=seed)
 
         # Send the request to the LLM client and get the response.
-        response = await llm_client.generate(request, expected_format=GuessJSONFormat)
+        response = await self._generate(
+            llm_client, request, GuessJSONFormat, "guesser", player_id)
 
         # Process the response and convert it into a GuessProposal.
         guess_proposal = self._build_guess_proposal(response)
@@ -232,7 +286,8 @@ class LLMService:
 
         request = self._build_guess_sd_request(
             game_state, llm_client.model_name, player_id, seed=seed)
-        response = await llm_client.generate(request, expected_format=GuessJSONFormat)
+        response = await self._generate(
+            llm_client, request, GuessJSONFormat, "guesser_sd", player_id)
         guess_proposal = self._build_guess_proposal(response)
         guess_proposal.llm_call = self._call_record(
             request, response, "guesser_sd")
@@ -263,7 +318,8 @@ class LLMService:
 
         request = self._build_measurement_request(
             game_state, llm_client.model_name, player_id, seed=seed)
-        response = await llm_client.generate(request, expected_format=ConfidenceRankingJSONFormat)
+        response = await self._generate(
+            llm_client, request, ConfidenceRankingJSONFormat, "measurement", player_id)
         ranking = self._build_confidence_ranking(response)
         ranking.llm_call = self._call_record(request, response, "measurement")
         return ranking
@@ -285,7 +341,8 @@ class LLMService:
 
         request = self._build_measurement_sd_request(
             game_state, llm_client.model_name, player_id, seed=seed)
-        response = await llm_client.generate(request, expected_format=ConfidenceRankingJSONFormat)
+        response = await self._generate(
+            llm_client, request, ConfidenceRankingJSONFormat, "measurement_sd", player_id)
         ranking = self._build_confidence_ranking(response)
         ranking.llm_call = self._call_record(
             request, response, "measurement_sd")
@@ -356,9 +413,6 @@ class LLMService:
                 board["revealed"]) or "No words revealed yet."
         )
 
-        print("DEBUG: User prompt for clue proposal:\n" +
-              user_prompt)  # Debug print for the user prompt
-
         # Build the list of messages for the LLM request
         messages = [LLMMessage(role="system", content=self._system_prompt_cg)]
         if self._one_shot_user_cg and self._one_shot_assistant_cg:
@@ -395,9 +449,8 @@ class LLMService:
             raise ValueError(
                 "LLM response is not valid JSON. Response content: " + response_content)
 
-        print(
-            f"DEBUG: Extracted clue proposal - Clue: '{clue}', Count: {count}, "
-            f"Reasoning: '{reasoning}', Targets: {targets}")
+        logger.info("clue proposal: clue=%r count=%s targets=%s reasoning=%r",
+                    clue, count, targets, reasoning)
 
         return ClueProposal(clue=clue.strip(), count=count, reasoning=reasoning.strip(),
                             targets=targets, raw_payload=response.raw_payload)
@@ -438,9 +491,6 @@ class LLMService:
             own_key=self._format_own_key(game_state, player_id),
             words_remaining=words_remaining
         )
-
-        print("DEBUG: User prompt for guess proposal:\n" +
-              user_prompt)  # Debug print for the user prompt
 
         # Build the list of messages for the LLM request
         messages = [LLMMessage(role="system", content=self._system_prompt_gg)]
@@ -483,8 +533,6 @@ class LLMService:
             words_remaining=words_remaining,
         )
 
-        print("DEBUG: User prompt for sudden death guess:\n" + user_prompt)
-
         messages = [LLMMessage(
             role="system", content=self._system_prompt_sd_gg)]
         messages.append(LLMMessage(role="user", content=user_prompt))
@@ -516,8 +564,9 @@ class LLMService:
         proposals = [proposal.get("word", "").strip()
                      for proposal in proposals]
 
-        print(
-            f"DEBUG: Extracted guess proposals - {proposals} with confidence scores {confidence}. Reasoning: '{reasoning}'. Stop reason: '{stop_reason}'")
+        logger.info("guess proposal: [%s] reasoning=%r stop_reason=%r",
+                    ", ".join(f"{word} ({conf})" for word, conf in zip(proposals, confidence)),
+                    reasoning, stop_reason)
 
         return GuessProposal(
             proposals=proposals, confidence=confidence, reasoning=reasoning.strip(),
@@ -628,8 +677,8 @@ class LLMService:
             confidence = max(0.0, min(1.0, float(item.get("confidence", 0.0))))
             ranked.append(RankedCard(word=word, confidence=confidence))
 
-        print(
-            f"DEBUG: Extracted confidence ranking - {ranked}. Reasoning: '{reasoning}'")
+        logger.debug("confidence ranking: [%s] reasoning=%r",
+                     ", ".join(f"{item.word} ({item.confidence})" for item in ranked), reasoning)
 
         return ConfidenceRanking(
             reasoning=reasoning.strip(), rankings=ranked, raw_payload=response.raw_payload)

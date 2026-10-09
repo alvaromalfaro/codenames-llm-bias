@@ -28,15 +28,16 @@ Computer Science at the **University of Castilla-La Mancha**.
 7. [The experiment](#the-experiment)
 8. [Deviations from the Duet rules](#deviations-from-the-duet-rules)
 9. [Running the batch unattended](#running-the-batch-unattended)
-10. [Post-batch embedding backfill](#post-batch-embedding-backfill)
-11. [Analysis scripts](#analysis-scripts)
-12. [Reproducing the shipped results](#reproducing-the-shipped-results)
-13. [Data model](#data-model)
-14. [Interactive UI](#interactive-ui)
-15. [Development](#development)
-16. [Related documentation](#related-documentation)
-17. [About](#about)
-18. [License](#license)
+10. [Test games with a full log](#test-games-with-a-full-log)
+11. [Post-batch embedding backfill](#post-batch-embedding-backfill)
+12. [Analysis scripts](#analysis-scripts)
+13. [Reproducing the shipped results](#reproducing-the-shipped-results)
+14. [Data model](#data-model)
+15. [Interactive UI](#interactive-ui)
+16. [Development](#development)
+17. [Related documentation](#related-documentation)
+18. [About](#about)
+19. [License](#license)
 
 ---
 
@@ -102,8 +103,8 @@ codenames-llm-bias/
 │   ├── boards/                the board bank + measurement_frame.json + balance_report.json
 │   ├── morpholex/             MorphoLex-en word segmentations for the clue validator (CC BY-NC-SA)
 │   └── prompt_templates/      system / user / one-shot templates, incl. the measurement prompts
-├── scripts/                   batch orchestrator CLI, analysis CLIs, embedding backfill,
-│                              MorphoLex TSV build
+├── scripts/                   batch orchestrator CLI, test games with a full log, analysis CLIs,
+│                              embedding backfill, MorphoLex TSV build
 ├── tests/unit/                platform test suite (DB-backed tests gated on DATABASE_URL)
 ├── docker-compose.yml         db (pgvector) + ollama + app (FastAPI)
 ├── docker-compose.gpu.yml     optional override: reserves an NVIDIA GPU for ollama
@@ -490,6 +491,53 @@ print(delete_run("<run_id>"))    # DeleteRunResult(found=True, games_deleted=192
 `delete_run` cascades through every game, seat, turn, clue, target, LLM call, proposal, item and
 reveal beneath the run. Shared ingest data (`board`, `word_card`, `measurement_frame`) is not
 run-owned and is never touched. It is idempotent — deleting an absent run is a no-op.
+
+---
+
+## Test games with a full log
+
+`scripts/play_games.py` plays any number of games between two models (or one model against itself)
+and writes everything that happens to `logs/games_<timestamp>.log`. It uses the same driver as the
+batch, `run_single_game`, without a database. It is meant for finding errors before a batch.
+
+```sh
+python scripts/play_games.py --model-a ollama:llama3.1:8b --model-b ollama:qwen2.5:14b --games 4
+python scripts/play_games.py --model-a ollama:llama3.1:8b --games 2 --board-type control
+```
+
+The log holds:
+
+* **The run:** the git commit and uncommitted changes, the Ollama version, and each model's digest
+  checked against `EXPECTED_LOCAL_DIGESTS`. Also the seeds, and every prompt template in full, with
+  the id the call log uses for it.
+* **Each game:** the board with both sides of the key card, then every event in order:
+  * each model call: the rendered prompt and the raw response, with latency and tokens;
+  * each clue, and whether it is valid;
+  * each guess, with what the card is on both sides;
+  * skipped proposals and discarded draws;
+  * stops, turn changes, sudden death and the end of the game.
+* **After every turn:** the state, and a check of the game's invariants. A broken invariant is
+  logged as an `ERROR`. The checks are:
+  * the 9 tokens add up;
+  * `pending_words` matches the board;
+  * the clue validator's visible words are the uncovered ones;
+  * every time token sits on a word that was beige for the clue giver;
+  * the phase fits the reserve and the pending words.
+* **At the end:** the final board and the clues of each game, and a summary of every warning and
+  error, game by game.
+
+The console shows only the progress and the summary. The exit code is 1 if a game ended in error or
+broke an invariant. `--master-seed` replays a run; the default seed comes from the clock and is
+logged.
+
+**Ollama without Docker.** A native Ollama can serve the models that the `ollama` container already
+pulled, without downloading them again. On Windows, after quitting the tray app:
+
+```powershell
+$env:OLLAMA_MODELS = (Resolve-Path docker_volumes\ollama_data\models).Path
+$env:OLLAMA_NOPRUNE = "1"   # never delete files from the shared model directory
+ollama serve
+```
 
 ---
 

@@ -16,3 +16,6 @@ uv.lock
 
 # database files
 docker_volumes/
+
+# game logs written by scripts/play_games.py, and the local Ollama server's logs
+logs/

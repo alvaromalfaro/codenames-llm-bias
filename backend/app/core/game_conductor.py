@@ -44,9 +44,6 @@ async def conduct_clue(service, client, engine, recorder, *, player_id: int,
     # Record the clue with its model call from the proposal.
     recorder.record_clue(clue_entry, proposal=proposal)
 
-    print(
-        f"LLM proposed clue: {proposal.clue} ({proposal.count}) with reasoning: {proposal.reasoning}")
-
     return clue_entry
 
 
@@ -74,8 +71,9 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
     try:
         await service.measure_and_attach_confidence_ranking(
             client, engine, player_id=player_id, seed=measurement_seed)
-    except (ValueError, PermissionError) as e:
-        print(f"Error during LLM confidence-ranking measurement: {str(e)}")
+    except (ValueError, PermissionError):
+        logger.error("confidence-ranking measurement failed (seat %s); the game goes on",
+                     player_id, exc_info=True)
 
     # Record the measurement (no-op if it failed above).
     recorder.record_measurement(engine.state.current_clue.confidence_ranking)
@@ -85,6 +83,7 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
         card_id = engine.state.board.get_card_id_by_word(word)
         if card_id is None:
             # LLM hallucinated a word not on the board
+            logger.warning("Skipping guess %r (seat %s): not a word on the board", word, player_id)
             continue
 
         try:
@@ -111,8 +110,6 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
         )
         flush(engine, recorder)
 
-        print(f"LLM proposed guess: {word}")
-
         card = engine.state.board.get_card_by_id(card_id)
         if on_reveal is not None:
             on_reveal(card_id, result, card)
@@ -129,6 +126,9 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
         # is a state the rules do not contemplate (a model that produced no playable card). Let the
         # error propagate to the caller's boundary (headless: flush status='error'; web: 400) rather
         # than swallow it, which would leave the phase at GUESSING and spin the driver.
+        if engine.state.guesses_made_this_turn == 0:
+            logger.error("seat %s proposed no playable card this turn, and a turn needs at least one "
+                         "guess (§6.5)", player_id)
         engine.pass_turn(player_id)
 
     return reveals
@@ -161,9 +161,9 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
         try:
             await service.measure_and_attach_confidence_ranking_sd(
                 client, engine, player_id=player_id, seed=measurement_seed)
-        except (ValueError, PermissionError) as e:
-            print(
-                f"Error during LLM sudden-death confidence-ranking measurement: {str(e)}")
+        except (ValueError, PermissionError):
+            logger.error("sudden-death confidence-ranking measurement failed (seat %s); the game "
+                         "goes on", player_id, exc_info=True)
 
     # Record the SD measurement (no-op if it failed or was already taken this game). Read the
     # authoritative per-seat store; for seat 0 this is the same object as the scalar mirror.
@@ -174,8 +174,8 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
 
     try:
         proposal = await service.propose_guess_sd(client, engine.state, player_id=player_id, seed=seed)
-    except (ValueError, PermissionError) as e:
-        print(f"Error during LLM sudden death guess proposal: {str(e)}")
+    except (ValueError, PermissionError):
+        logger.error("sudden-death guess proposal failed (seat %s)", player_id, exc_info=True)
         raise
 
     # Record the SD play proposal (kind='play') on the sudden-death turn.
@@ -186,6 +186,8 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
     for idx, word in enumerate(proposal.proposals):
         card_id = engine.state.board.get_card_id_by_word(word)
         if card_id is None:
+            logger.warning("Skipping SD guess %r (seat %s): not a word on the board",
+                           word, player_id)
             continue
 
         try:
@@ -207,8 +209,6 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
             acting_seat=player_id,
         )
         flush(engine, recorder)
-
-        print(f"LLM sudden death guess: {word}")
 
         card = engine.state.board.get_card_by_id(card_id)
         if on_reveal is not None:

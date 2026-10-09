@@ -1,8 +1,11 @@
 import json
+import logging
 import re
 from pathlib import Path
 from typing import List
 from backend.app.models.game_schemas import Board
+
+logger = logging.getLogger(__name__)
 
 
 class BoardLoader:
@@ -65,6 +68,6 @@ class BoardLoader:
                 if board.category not in boards:
                     boards[board.category] = []
                 boards[board.category].append(board)
-            except Exception as e:
-                print(f"Error loading board from '{file_path}': {e}")
+            except Exception:
+                logger.error("Error loading board from '%s'", file_path, exc_info=True)
         return boards

@@ -198,6 +198,7 @@ def _db_enabled() -> bool:
 
 
 ClientFactory = Callable[[int, SeatSpec], LLMClient]
+DispatchHook = Callable[[CodenamesDuetEngine, GameRecorder], None]
 
 
 # run minting (identity + provenance + gate)
@@ -289,7 +290,8 @@ async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
 async def run_single_game(*, board: Board, seat_specs, master_seed: int, temperature: float,
                           run_id: Optional[str] = None, game_index: int = 0, persist: bool = True,
                           client_factory: ClientFactory = _default_client_factory,
-                          enforce_digests: bool = False) -> GameRunResult:
+                          enforce_digests: bool = False,
+                          on_dispatch: Optional[DispatchHook] = None) -> GameRunResult:
     """Play ONE complete LLM-vs-LLM Codenames Duet game and persist it.
 
     Game identity is deterministic in ``master_seed + game_index`` only (see ``_game_identity``);
@@ -313,8 +315,12 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
             a record-only witness (interactive parity). True (the batch path) compares each local 
             seat's served ollama digest against ``config.EXPECTED_LOCAL_DIGESTS`` at run-row creation
             and ABORTS (``ModelDigestMismatchError``) on a mismatch / unavailable digest, before the
-            run row exists and before any game is dispatched. Only meaningful when this call mints 
+            run row exists and before any game is dispatched. Only meaningful when this call mints
             the run row (``run_id`` is None); games 1..N-1 reuse the vetted run.
+        on_dispatch: optional observer, called with the engine and the recorder before the first
+            dispatch and after every dispatch, so a caller can log the state or check it. It must
+            not change them, and it must not raise: an exception it raises ends the game as an
+            error.
     """
     # temperature must be explicit; do not fall back to any default.
     if temperature is None:
@@ -383,6 +389,8 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
             writer.persist_game(rec, status="completed")
 
     try:
+        if on_dispatch is not None:
+            on_dispatch(engine, recorder)
         dispatches = 0
         while not engine.state.is_game_over:
             if dispatches >= _MAX_DISPATCHES:
@@ -390,6 +398,8 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
                     f"Game {game_id} exceeded {_MAX_DISPATCHES} dispatches without terminating.")
             dispatches += 1
             await _dispatch_phase(svc, clients, engine, recorder, seed_game, _flush_if_over)
+            if on_dispatch is not None:
+                on_dispatch(engine, recorder)
 
         # Defensive terminal flush: the conductor's per-reveal flush already fired at game-over, but
         # re-asserting here (idempotent) guarantees persistence even for terminal transitions that do

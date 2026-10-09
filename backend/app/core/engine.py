@@ -1,4 +1,5 @@
 from typing import Optional
+import logging
 import uuid
 import random
 from pydantic import ValidationError
@@ -7,6 +8,8 @@ from backend.app.models.game_schemas import (
     ConfidenceRanking, SuddenDeathEntry,
 )
 from backend.app.core.clue_validator import ClueValidator
+
+logger = logging.getLogger(__name__)
 
 # The sudden-death phase in which each seat (0 = LLM, 1 = human) is the one guessing.
 _SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM,
@@ -44,6 +47,14 @@ class CodenamesDuetEngine:
             guesser=1 - start_player
         )
         self.clue_validator = ClueValidator(board.cards)
+        logger.info("new game %s on board %s: seat %s gives the first clue",
+                    self.state.game_id, board.board_id, start_player)
+
+    def _tokens(self) -> str:
+        """The timer tokens, for the log: the reserve and where the spent ones went."""
+        s = self.state
+        return (f"reserve={s.timer_tokens} bystander={s.bystander_tokens} check={s.check_tokens} "
+                f"penalty={s.penalty_tokens}")
 
     def receive_clue(self, clue: str, count: int, player_id: int, raw_payload: Optional[dict] = None,
                      targets: Optional[list[str]] = None) -> ClueEntry:
@@ -97,6 +108,9 @@ class CodenamesDuetEngine:
         valid, reason = self.clue_validator.is_valid(clue_entry)
         if not valid:
             clue_entry.invalid_reason = reason
+        logger.info("turn %s: seat %s gives the clue %r for %s (targets %s)%s",
+                    self.state.turn_number, player_id, clue_entry.clue, count, targets,
+                    "" if valid else f" - INVALID: {reason}")
 
         # Store the clue
         self.state.current_clue = clue_entry
@@ -110,6 +124,7 @@ class CodenamesDuetEngine:
             # spends when it ends.
             self.state.timer_tokens -= 1
             self.state.penalty_tokens += 1
+            logger.info("penalty token for the invalid clue (§8.4): %s", self._tokens())
             # With the reserve empty there is no turn left: _switch_roles archives the clue and
             # starts sudden death.
             if self.state.timer_tokens == 0:
@@ -254,10 +269,17 @@ class CodenamesDuetEngine:
         self.state.guesses_made_this_turn += 1
 
         # Resolve the guess based on the current game phase and return result
-        if self.state.current_phase in [GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]:
-            return self._resolve_guess_sudden_death(card, card_role, player_id)
-
-        return self._resolve_guess_normal(card, card_role)
+        phase = self.state.current_phase
+        own_role = card.llm_perspective_role if player_id == 0 else card.human_perspective_role
+        logger.info("%s: seat %s touches %s (card %s): %s on the partner's side, %s on its own%s",
+                    phase.value, player_id, card.text, card.id, card_role.value, own_role.value,
+                    ", under the partner's time token" if card.time_marker_by else "")
+        if phase in [GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]:
+            result = self._resolve_guess_sudden_death(card, card_role, player_id)
+        else:
+            result = self._resolve_guess_normal(card, card_role)
+        logger.info("  -> %s | %s pending=%s", result, self._tokens(), self.state.pending_words)
+        return result
 
     def pass_turn(self, player_id: int):
         """
@@ -282,6 +304,9 @@ class CodenamesDuetEngine:
         # The guesser takes a token from the reserve and keeps it, check face up (§6.5)
         self.state.timer_tokens -= 1
         self.state.check_tokens += 1
+        logger.info("turn %s: seat %s stops after %s guess(es) and takes a check token | %s",
+                    self.state.turn_number, player_id, self.state.guesses_made_this_turn,
+                    self._tokens())
 
         self._switch_roles()
 
@@ -310,6 +335,8 @@ class CodenamesDuetEngine:
             raise PermissionError(
                 "Only the player guessing in sudden death can concede it.")
 
+        logger.info("seat %s stops in sudden death with %s word(s) still pending: it concedes",
+                    player_id, self.state.pending_words[player_id])
         self._finish_game(result="loss_stopped_sd")
         return "loss_stopped_sd"
 
@@ -413,6 +440,7 @@ class CodenamesDuetEngine:
             self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
             if self.state.pending_words[1] > 0:
                 self.state.sd_measurement_pending = True
+            logger.info("seat 0 has found all its words in sudden death: seat 1 guesses now")
 
         return "agent"
 
@@ -428,6 +456,8 @@ class CodenamesDuetEngine:
         self.state.is_game_over = True
         self.state.current_phase = GamePhase.GAME_OVER
         self.state.result = result
+        logger.info("game over: %s after %s turn(s) | %s pending=%s", result,
+                    self.state.turn_number, self._tokens(), self.state.pending_words)
 
     def _switch_roles(self):
         """
@@ -442,7 +472,8 @@ class CodenamesDuetEngine:
         # Handing the guess to a seat with nothing pending would force it to touch a word that is
         # beige or black on the giver's face (it cannot pass without a guess). Both seats can never
         # be at 0 here: that is a victory, which ends the game without switching roles.
-        if self.state.pending_words[next_guesser] == 0:
+        roles_kept = self.state.pending_words[next_guesser] == 0
+        if roles_kept:
             next_giver, next_guesser = next_guesser, next_giver
         self.state.clue_giver, self.state.guesser = next_giver, next_guesser
         self.state.current_phase = GamePhase.GIVING_CLUE
@@ -468,6 +499,13 @@ class CodenamesDuetEngine:
             # elicited exactly once, before the first sudden-death guess. Detected here; consumed at
             # the LLM's sudden-death proposal entry.
             self.state.sd_measurement_pending = True
+            logger.info("the reserve is empty with words pending %s: sudden death, %s",
+                        self.state.pending_words, self.state.current_phase.value)
+        elif not self.state.is_game_over:
+            logger.info("turn %s: seat %s gives the clue, seat %s guesses%s | %s pending=%s",
+                        self.state.turn_number, next_giver, next_guesser,
+                        " (roles kept: the other seat has nothing pending, §6.8)" if roles_kept
+                        else "", self._tokens(), self.state.pending_words)
 
     def _any_pending_words(self) -> bool:
         """

@@ -220,6 +220,26 @@ async def test_persist_false_plays_without_touching_db(monkeypatch):
     persist_game.assert_not_called()
 
 
+@pytest.mark.asyncio
+async def test_on_dispatch_sees_the_state_before_and_after_every_dispatch(monkeypatch):
+    """The observer gets the engine before the first dispatch and after each one. This game is a
+    clue and then a guess of LEMONADE (an assassin for both seats), so it is called three times, the
+    last one on the finished game."""
+    monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
+    clients = {0: _make_client("m0", lambda: ["LEMONADE"]),
+               1: _make_client("m1", lambda: ["LEMONADE"])}
+    seen = []
+
+    res = await run_single_game(
+        board=_board(), seat_specs=_SPECS, master_seed=777, temperature=0.4, persist=False,
+        client_factory=lambda i, spec: clients[i],
+        on_dispatch=lambda engine, recorder: seen.append(
+            (engine.state.current_phase.value, engine.state.is_game_over)))
+
+    assert res.status == "completed"
+    assert seen == [("giving_clue", False), ("guessing", False), ("game_over", True)]
+
+
 # reproducibility (first-order acceptance)
 async def _run_lemonade(master_seed, monkeypatch, log):
     """A 2-dispatch game: the first guessing seat guesses LEMONADE (assassin for BOTH perspectives),

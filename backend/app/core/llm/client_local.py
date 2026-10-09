@@ -166,6 +166,8 @@ class LLMClientLocal(LLMClient):
                 try:
                     parsed = expected_format.model_validate_json(content)
                 except Exception as e:
+                    logger.debug("ollama %s response does not match %s (%s); discarded draw:\n%s",
+                                 self.model_name, expected_format.__name__, e, content)
                     raise LLMParseError(
                         provider="ollama", cause=e, execution_mode="local"
                     )
@@ -176,6 +178,8 @@ class LLMClientLocal(LLMClient):
                 # ValidationError escaping from llm_service outside the retry loop.
                 reason = degenerate_reason(parsed)
                 if reason is not None:
+                    logger.debug("ollama %s response is degenerate (%s); discarded draw:\n%s",
+                                 self.model_name, reason, content)
                     raise LLMDegenerateResponseError(
                         message=f"The LLM returned a well-formed but degenerate response: {reason}.",
                         provider="ollama", raw_payload=response_json, execution_mode="local",
