@@ -1,5 +1,5 @@
 ### YOUR TASK ###
-Identify your remaining Agents from the unrevealed words using the clue history as your guide.
+List every word that may be one of your remaining Agents, best first, using the clue history as your guide.
 Follow the required JSON format exactly.
 
 ### CLUE HISTORY (all clues given to you during the game) ###
