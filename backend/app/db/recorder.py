@@ -1,10 +1,9 @@
 """In-memory per-game accumulator for the persistence write-path.
 
-The recorder is a pure in-memory structure with no database imports. One instance is created at
-game start (in ``GET /play``) and lives across HTTP requests inside the routes' ``_games`` map. Its
-thin ``record_*`` methods are called at the existing capture points; nothing here talks to a
-provider, touches game rules, or performs I/O. At game end the writer reads the accumulated records
-and flushes the whole game to Postgres in one transaction.
+The recorder is a pure in-memory structure with no database imports. The game runner creates one
+per game, with both seat identities. Its thin ``record_*`` methods are called at the existing
+capture points; nothing here talks to a provider, touches game rules, or performs I/O. At game end
+the writer reads the accumulated records and flushes the whole game to Postgres in one transaction.
 
 Deliberately not stored (reconstructable / transient): ``sd_measurement_pending`` and per-card time
 markers (``time_marker_by``) - the latter is derivable downstream from ``reveal_event`` rows with
@@ -49,7 +48,7 @@ class SeatRecord:
 
 @dataclass
 class ClueRecord:
-    """A turn's clue, plus every model attempt that produced it (empty for a human clue)."""
+    """A turn's clue, plus every model attempt that produced it."""
     clue_word: str
     count: int
     reasoning: Optional[str]
@@ -68,8 +67,7 @@ class RevealRecord:
     timer_tokens_after: Optional[int]
     ended_turn: bool
     ended_game: bool
-    # Index into the play proposal's items this reveal came from (index-aligned backfill); None for
-    # a human reveal, which has no proposal.
+    # Index into the play proposal's items this reveal came from (index-aligned backfill).
     proposal_index: Optional[int]
     acting_seat: int
 
@@ -97,10 +95,10 @@ class GameRecorder:
     """Accumulates the per-game signals of one Codenames Duet play for a single terminal flush."""
 
     def __init__(self, *, game_id: str, board_id: str, start_player: Optional[int],
-                 llm_client=None, seats: Optional[list[SeatRecord]] = None):
+                 seats: list[SeatRecord]):
         self.game_id = game_id
         self.board_id = board_id
-        # Runner concepts, not written by the interactive path.
+        # Set by the runner.
         self.run_id: Optional[str] = None
         self.derived_seed: Optional[int] = None
         self.start_player = start_player
@@ -110,50 +108,15 @@ class GameRecorder:
         # One-use latch: a second flush of the same game is a no-op.
         self.flushed = False
 
-        # Two-seat identities. The headless runner (LLM-vs-LLM) supplies both seats explicitly via
-        # ``seats``; the interactive path passes a single ``llm_client`` and we derive seat 0 from it
-        # while seat 1 is the human. Exactly one of ``seats`` / ``llm_client`` is expected.
-        #
-        # When seats are explicit the caller owns their sampling identities, so
-        # ``_observe_seat0_sampling`` must not overwrite them (see its docstring): the runner seeds
-        # per (seat, turn), giving ``requested_seed`` no per-seat referent.
-        self._explicit_seats: bool = seats is not None
-        if seats is not None:
-            self.seats: list[SeatRecord] = seats
-        else:
-            # Seat 0 is the LLM (from the client); seat 1 is the human.
-            client_name = type(llm_client).__name__
-            provider0 = "openrouter" if "OpenRouter" in client_name else "ollama"
-            self.seats = [
-                SeatRecord(0, provider0, getattr(
-                    llm_client, "model_name", None)),
-                SeatRecord(1, "human", None),
-            ]
+        # Both seat identities, supplied by the caller and never changed by recording. The runner
+        # seeds per (seat, turn), so a seat's ``requested_seed`` has no referent and stays NULL:
+        # ``llm_call.requested_seed`` is the authoritative seed of each call.
+        self.seats: list[SeatRecord] = seats
 
         self.turns: list[TurnRecord] = []
         self._sd_turn: Optional[TurnRecord] = None
 
     # internal helpers
-    def _observe_seat0_sampling(self, records) -> None:
-        """Record seat 0's requested temperature/seed on first observation of one of its calls.
-
-        No-op when seats were supplied explicitly (the runner path): those identities are the source
-        of truth and must not be overwritten. The runner seeds per (seat, turn), so a single
-        ``requested_seed`` on the seat has no referent - it stays NULL and ``llm_call.requested_seed``
-        is authoritative. Only the interactive (``llm_client=``) path observes here, populating seat 0
-        from its first LLM call as before.
-        """
-        if self._explicit_seats:
-            return
-        seat0 = self.seats[0]
-        for rec in records:
-            if rec is None:
-                continue
-            if seat0.requested_temperature is None and rec.requested_temperature is not None:
-                seat0.requested_temperature = rec.requested_temperature
-            if seat0.requested_seed is None and rec.requested_seed is not None:
-                seat0.requested_seed = rec.requested_seed
-
     def _current_turn(self) -> TurnRecord:
         if not self.turns:
             raise RuntimeError(
@@ -163,7 +126,7 @@ class GameRecorder:
     # normal play
     def record_clue(self, clue_entry: ClueEntry, proposal=None) -> None:
         """Open a normal turn and record its clue. ``proposal`` is the LLM ClueProposal (carrying all
-        attempts + reasoning) or None for a human clue (no llm_calls, empty targets)."""
+        attempts + reasoning), or None to record the clue alone (no llm_calls, no reasoning)."""
         llm_calls = list(proposal.llm_calls) if proposal is not None else []
         reasoning = proposal.reasoning if proposal is not None else None
         clue = ClueRecord(
@@ -183,11 +146,9 @@ class GameRecorder:
                 clue=clue,
             )
         )
-        self._observe_seat0_sampling(llm_calls)
 
     def record_play_proposal(self, guess_proposal: GuessProposal) -> None:
         self._current_turn().play_proposal = guess_proposal
-        self._observe_seat0_sampling([guess_proposal.llm_call])
 
     def record_measurement(self, ranking: Optional[ConfidenceRanking]) -> None:
         """Attach the out-of-band confidence ranking to the current turn. No-op if measurement failed
@@ -195,7 +156,6 @@ class GameRecorder:
         if ranking is None:
             return
         self._current_turn().measurement = ranking
-        self._observe_seat0_sampling([ranking.llm_call])
 
     def record_reveal(
         self,
@@ -232,18 +192,16 @@ class GameRecorder:
         return self._sd_turn
 
     def record_sd_measurement(self, ranking: Optional[ConfidenceRanking], clue_giver_seat: int,
-                              guesser_seat: int = 0) -> None:
+                              *, guesser_seat: int) -> None:
         if ranking is None:
             return
         turn = self.ensure_sudden_death_turn(clue_giver_seat)
         turn.sd_measurement_by_seat[guesser_seat] = ranking
-        self._observe_seat0_sampling([ranking.llm_call])
 
     def record_sd_play_proposal(self, guess_proposal: GuessProposal, clue_giver_seat: int,
-                                guesser_seat: int = 0) -> None:
+                                *, guesser_seat: int) -> None:
         turn = self.ensure_sudden_death_turn(clue_giver_seat)
         turn.sd_play_by_seat[guesser_seat] = guess_proposal
-        self._observe_seat0_sampling([guess_proposal.llm_call])
 
     def record_sd_reveal(self, *, clue_giver_seat: int, card_id: int, result_str: str,
                          timer_tokens_after: Optional[int], ended_game: bool, proposal_index: Optional[int],

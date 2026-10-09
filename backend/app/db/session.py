@@ -65,12 +65,3 @@ def session_scope() -> Iterator[Session]:
         raise
     finally:
         session.close()
-
-
-def get_db() -> Iterator[Session]:
-    """FastAPI dependency yielding a session (no implicit commit)."""
-    session = get_sessionmaker()()
-    try:
-        yield session
-    finally:
-        session.close()

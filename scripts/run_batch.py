@@ -11,6 +11,8 @@ parsing, model/board loading, the dry-run wiring and the final report print.
 Preconditions (all fail loud before any provider call - see batch_runner.run_batch):
   * the loaded bank has >= 4 career + 4 science + 8 control boards;
   * DATABASE_URL is set (real path) and none of the 192 deterministic game ids already exist;
+  * the measurement frame and the boards under data/boards are stored in the database (the batch
+    stores whatever is missing; the database needs only the migrated schema);
   * the digest gate passes once at run-mint (enforce_digests=True on the real path).
 
 Environment: export the vars yourself (no dotenv). DATABASE_URL, OLLAMA_HOST and/or
@@ -165,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
             temperature=args.temperature,
             persist=not dry, enforce_digests=not dry,
             make_client_factory=(dry_run_client_factory if dry else None),
+            bank_dir=_BOARD_DATA_PATH,
         ))
     except (ScheduleError, BatchPreconditionError, ModelDigestMismatchError) as e:
         print(

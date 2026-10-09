@@ -33,44 +33,45 @@ Computer Science at the **University of Castilla-La Mancha**.
 12. [Analysis scripts](#analysis-scripts)
 13. [Reproducing the shipped results](#reproducing-the-shipped-results)
 14. [Data model](#data-model)
-15. [Interactive UI](#interactive-ui)
-16. [Development](#development)
-17. [Related documentation](#related-documentation)
-18. [About](#about)
-19. [License](#license)
+15. [Development](#development)
+16. [Related documentation](#related-documentation)
+17. [About](#about)
+18. [License](#license)
 
 ---
 
 ## Architecture at a glance
 
-The platform has **two entry paths over one shared core**. The interactive path serves a browser
-game; the headless path plays the experiment. Both drive the same engine, the same LLM service and
-the same recorder, so what the experiment measures is what the UI plays.
+The platform plays the experiment headless: `scripts/run_batch.py` drives every game through one
+core (engine, LLM service, recorder), and the analysis scripts score what it stored.
+`scripts/play_games.py` plays test games through the same core, without a database.
 
 ```
-                 ┌──────────────── interactive ────────────────┐
-   browser ──▶  api/routes.py ──┐                              │
-                                ├─▶ game_conductor ─▶ engine ──┼─▶ recorder ─▶ writer ─▶ Postgres
-   scripts/run_batch.py ──▶ batch_runner ──▶ game_runner ──────┘                          │
-                                    │                                                     │
-                                    └─▶ llm_service ─▶ llm/client_{local,openrouter} ──▶  models
-                                                                                          │
-   scripts/run_*_metrics.py ──▶ backend/app/analysis/* ◀───────────────────────────────────┘
+   scripts/run_batch.py ──▶ batch_runner ──▶ game_runner ──▶ game_conductor ─▶ engine
+                                                  │                 │
+                                                  │                 └─▶ llm_service ─▶ llm/client_{local,openrouter} ──▶ models
+                                                  │
+                                                  └─▶ recorder ─▶ writer ─▶ Postgres
+                                                                               │
+   scripts/run_*_metrics.py ──▶ backend/app/analysis/* ◀───────────────────────┘
 ```
 
 | Component | File | Responsibility |
 |---|---|---|
 | Engine | `backend/app/core/engine.py` | Duet rules: phases, keycards, reveals, timer tokens, sudden death, win/loss. An invalid clue is played with a penalty token, as in the rules. Owns the game state; seed-agnostic (an RNG is injected). |
 | Clue validator | `backend/app/core/clue_validator.py` | Flags clues that are not a single word, or that are a visible word, a form of one (inflected, derived, or a compound containing it), or a part of a visible compound. Forms and compounds come from the MorphoLex-en word segmentations in `data/morpholex/`, with WordNet for inflections and as a fallback. The engine plays a flagged clue with a penalty token. Repeating an earlier clue is allowed, as in the rules. |
-| Conductor | `backend/app/core/game_conductor.py` | Seat-parameterised turn orchestration (engine + service + recorder). No HTTP, no persistence — the caller injects `flush` / `on_reveal` hooks. |
+| Conductor | `backend/app/core/game_conductor.py` | Seat-parameterised turn orchestration (engine + service + recorder). No persistence — the caller injects a `flush` hook. |
 | LLM service | `backend/app/core/llm_service.py` | Prompt assembly from `data/prompt_templates/`, and the out-of-band **measurement** ranking elicited at the same pre-resolution state. |
 | Clients | `backend/app/core/llm/client{,_local,_openrouter}.py` | Provider adapters (Ollama / OpenRouter) with a bounded same-request retry over retriable errors, structured-output enforcement and degenerate-response detection. |
 | Recorder | `backend/app/db/recorder.py` | Pure in-memory accumulator for one game. No DB imports. |
 | Writer | `backend/app/db/writer.py` | Atomic terminal flush of a whole game in one transaction; `delete_run` tears a run down via cascade. |
 | Game runner | `backend/app/core/game_runner.py` | Headless single-game driver: deterministic identity + seed derivation, run minting, provenance, the model-digest gate. |
-| Batch | `backend/app/core/batch_schedule.py`, `batch_runner.py` | The deterministic 192-game calendar and the orchestration loop with two-level fault handling. |
+| Batch | `backend/app/core/batch_schedule.py`, `batch_runner.py` | The deterministic 192-game calendar, the bank ingestion into the database, and the orchestration loop with two-level fault handling. |
 | Analysis | `backend/app/analysis/` | Read-only metric estimators (IAE, TAC/TAI, CIT, conc-SD, TV/PA/EP) over shared geometry and a generic cluster bootstrap. |
-| UI | `backend/app/api/routes.py`, `templates/` | FastAPI + Jinja + HTMX partials for a human-vs-LLM session. |
+
+> Earlier versions also had a browser UI (FastAPI + Jinja + HTMX) for a person to play against a
+> model, as seat 1. It was removed to focus on model-vs-model experiments. The tag `ui-final` holds its last
+> version.
 
 ---
 
@@ -88,13 +89,10 @@ codenames-llm-bias/
 │   │   │   ├── sd_metrics.py      conc-SD (sudden-death guesser)
 │   │   │   ├── skill_metrics.py   TV / PA / EP (skill, on control boards)
 │   │   │   └── inference.py       generic cluster bootstrap (games are the cluster)
-│   │   ├── api/routes.py      interactive endpoints
 │   │   ├── core/              engine, conductor, LLM service + clients, runner, batch, provenance
 │   │   ├── db/                ORM models, session, recorder, writer, ingestion, embedding backfill
 │   │   ├── models/            Pydantic schemas (game + LLM I/O) and the LLM error taxonomy
-│   │   ├── templates/         Jinja templates and partials
-│   │   ├── config.py          model roster + pinned local weight digests
-│   │   └── main.py            FastAPI entrypoint (startup ingestion)
+│   │   └── config.py          model roster, pinned local weight digests, request settings
 │   ├── migrations/            Alembic (head: 0006_clue_invalid_reason)
 │   ├── alembic.ini
 │   └── Dockerfile
@@ -106,7 +104,7 @@ codenames-llm-bias/
 ├── scripts/                   batch orchestrator CLI, test games with a full log, analysis CLIs,
 │                              embedding backfill, MorphoLex TSV build
 ├── tests/unit/                platform test suite (DB-backed tests gated on DATABASE_URL)
-├── docker-compose.yml         db (pgvector) + ollama + app (FastAPI)
+├── docker-compose.yml         db (pgvector) + ollama + app (the Python environment)
 ├── docker-compose.gpu.yml     optional override: reserves an NVIDIA GPU for ollama
 ├── ollama_entrypoint.sh       pulls every model named in backend/app/config.py
 ├── .gitattributes             forces LF on *.sh / Dockerfile (Windows checkouts)
@@ -123,7 +121,7 @@ codenames-llm-bias/
 * **Docker** with Compose v2 — Docker Engine on Linux, Docker Desktop (WSL 2 backend) on Windows.
   See [Running on Windows](#running-on-windows) for what changes there.
 * An **NVIDIA GPU** for any serious run. The base `docker-compose.yml` runs Ollama on CPU, which is
-  enough to try the UI but makes a full batch impractical; the `docker-compose.gpu.yml` override
+  enough for a test game but makes a full batch impractical; the `docker-compose.gpu.yml` override
   reserves one GPU device (see the quick start). It needs the NVIDIA Container Toolkit on Linux, or
   just the NVIDIA Windows driver with Docker Desktop. Alternatively, point `OLLAMA_HOST` at an
   external daemon.
@@ -154,12 +152,12 @@ docker compose ps                      # db, ollama, app
 # 3. Create the schema. Migrations are NOT applied automatically.
 docker compose exec app alembic -c backend/alembic.ini upgrade head
 
-# 4. Restart the app so its startup ingestion sees the tables, then open the UI.
-docker compose restart app
-docker compose logs -f app             # "Measurement-frame ingestion complete", "Board ingestion complete (N new boards)"
+# 4. Check the wiring: the batch's dry run plays all 192 games with mock clients, no database.
+docker compose exec app python scripts/run_batch.py --master-seed 2026 --temperature 0.8 --dry-run
 ```
 
-The UI is then at **<http://localhost:8000>** (`/about` explains the game, `/config` starts one).
+The stack is then ready. Try the models with [test games](#test-games-with-a-full-log), and run the
+experiment with [the batch](#running-the-batch-unattended).
 
 **What each service does**
 
@@ -167,13 +165,12 @@ The UI is then at **<http://localhost:8000>** (`/about` explains the game, `/con
 |---|---|---|---|
 | `db` | `codenames-db` | 5432 | `ankane/pgvector`. Data in `./docker_volumes/postgres_data` (root-owned, gitignored). |
 | `ollama` | `codenames-ollama` | 11434 | Runs `ollama_entrypoint.sh`, which greps `"name:tag"` strings out of the bind-mounted `backend/app/config.py` and `ollama pull`s each one. **The roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. CPU unless `docker-compose.gpu.yml` is included. |
-| `app` | `codenames-backend` | 8000 | `uvicorn --reload` over the repo bind-mounted at `/workspace`. Reads `.env`. |
+| `app` | `codenames-backend` | — | The Python environment, over the repo bind-mounted at `/workspace`. It serves nothing and stays up so that the migrations, the batch and the scripts can run in it (`docker compose exec app …`). Reads `.env`. |
 
-**Startup ingestion.** `backend/app/main.py` ingests `data/boards/measurement_frame.json` first (the
-board FK target) and then every board under `data/boards/`. Both are idempotent and *defensive*: if
-the database is unreachable the failure is logged as a warning and startup continues — so always
-check the logs rather than assuming ingestion happened. Boards must be in the database before games
-can be persisted; `writer.persist_game` refuses to write a game whose board row is absent.
+**Board ingestion.** The database needs only the migrated schema. The batch stores
+`data/boards/measurement_frame.json` (the board FK target) and then every board under `data/boards/`
+before it mints its run, and skips whatever is already stored (see
+[Failure semantics](#4-failure-semantics)).
 
 > **Host vs container hostnames.** Inside Compose the database is `db:5432` and Ollama is
 > `codenames-ollama:11434` — that is what `.env` holds. The batch and analysis CLIs are normally run
@@ -236,7 +233,7 @@ notepad .env
 **Host side, easy route: WSL 2.** The batch, backfill and analysis snippets in the rest of this
 README are bash. Cloning and working inside a WSL 2 distribution (e.g. Ubuntu) runs them verbatim,
 and bind mounts from the WSL filesystem are also noticeably faster than from `C:\`. A clone on `C:\`
-works too, `uvicorn --reload` included.
+works too.
 
 **Host side, native PowerShell.** Load `.env` into the session and point at the services as seen
 from the host — this replaces every `set -a; source .env; set +a` + `export …` prelude:
@@ -281,7 +278,7 @@ container instead (this works on Linux too). They connect through the local sock
 asked:
 
 ```powershell
-# pre-flight counts
+# counts (the batch stores the boards and the frame before its first game)
 docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB `
   -c "select count(*) as boards from board; select count(*) as frames from measurement_frame;"
 
@@ -341,8 +338,8 @@ already recorded" signal; to legitimately re-run, delete the run first (see belo
 **The digest gate.** `config.EXPECTED_LOCAL_DIGESTS` pins the exact local weights the batch is
 validated against. On the batch path the served digests are resolved from the Ollama daemon once, at
 run minting, and any mismatch — or an unpinned model, or an unreachable daemon — raises
-`ModelDigestMismatchError` **before a single game is dispatched**. The interactive path leaves the
-snapshot as a record-only witness.
+`ModelDigestMismatchError` **before a single game is dispatched**. Test games
+(`scripts/play_games.py`) log the served digests, and enforce them only with `--enforce-digests`.
 
 **Provenance.** Each `run` row records `code_version` (git short SHA, `-dirty` suffixed),
 `prompt_template_version` (a fingerprint over the loaded templates), `model_registry_snapshot` (the
@@ -360,12 +357,19 @@ The engine follows the Codenames Duet rules, apart from these deliberate choices
   support it, on purpose. To support it, both prompts would have to explain that inverted meaning:
   the clue giver would need to know when a zero clue is worth giving, and the guesser that "count 0"
   does not mean "do not guess". That makes the prompts longer and the task more complex, which makes
-  the models more likely to hallucinate. The rule applies to both seats, model and human: the
-  clue-giver prompt asks for a positive count, the UI field has `min="1"`, and a count of 0 fails
-  validation because `ClueEntry.count` and `ClueProposal.count` are `ge=1`.
+  the models more likely to hallucinate. The rule applies to both seats: the clue-giver prompt asks
+  for a positive count, and a count of 0 fails validation because `ClueEntry.count` and
+  `ClueProposal.count` are `ge=1`.
   Everything else about the count follows the rules: it is a hint, not a limit, and every turn still
   needs at least one guess.
-* **Fixed sudden-death order: model first, then human.** See [Interactive UI](#interactive-ui).
+* **Fixed sudden-death order: seat 0 first, then seat 1.** When the timer tokens run out with words
+  still pending, the game enters sudden death: seat 0 hunts its remaining agents first, then seat 1
+  hunts its own, with no clues available to either. The rules let both guess in any order; the
+  fixed order is a deliberate simplification that gives each seat a single sudden-death play. The
+  phases keep the names of the earlier human-vs-model setup: `sudden_death_llm` is seat 0's,
+  `sudden_death_human` seat 1's. Sudden death ends in a win, in a loss on any miss, or in a loss when
+  the seat guessing stops with words still pending, because its proposal ran out
+  (`loss_stopped_sd`).
 * **The clue validator has known limitations, accepted on purpose.** It checks the rules about the
   form of a clue: one word, not a visible word, not a form of one, and not a part of a visible
   compound. It does not check the rules about meaning, such as a clue that points to letters or to
@@ -409,9 +413,8 @@ set -a; source .env; set +a
 export OLLAMA_HOST="http://localhost:11434"
 export DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}"
 
-# Schema + boards present?  (both must be non-zero)
-psql "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}" \
-  -c "select count(*) as boards from board; select count(*) as frames from measurement_frame;"
+# Schema at head? (the batch stores the frame and the boards itself, before minting its run)
+alembic -c backend/alembic.ini current
 
 # Models served and pinned?
 curl -s localhost:11434/api/tags | python3 -m json.tool | head -30
@@ -466,8 +469,13 @@ Two levels, kept deliberately separate:
 
 * **Level 1 — preconditions.** Checked before any game plays; each aborts the whole batch with exit
   code `2` and zero games run: a board-bank shortfall (`ScheduleError`), a missing `DATABASE_URL`,
-  any of the 192 deterministic `game_id`s already present (`BatchPreconditionError`), or a digest
-  mismatch (`ModelDigestMismatchError`).
+  any of the 192 deterministic `game_id`s already present, a bank that cannot be stored
+  (`BatchPreconditionError`), or a digest mismatch (`ModelDigestMismatchError`). Storing the bank
+  comes after the `game_id` check and before the run is minted: the measurement frame, then every
+  board under `data/boards/`, skipping what is already stored. It fails if the frame's sidecar is
+  missing, if it contradicts the frame already stored (the frame is immutable: `StaleFrameError`),
+  or if a scheduled board is still not in the database afterwards (an unreadable board file is
+  skipped with a warning).
 * **Level 2 — per-game fault isolation.** A game that errors is recorded, classified
   (`provider` / `model` / `collision` / `other`) and the loop continues. **Five consecutive failures
   abort that pairing only** — its remaining cells are skipped and the batch moves to the next
@@ -701,29 +709,6 @@ pgvector columns and the cascade rules do not always round-trip.
 
 ---
 
-## Interactive UI
-
-`GET /` landing, `GET /about` the rules, `GET /config` the setup form (`GET /config/models` fills the
-model list per provider), `GET /play` starts a game against a chosen model on a board drawn from the
-selected category. During play the human acts through `POST /play/{game_id}/{clue,guess,pass,concede}`
-and the model through `POST /play/{game_id}/{llm-clue,llm-guess,llm-sd-guess}`; each returns rendered
-partials that patch the board in place.
-
-Duet phases are `giving_clue`, `guessing`, `sudden_death_llm`, `sudden_death_human`, `game_over`.
-When the timer tokens run out the game enters sudden death: the model hunts its remaining agents
-first, then the human hunts their own, with no clues available to either. The rules let both guess
-in any order; the fixed model-then-human order is a deliberate simplification that gives each seat a
-single sudden-death play. Sudden death ends in a win, in a loss on any miss, or in a loss when the
-seat guessing stops with words still pending (`loss_stopped_sd`): the model when its proposal runs
-out, the human through *Give Up*.
-
-Two deliberate differences from the headless path: the interactive path **never enforces model
-digests** (the registry snapshot stays a record-only witness), and a persistence failure at game end
-is logged and swallowed so it cannot change the HTTP response. Interactive games are still written to
-the same tables, under a minimal run row — filter them out by `run_id` before analysing a batch.
-
----
-
 ## Development
 
 ```sh
@@ -752,8 +737,8 @@ comparable only to runs sharing its fingerprint. `llm_service.py` keeps a verbat
 of each template, used when the file is missing, so edit both together:
 `tests/unit/test_llm_service.py` fails if they drift apart.
 
-**Model roster** lives in `backend/app/config.py`: `llm_models` (what the UI offers, what the batch
-defaults to, and what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the
+**Model roster** lives in `backend/app/config.py`: `llm_models` (what the batch defaults to, and
+what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the
 batch is validated against). Changing a model means updating both. The same file sets what every
 request is sent with:
 * `OLLAMA_NUM_CTX`, the context window of every local request. Without it, ollama picks one from

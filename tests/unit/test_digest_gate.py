@@ -147,8 +147,8 @@ async def test_run_proceeds_on_matching_digest_when_enforcing(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_proceeds_on_unavailable_digest_when_not_enforcing(monkeypatch):
-    """Interactive parity: enforce_digests=False (the default) leaves the snapshot record-only, so an
-    unavailable digest does NOT abort - the game still plays."""
+    """enforce_digests=False (the default, used by test games) leaves the snapshot record-only, so
+    an unavailable digest does NOT abort - the game still plays."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
     monkeypatch.setattr(provenance, "resolve_ollama_digest",
                         lambda model_name, host=None: None)

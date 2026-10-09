@@ -5,9 +5,8 @@ transaction via ``session_scope``. Status is written directly as its terminal va
 (``'completed'`` / ``'error'``); ``'in_progress'`` is never written, so the absence of a game row
 means the game never completed.
 
-The writer RAISES on failure and does not swallow - swallowing is the caller's choice (the
-interactive routes swallow so a flush failure never changes the HTTP response; a future headless
-runner will not). ``recorder.flushed`` is set only after the transaction commits successfully.
+The writer RAISES on failure and does not swallow; the game runner lets the error end the game.
+``recorder.flushed`` is set only after the transaction commits successfully.
 """
 from __future__ import annotations
 

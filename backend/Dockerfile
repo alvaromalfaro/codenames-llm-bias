@@ -28,4 +28,5 @@ USER appuser
 
 COPY --chown=appuser:appuser . .
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+# Nothing to serve: the container stays up for `docker compose exec app python scripts/...`.
+CMD ["sleep", "infinity"]

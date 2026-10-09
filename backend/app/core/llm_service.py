@@ -350,9 +350,8 @@ class LLMService:
 
     async def measure_and_attach_confidence_ranking(self, llm_client: LLMClient, engine: "CodenamesDuetEngine", player_id: int = 0, seed: Optional[int] = None) -> ConfidenceRanking:
         """
-        Composed measurement entry point (headless-invocable, independent of routes.py): the service
-        elicits the standard confidence ranking and the engine attaches it to the current turn's
-        record. This is the exact sequence the headless runner will reuse.
+        Composed measurement entry point: the service elicits the standard confidence ranking and
+        the engine attaches it to the current turn's record.
 
         :param llm_client: The LLM client to use for generating the response.
         :param engine: The game engine whose current-turn record receives the ranking.

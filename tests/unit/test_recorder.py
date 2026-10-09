@@ -9,20 +9,12 @@ from backend.app.models.game_schemas import ClueEntry, ConfidenceRanking, Ranked
 from backend.app.models.llm_schemas import GuessProposal, LLMCallRecord, LLMMessage
 
 
-class _FakeOpenRouterClient:
-    model_name = "or-model"
-
-
-class _FakeLocalClient:
-    model_name = "local-model"
-
-
-def _recorder(client=None) -> GameRecorder:
+def _recorder() -> GameRecorder:
     return GameRecorder(
         game_id="game-1",
         board_id="board-1",
         start_player=1,
-        llm_client=client if client is not None else _FakeOpenRouterClient(),
+        seats=[SeatRecord(0, "openrouter", "or-model"), SeatRecord(1, "ollama", "local-model")],
     )
 
 
@@ -59,18 +51,12 @@ def _guess_proposal(call=None) -> GuessProposal:
 
 # creation / seats
 def test_creation_captures_seats_and_start_player():
-    rec = _recorder(_FakeOpenRouterClient())
+    rec = _recorder()
     assert rec.start_player == 1
     assert rec.flushed is False
     seat0, seat1 = rec.seats
     assert seat0.seat_index == 0 and seat0.provider == "openrouter" and seat0.model_ref == "or-model"
-    assert seat1.seat_index == 1 and seat1.provider == "human" and seat1.model_ref is None
-
-
-def test_local_client_maps_to_ollama_provider():
-    rec = _recorder(_FakeLocalClient())
-    assert rec.seats[0].provider == "ollama"
-    assert rec.seats[0].model_ref == "local-model"
+    assert seat1.seat_index == 1 and seat1.provider == "ollama" and seat1.model_ref == "local-model"
 
 
 # result-role mapping
@@ -118,7 +104,7 @@ def test_record_clue_with_llm_calls_opens_normal_turn():
     assert [c.retry_index for c in turn.clue.llm_calls] == [0, 1]
 
 
-def test_human_clue_has_no_calls_and_empty_targets():
+def test_clue_without_a_proposal_has_no_calls_and_empty_targets():
     rec = _recorder()
     rec.record_clue(_clue_entry(clue_giver=1), proposal=None)
     turn = rec.turns[0]
@@ -174,27 +160,15 @@ def test_record_measurement_sets_ranking():
     assert rec.turns[0].measurement is ranking
 
 
-def test_seat0_sampling_captured_on_first_observation():
-    rec = _recorder()
-    from backend.app.models.llm_schemas import ClueProposal
-    proposal = ClueProposal(
-        clue="battle", count=2,
-        llm_calls=[_call(temperature=0.3, seed=42)],
-    )
-    rec.record_clue(_clue_entry(), proposal=proposal)
-    assert rec.seats[0].requested_temperature == 0.3
-    assert rec.seats[0].requested_seed == 42
-
-
-def test_explicit_seats_are_not_mutated_by_recording():
-    """The runner path supplies both seat identities explicitly; recording must not overwrite them.
-    The runner seeds per (seat, turn), so requested_seed has no per-seat referent and stays as given
-    (NULL) even though the observed LLM call carries a seed."""
+def test_seats_are_not_mutated_by_recording():
+    """The runner supplies both seat identities; recording must not overwrite them. The runner
+    seeds per (seat, turn), so requested_seed has no per-seat referent and stays as given (NULL)
+    even though the recorded LLM calls carry a seed."""
     seats = [SeatRecord(0, "ollama", "m0", requested_temperature=0.4, requested_seed=None),
              SeatRecord(1, "openrouter", "m1", requested_temperature=0.4, requested_seed=None)]
     rec = GameRecorder(game_id="g", board_id="b", start_player=0, seats=seats)
     from backend.app.models.llm_schemas import ClueProposal
-    # An observed call carrying a concrete seed/temp that would be captured on the interactive path.
+    # Recorded calls carrying a concrete seed and temperature of their own.
     proposal = ClueProposal(clue="battle", count=2,
                             llm_calls=[_call(temperature=0.9, seed=12345)])
     rec.record_clue(_clue_entry(), proposal=proposal)
@@ -213,9 +187,9 @@ def test_sudden_death_single_turn_no_clue():
     rec = _recorder()
     ranking = ConfidenceRanking(rankings=[RankedCard(word="X", confidence=0.5)],
                                 llm_call=_call(role="measurement_sd"))
-    rec.record_sd_measurement(ranking, clue_giver_seat=0)
+    rec.record_sd_measurement(ranking, clue_giver_seat=0, guesser_seat=0)
     rec.record_sd_play_proposal(_guess_proposal(
-        _call(role="guesser_sd")), clue_giver_seat=0)
+        _call(role="guesser_sd")), clue_giver_seat=0, guesser_seat=0)
     rec.record_sd_reveal(clue_giver_seat=0, card_id=7, result_str="victory_sd",
                          timer_tokens_after=0, ended_game=True, proposal_index=0, acting_seat=0)
     # Exactly one sudden-death turn, no clue, with measurement + proposal + reveal.
@@ -276,13 +250,16 @@ def test_sd_records_accumulate_both_seats_without_overwrite():
     assert sd.sd_measurement_by_seat == {0: meas0, 1: meas1}
 
 
-def test_sd_records_default_guesser_seat_is_llm():
-    """The default guesser seat is the LLM (0), keeping the interactive path's positional calls."""
+def test_sd_records_need_the_guesser_seat():
+    """Both seats guess in sudden death, so a record without its guesser seat is refused instead
+    of being filed under seat 0."""
     rec = _recorder()
-    rec.record_sd_play_proposal(
-        _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=1)
-    sd = [t for t in rec.turns if t.phase == "sudden_death"][0]
-    assert set(sd.sd_play_by_seat) == {0}
+    with pytest.raises(TypeError):
+        rec.record_sd_play_proposal(_guess_proposal(_call(role="guesser_sd")), clue_giver_seat=1)
+    with pytest.raises(TypeError):
+        rec.record_sd_measurement(
+            ConfidenceRanking(rankings=[RankedCard(word="X", confidence=0.5)]), clue_giver_seat=1)
+    assert rec.turns == []
 
 
 # outcome / flushed latch

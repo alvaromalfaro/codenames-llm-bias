@@ -232,7 +232,7 @@ async def test_sd_measurement_does_not_mutate_state(valid_board_data):
 
     # No card revealed, no timer/phase/agents change - measurement is side-effect-free.
     assert before == after
-    assert engine.state.sudden_death.confidence_ranking is not None
+    assert 0 in engine.state.sudden_death.rankings_by_seat
 
 
 # Out of band (does not leak into or influence the play call)
@@ -355,7 +355,7 @@ async def test_sd_measurement_taken_before_first_resolution(valid_board_data):
 
     revealed_after = [c.revealed for c in engine.state.board.cards]
     assert revealed_before == revealed_after  # no selection happened
-    assert engine.state.sudden_death.confidence_ranking is not None
+    assert 0 in engine.state.sudden_death.rankings_by_seat
     assert engine.state.sd_measurement_pending is False
 
 
@@ -375,7 +375,7 @@ def test_sudden_death_record_is_per_game_single(valid_board_data):
 
     # Still exactly one record - the second attach overwrites, it does not append.
     assert isinstance(engine.state.sudden_death, SuddenDeathEntry)
-    assert engine.state.sudden_death.confidence_ranking is r2
+    assert engine.state.sudden_death.rankings_by_seat == {0: r2}
 
 
 # Coverage - the standard measurement prompt lists every unrevealed card
@@ -582,7 +582,6 @@ def test_both_seats_reach_sudden_death_hold_both_rankings(valid_board_data):
     sd = engine.state.sudden_death
     assert sd.rankings_by_seat[0] is r0
     assert sd.rankings_by_seat[1] is r1
-    assert sd.confidence_ranking is r1   # backward-compat mirror = most recent
 
 
 def test_targets_never_reach_seat1_measurement_prompt(valid_board_data):

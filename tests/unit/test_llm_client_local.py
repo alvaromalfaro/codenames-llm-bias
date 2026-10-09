@@ -355,7 +355,7 @@ async def test_llm_client_local_non_retriable_raises_immediately(llm_request_cg)
 
 @pytest.mark.asyncio
 async def test_llm_client_local_default_no_retry(llm_request_cg):
-    """max_retries defaults to 0 (the interactive path): a single attempt."""
+    """max_retries defaults to 0: a single attempt."""
     with patch("backend.app.core.llm.client_local.Client") as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = ResponseError("refused")
@@ -447,8 +447,8 @@ async def test_llm_client_local_empty_response_raises_after_cap(llm_request_cg):
 
 
 @pytest.mark.asyncio
-async def test_llm_client_local_empty_response_not_retried_interactively(llm_request_cg):
-    """The interactive path (max_retries=0) is unchanged: an empty response raises on attempt 1."""
+async def test_llm_client_local_empty_response_not_retried_by_default(llm_request_cg):
+    """With the default max_retries=0, an empty response raises on attempt 1."""
     with patch("backend.app.core.llm.client_local.Client") as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_empty_ollama_response()
@@ -650,8 +650,8 @@ async def test_degenerate_empty_proposals_raises_after_cap(llm_request_cg):
 
 
 @pytest.mark.asyncio
-async def test_degenerate_not_retried_interactively(llm_request_cg):
-    """The interactive path (max_retries=0) is unchanged: one attempt, then raise."""
+async def test_degenerate_not_retried_by_default(llm_request_cg):
+    """With the default max_retries=0: one attempt, then raise."""
     with patch("backend.app.core.llm.client_local.Client") as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_empty_ollama_response(

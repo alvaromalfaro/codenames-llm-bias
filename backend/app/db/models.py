@@ -36,13 +36,13 @@ def _uuid_str() -> str:
 
 
 class RunModel(Base):
-    """One experimental batch (e.g. the 6x30 model-pairing cross).
+    """One experimental batch (e.g. the 6x32 model-pairing cross).
 
     Anchors the master seed and the temperature regime that govern the batch, plus the code version
     and model registry snapshot needed to reproduce it. 
 
-    Games played interactively or in the ecological human-vs-LLM modality do not belong to a batch, 
-    so game.run_id is nullable.
+    game.run_id is nullable: a game written outside a batch belongs to no run. The removed web UI
+    wrote its human-vs-LLM games that way.
     """
     __tablename__ = "run"
 
@@ -253,8 +253,8 @@ class GameModel(Base):
 class GameSeatModel(Base):
     """One seat of a game (two rows for an LLM-vs-LLM game).
 
-    Models both modalities with a single table: in the ecological modality the human seat has 
-    provider 'human' and a null model_ref. 
+    The provider may also be 'human', with a null model_ref: the removed web UI recorded its human
+    seat that way.
 
     requested_seed is stored per seat because it records the value actually sent to each provider, 
     which can differ from the canonical derived seed (for instance if a local backend narrows a 

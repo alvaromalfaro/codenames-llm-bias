@@ -86,8 +86,8 @@ class WordCard(BaseModel):
         when that seat already touched it and hit an innocent bystander - its own time token points
         at it, and the word is still an innocent bystander on the other face.
 
-        This is the single predicate behind the engine's guess guard, the words offered to an LLM
-        guesser, and the cards the UI lets a human guesser click.
+        This is the single predicate behind the engine's guess guard and the words offered to an
+        LLM guesser.
 
         :param player_id: The seat asking (0 = LLM, 1 = human).
 
@@ -195,7 +195,7 @@ class Board(BaseModel):
     def get_card_by_id(self, card_id: int) -> Optional[WordCard]:
         """
         Looks a card up by its declared ``id`` rather than by list position, so a caller holding an
-        id from outside the process (an HTTP form field, an LLM proposal) can never address the
+        id from outside the engine (an LLM proposal) can never address the
         wrong card: an unknown id yields None instead of an IndexError, and a negative id can never
         wrap around to a real card the way ``cards[card_id]`` would.
 
@@ -439,16 +439,12 @@ class SuddenDeathEntry(BaseModel):
     selection.
 
     Both seats can reach sudden death sequentially (the SUDDEN_DEATH_LLM -> SUDDEN_DEATH_HUMAN
-    handoff may put a second LLM on seat 1 in an LLM-vs-LLM run), so the authoritative store is
-    per-(game, seat): ``rankings_by_seat`` maps the guesser seat -> its ranking. ``confidence_ranking``
-    is retained as a backward-compat mirror of the most-recently-attached ranking (the single-seat
-    interactive path only ever measures seat 0).
+    handoff), so the store is per-(game, seat): ``rankings_by_seat`` maps the guesser seat -> its
+    ranking.
     """
-    # Authoritative per-seat store: guesser seat (0 = LLM, 1 = human) -> its SD ranking.
+    # Guesser seat (0 or 1) -> its SD ranking.
     rankings_by_seat: dict[int, ConfidenceRanking] = Field(
         default_factory=dict)
-    # Backward-compat mirror of the most-recently-attached ranking (see class docstring).
-    confidence_ranking: Optional[ConfidenceRanking] = None
 
 
 class GameState(BaseModel):

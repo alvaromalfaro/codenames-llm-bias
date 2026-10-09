@@ -1,8 +1,7 @@
-# This file contains the available LLM models for each provider and their configurations. It serves
-# as a central place to manage the models that can be used in the application, allowing for easy
-# retrieval of model information based on the selected provider.
-# It is also used by ollama_entrypoint.sh to automatically pull the specified models when the Ollama
-# container starts.
+# This file holds the LLM models for each provider and their configurations: the batch's default
+# roster (scripts/run_batch.py), and the "think" flag test games read for a listed model
+# (scripts/play_games.py). It is also used by ollama_entrypoint.sh to automatically pull the
+# specified models when the Ollama container starts.
 
 # The structure of the `llm_models` dictionary is as follows:
 # {

@@ -12,6 +12,10 @@ Level 1 - BATCH PRECONDITIONS (fail loud, abort the whole batch before any game 
   c. collision check: none of the 192 deterministic ``game_id`` values may already exist in the DB
      (the "experiment already recorded" case, made a clean precondition instead of a mid-loop PK
      collision). Runs before minting so an already-recorded seed leaves no orphan run row.
+  d. bank ingestion: the measurement frame and then the boards under ``bank_dir`` are stored if
+     absent (idempotent: what is stored is skipped), and every scheduled board must then be in the
+     DB, since the games' rows point at it. A stored frame that contradicts the sidecar
+     (``StaleFrameError``) aborts. Runs after the collision check and before minting.
 
 Level 2 - PER-GAME FAULT ISOLATION (count-and-continue, inside the loop):
   - :func:`run_single_game` captures its own exceptions and returns a ``GameRunResult`` (status
@@ -32,6 +36,7 @@ import os
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import select
@@ -60,8 +65,8 @@ _DRY_RUN_CLUE = "ZZXQJ"
 
 
 class BatchPreconditionError(RuntimeError):
-    """A Level-1 batch precondition failed (missing board, DB unavailable, or an already-recorded
-    seed). Raised before any game plays; zero games run."""
+    """A Level-1 batch precondition failed (missing board, DB unavailable, an already-recorded seed,
+    or a bank that cannot be stored). Raised before any game plays; zero games run."""
 
 
 def _model_id(spec: SeatSpec) -> str:
@@ -166,6 +171,42 @@ def _check_no_collisions(game_ids: Sequence[str], *, master_seed: int) -> None:
             f"existing game rows.) Colliding ids (first 3): {list(existing)[:3]}")
 
 
+def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> None:
+    """Level-1d: store the measurement frame, then the boards, and check every scheduled board is
+    stored. The frame goes first: a sealed board's ``measurement_frame_id`` is a foreign key to it.
+
+    Both ingestions skip what is already stored, so a second batch on the same database adds
+    nothing. A board file that cannot be read or mapped is skipped with a warning by the ingestion
+    itself; if it is a scheduled board, the check after it aborts the batch."""
+    from backend.app.db.ingest_boards import ingest_boards_if_absent
+    from backend.app.db.ingest_frame import StaleFrameError, ingest_frame_if_absent
+    from backend.app.db.models import BoardModel
+    from backend.app.db.session import session_scope
+    frame_path = bank_dir / "measurement_frame.json"
+    if not frame_path.exists():
+        raise BatchPreconditionError(
+            f"no measurement frame at {frame_path}: the sealed boards point at it, and the analysis "
+            f"measures against it.")
+    try:
+        with session_scope() as session:
+            frame_inserted = ingest_frame_if_absent(session, frame_path)
+    except StaleFrameError as exc:
+        raise BatchPreconditionError(
+            f"the measurement frame under {bank_dir} contradicts the one already stored: {exc}"
+        ) from exc
+    with session_scope() as session:
+        boards_inserted = ingest_boards_if_absent(session, bank_dir)
+        stored = set(session.execute(
+            select(BoardModel.board_id).where(BoardModel.board_id.in_(list(board_ids)))
+        ).scalars().all())
+    logger.info("bank ingestion: measurement frame %s, %s new board(s) from %s",
+                "stored" if frame_inserted else "already stored", boards_inserted, bank_dir)
+    missing = sorted(set(board_ids) - stored)
+    if missing:
+        raise BatchPreconditionError(
+            f"scheduled boards missing from the database after ingesting {bank_dir}: {missing}")
+
+
 async def run_batch(
     *,
     models: Sequence[SeatSpec],
@@ -177,13 +218,17 @@ async def run_batch(
     client_factory: Optional[ClientFactory] = None,
     make_client_factory: Optional[Callable[[Board], ClientFactory]] = None,
     consecutive_failure_threshold: int = _CONSECUTIVE_FAILURE_THRESHOLD,
+    bank_dir: str | Path = "data/boards",
 ) -> BatchReport:
     """Play the full batch under one run and return a structured :class:`BatchReport`.
 
-    Level-1 preconditions run first (schedule/bank, collision, mint+gate); if any fails it raises
-    (:class:`ScheduleError`, :class:`BatchPreconditionError`, :class:`ModelDigestMismatchError`) and
-    zero games play. Then the play loop runs with count-and-continue and the per-pairing
-    consecutive-failure abort.
+    Level-1 preconditions run first (schedule/bank, collision, bank ingestion, mint+gate); if any
+    fails it raises (:class:`ScheduleError`, :class:`BatchPreconditionError`,
+    :class:`ModelDigestMismatchError`) and zero games play. Then the play loop runs with
+    count-and-continue and the per-pairing consecutive-failure abort.
+
+    ``bank_dir`` is the directory ``boards`` was loaded from: with ``persist`` its measurement frame
+    and boards are stored in the database before the run is minted.
 
     ``client_factory`` (flat, ``(seat_index, spec) -> LLMClient``) is forwarded to every game; when
     ``None`` the runner's real default is used. ``make_client_factory`` takes precedence and builds a
@@ -209,6 +254,8 @@ async def run_batch(
         # run row.
         _check_no_collisions([c.game_id for c in schedule],
                              master_seed=master_seed)
+        # Level 1d: the frame and the boards into the database, before any row points at them.
+        _ingest_bank(Path(bank_dir), sorted({c.board_id for c in schedule}))
 
     # Level 1b: mint the run + run the digest gate once (create_run raises on a bad/unavailable
     # local digest under enforcement). The run carries all four models' provenance.

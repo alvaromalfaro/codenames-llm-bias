@@ -23,10 +23,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-class _FakeOpenRouterClient:
-    model_name = "or-model"
-
-
 def _call(role, retry_index=0, temperature=0.5, seed=7):
     return LLMCallRecord(
         role=role, retry_index=retry_index,
@@ -64,10 +60,11 @@ def _insert_run(session):
 
 
 def _recorder(*, game_id, board_id, run_id):
-    from backend.app.db.recorder import GameRecorder
+    from backend.app.db.recorder import GameRecorder, SeatRecord
 
-    rec = GameRecorder(game_id=game_id, board_id=board_id,
-                       start_player=0, llm_client=_FakeOpenRouterClient())
+    rec = GameRecorder(game_id=game_id, board_id=board_id, start_player=0,
+                       seats=[SeatRecord(0, "openrouter", "or-model"),
+                              SeatRecord(1, "ollama", "local-model")])
     rec.run_id = run_id
     rec.derived_seed = 999
     return rec

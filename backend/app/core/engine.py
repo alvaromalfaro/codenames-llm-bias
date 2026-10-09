@@ -36,7 +36,7 @@ class CodenamesDuetEngine:
             a fresh unseeded random.Random() is used, reproducing the previous behaviour.
         :param game_id: Optional externally supplied game id. The headless runner injects a
             deterministic id so seed derivation and persistence are reproducible; when omitted a fresh
-            uuid4 is generated, reproducing the previous (interactive) behaviour.
+            uuid4 is generated.
         """
         self._rng = rng if rng is not None else random.Random()
         start_player = self._rng.choice([0, 1])
@@ -188,8 +188,7 @@ class CodenamesDuetEngine:
         creating that record on first use, and consumes the pending flag so each seat's measurement
         happens exactly once (the flag is re-armed at the SD seat handoff in _reveal_agent).
 
-        The ranking is stored per guesser seat in ``rankings_by_seat`` (the authoritative store);
-        ``confidence_ranking`` is also updated as a backward-compat mirror of the most recent attach.
+        The ranking is stored per guesser seat in ``rankings_by_seat``.
 
         :param ranking: The parsed confidence ranking over the guesser's remaining agents at that
             seat's sudden-death entry.
@@ -198,7 +197,6 @@ class CodenamesDuetEngine:
         if self.state.sudden_death is None:
             self.state.sudden_death = SuddenDeathEntry()
         self.state.sudden_death.rankings_by_seat[player_id] = ranking
-        self.state.sudden_death.confidence_ranking = ranking
         self.state.sd_measurement_pending = False
 
     def resolve_guess(self, card_id: int, player_id: int) -> str:

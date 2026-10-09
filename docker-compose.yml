@@ -30,21 +30,20 @@ services:
       - ./ollama_entrypoint.sh:/ollama_entrypoint.sh:ro
       - ./backend/app/config.py:/llm_models.py:ro
 
-  # Backend with FastAPI
+  # The Python environment for the migrations, the batch and the scripts. It serves nothing: it
+  # stays up so they can run in it with `docker compose exec app ...`.
   app:
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: codenames-backend
     working_dir: /workspace
-    # Watch only the app code: the repo root also holds docker_volumes/postgres_data, which this
-    # user cannot read and which would crash the reloader
-    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend
+    command: sleep infinity
+    # An init process as PID 1 forwards the stop signal, which sleep alone ignores.
+    init: true
     volumes:
       - ./:/workspace # Backend source code
       - ./data:/workspace/data # External files for words and biases
-    ports:
-      - "8000:8000"
     environment:
       PYTHONPATH: /workspace
     env_file:

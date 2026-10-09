@@ -137,7 +137,7 @@ async def test_openrouter_non_retriable_raises_immediately(llm_request_cg, monke
 
 @pytest.mark.asyncio
 async def test_openrouter_default_no_retry(llm_request_cg, monkeypatch):
-    """max_retries defaults to 0 (the interactive path): a retriable error raises on the first
+    """max_retries defaults to 0: a retriable error raises on the first
     attempt, exactly one provider call - pre-5c.2 behavior."""
     monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
 

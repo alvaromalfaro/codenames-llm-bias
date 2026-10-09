@@ -1,14 +1,8 @@
-"""Seat-parameterized, HTTP-agnostic game-conduction layer.
+"""Seat-parameterized game-conduction layer.
 
-This layer orchestrates the engine, service and recorder; it renders no HTML, imports no Jinja
-/ FastAPI, and performs no persistence. Two hooks let the caller keep its own concerns:
-
-- ``flush(engine, recorder)`` is invoked at each post-reveal point (the interactive path passes its
-  terminal-flush trigger; the runner injects its own persistence).
-- ``on_reveal(card_id, result, card)`` is invoked at the exact mid-loop instant (after the reveal is
-  recorded and flushed, before the loop's break decision) so the caller can render each reveal
-  against the live, intermediate ``engine.state`` - a byte-for-byte match with the prior inline
-  rendering. It is optional (the runner passes ``None``).
+This layer orchestrates the engine, service and recorder for one LLM turn, and performs no
+persistence: ``flush(engine, recorder)`` is invoked at each post-reveal point, and the caller (the
+game runner) persists the game there once it is over.
 """
 from __future__ import annotations
 
@@ -22,14 +16,13 @@ logger = logging.getLogger(__name__)
 # A reveal, as returned to the caller: (card_id, resolve_guess result string, card).
 Reveal = tuple[int, str, WordCard]
 FlushHook = Callable[[object, object], None]
-RevealHook = Callable[[int, str, WordCard], None]
 
 
 async def conduct_clue(service, client, engine, recorder, *, player_id: int,
                        seed: Optional[int] = None) -> ClueEntry:
     """Conduct one LLM clue-giving turn for ``player_id``.
 
-    Returns the ``ClueEntry`` the engine accepted. Callers should render from it, not from
+    Returns the ``ClueEntry`` the engine accepted. Callers should read the clue from it, not from
     ``engine.state.current_clue``: when an invalid clue's penalty takes the last token, the engine
     starts sudden death and the clue is already archived.
     """
@@ -48,8 +41,7 @@ async def conduct_clue(service, client, engine, recorder, *, player_id: int,
 
 
 async def conduct_guess(service, client, engine, recorder, *, player_id: int,
-                        flush: FlushHook, on_reveal: Optional[RevealHook] = None,
-                        seed: Optional[int] = None,
+                        flush: FlushHook, seed: Optional[int] = None,
                         measurement_seed: Optional[int] = None) -> list[Reveal]:
     """Conduct one LLM normal-play guessing turn for ``player_id``.
 
@@ -110,10 +102,7 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
         )
         flush(engine, recorder)
 
-        card = engine.state.board.get_card_by_id(card_id)
-        if on_reveal is not None:
-            on_reveal(card_id, result, card)
-        reveals.append((card_id, result, card))
+        reveals.append((card_id, result, engine.state.board.get_card_by_id(card_id)))
 
         if result != "agent":
             # civilian, assassin, victory, or agent_turn_end (the guesser has nothing left to find) -
@@ -124,7 +113,7 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
         # unplayable. Pass the turn to advance the phase. If pass_turn raises here, the loop resolved
         # zero guesses (guesses_made_this_turn == 0) - Duet requires >=1 guess before a pass, so this
         # is a state the rules do not contemplate (a model that produced no playable card). Let the
-        # error propagate to the caller's boundary (headless: flush status='error'; web: 400) rather
+        # error propagate to the runner's boundary (the game is flushed with status='error') rather
         # than swallow it, which would leave the phase at GUESSING and spin the driver.
         if engine.state.guesses_made_this_turn == 0:
             logger.error("seat %s proposed no playable card this turn, and a turn needs at least one "
@@ -135,8 +124,7 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
 
 
 async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
-                           flush: FlushHook, on_reveal: Optional[RevealHook] = None,
-                           seed: Optional[int] = None,
+                           flush: FlushHook, seed: Optional[int] = None,
                            measurement_seed: Optional[int] = None) -> list[Reveal]:
     """Conduct one sudden-death guessing turn for ``player_id`` (either SD seat).
 
@@ -210,10 +198,7 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
         )
         flush(engine, recorder)
 
-        card = engine.state.board.get_card_by_id(card_id)
-        if on_reveal is not None:
-            on_reveal(card_id, result, card)
-        reveals.append((card_id, result, card))
+        reveals.append((card_id, result, engine.state.board.get_card_by_id(card_id)))
 
         if result != "agent" or engine.state.current_phase != sd_phase:
             # victory or a miss ended the game, or the seat found its last word and the board went

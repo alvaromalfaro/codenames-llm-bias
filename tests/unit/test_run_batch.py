@@ -8,7 +8,9 @@ end-to-end test plays all 192 games with deterministic mock clients (no DB, no d
 The threshold reset test is the discriminating one: 4 errors + 1 completion + 4 errors must not
 abort, proving the counter is consecutive, not cumulative.
 """
+import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -21,6 +23,8 @@ from backend.app.core.game_runner import GameRunResult
 
 # Reuse the validated fixture bank + models from the schedule tests (same tests/unit package dir).
 from test_batch_schedule import _bank, _models, _MASTER_SEED
+
+_BOARDS_DIR = Path(__file__).resolve().parents[2] / "data" / "boards"
 
 
 # helpers: a patched run_single_game whose per-game outcome is scripted by game_index
@@ -79,6 +83,101 @@ async def test_collision_check_aborts_before_any_game(monkeypatch) -> None:
         with session_scope() as s:
             s.query(GameModel).filter_by(id=colliding_id).delete()
             s.query(BoardModel).filter_by(board_id=board_id).delete()
+
+
+# Level 1d: the bank goes into the database before the run is minted
+async def test_persisted_batch_ingests_the_bank_after_the_collision_check_and_before_minting(
+        monkeypatch) -> None:
+    """With persistence, the batch stores the frame and the boards it schedules, from the directory
+    it was given, before the run row exists; no database is touched here (the steps are stubbed)."""
+    steps = []
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    monkeypatch.setattr(batch_runner, "_check_no_collisions",
+                        lambda game_ids, master_seed: steps.append("collisions"))
+    monkeypatch.setattr(batch_runner, "_ingest_bank",
+                        lambda bank_dir, board_ids: steps.append(("ingest", bank_dir, board_ids)))
+
+    def fake_create_run(**kwargs):
+        steps.append("mint")
+        return "run-1", None
+    monkeypatch.setattr(batch_runner, "create_run", fake_create_run)
+    monkeypatch.setattr(batch_runner, "run_single_game",
+                        _fake_runner(lambda gi: ("completed", None)))
+
+    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
+                             temperature=0.4, persist=True, enforce_digests=False,
+                             bank_dir="some/bank")
+
+    assert [s if isinstance(s, str) else s[0] for s in steps] == ["collisions", "ingest", "mint"]
+    _, bank_dir, board_ids = steps[1]
+    assert bank_dir == Path("some/bank")
+    scheduled = {c.board_id for c in build_schedule(_models(), _bank(), _MASTER_SEED)}
+    assert sorted(scheduled) == board_ids
+    assert report.completed == 192
+
+
+async def test_dry_run_never_ingests(monkeypatch) -> None:
+    def spy(bank_dir, board_ids):  # pragma: no cover - must never run
+        raise AssertionError("a batch that does not persist must not touch the database")
+    monkeypatch.setattr(batch_runner, "_ingest_bank", spy)
+
+    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
+                             temperature=0.4, persist=False, enforce_digests=False,
+                             make_client_factory=dry_run_client_factory)
+
+    assert report.completed == 192
+
+
+def test_ingest_bank_needs_the_measurement_frame(tmp_path) -> None:
+    """The sealed boards point at the frame: without its sidecar the batch stops before storing any
+    board, and before opening a database session."""
+    with pytest.raises(BatchPreconditionError, match="no measurement frame"):
+        batch_runner._ingest_bank(tmp_path, ["control-000"])
+
+
+_needs_db = pytest.mark.skipif(not os.environ.get("DATABASE_URL"),
+                               reason="requires a live Postgres database")
+
+
+@_needs_db
+def test_ingest_bank_stores_the_frame_and_the_boards_once() -> None:
+    from sqlalchemy import select
+
+    from backend.app.core.loader import BoardLoader
+    from backend.app.db.models import BoardModel, MeasurementFrameModel
+    from backend.app.db.session import session_scope
+
+    board_ids = sorted(b.board_id for group in BoardLoader(str(_BOARDS_DIR)).boards.values()
+                       for b in group)
+    frame_id = json.loads((_BOARDS_DIR / "measurement_frame.json").read_text("utf-8"))["frame_id"]
+
+    batch_runner._ingest_bank(_BOARDS_DIR, board_ids)
+    batch_runner._ingest_bank(_BOARDS_DIR, board_ids)  # a second batch adds nothing, and passes
+
+    with session_scope() as session:
+        assert session.get(MeasurementFrameModel, frame_id) is not None
+        stored = set(session.execute(select(BoardModel.board_id).where(
+            BoardModel.board_id.in_(board_ids))).scalars().all())
+    assert stored == set(board_ids)
+
+
+@_needs_db
+def test_ingest_bank_stops_when_a_scheduled_board_is_not_stored() -> None:
+    with pytest.raises(BatchPreconditionError, match="no-such-board"):
+        batch_runner._ingest_bank(_BOARDS_DIR, ["control-000", "no-such-board"])
+
+
+@_needs_db
+def test_ingest_bank_stops_on_a_frame_that_contradicts_the_stored_one(tmp_path) -> None:
+    """Same frame_id, different encoder: the frame is immutable, so the batch stops instead of
+    overwriting it."""
+    batch_runner._ingest_bank(_BOARDS_DIR, [])  # the real frame is stored
+    tampered = json.loads((_BOARDS_DIR / "measurement_frame.json").read_text("utf-8"))
+    tampered["encoder"] = {**tampered["encoder"], "name": "different/model"}
+    (tmp_path / "measurement_frame.json").write_text(json.dumps(tampered), encoding="utf-8")
+
+    with pytest.raises(BatchPreconditionError, match="contradicts"):
+        batch_runner._ingest_bank(tmp_path, [])
 
 
 # Level 2: count-and-continue

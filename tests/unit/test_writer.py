@@ -19,10 +19,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-class _FakeOpenRouterClient:
-    model_name = "or-model"
-
-
 def _call(role, retry_index=0, temperature=0.5, seed=7):
     return LLMCallRecord(
         role=role,
@@ -57,12 +53,13 @@ def _insert_board(session):
 
 
 def _recorder(board_id):
-    from backend.app.db.recorder import GameRecorder
+    from backend.app.db.recorder import GameRecorder, SeatRecord
     return GameRecorder(
         game_id=str(uuid.uuid4()),
         board_id=board_id,
         start_player=0,
-        llm_client=_FakeOpenRouterClient(),
+        seats=[SeatRecord(0, "openrouter", "or-model", requested_temperature=0.5, requested_seed=7),
+               SeatRecord(1, "ollama", "local-model", requested_temperature=0.5)],
     )
 
 
@@ -125,7 +122,9 @@ def test_persist_normal_game_maps_all_rows():
         seat0 = next(s for s in seats if s.seat_index == 0)
         assert seat0.provider == "openrouter" and seat0.model_ref == "or-model"
         assert seat0.requested_temperature == 0.5 and seat0.requested_seed == 7
-        assert next(s for s in seats if s.seat_index == 1).provider == "human"
+        seat1 = next(s for s in seats if s.seat_index == 1)
+        assert seat1.provider == "ollama" and seat1.model_ref == "local-model"
+        assert seat1.requested_seed is None
 
         turns = session.execute(select(TurnModel).where(
             TurnModel.game_id == gid)).scalars().all()
@@ -140,7 +139,7 @@ def test_persist_normal_game_maps_all_rows():
         calls = session.execute(select(LlmCallModel).where(
             LlmCallModel.turn_id == turn.id, LlmCallModel.role == "clue_giver")).scalars().all()
         assert {c.retry_index for c in calls} == {0, 1}
-        # Interactive path: the LLM clue-giver is seat 0, so all clue calls carry seat_index 0.
+        # The clue-giver is seat 0, so all clue calls carry seat_index 0.
         assert all(c.seat_index == 0 for c in calls)
         accepted = next(c for c in calls if c.retry_index == 1)
         rejected = next(c for c in calls if c.retry_index == 0)
@@ -272,11 +271,11 @@ def test_persist_sudden_death_game():
     rec.record_sd_measurement(ConfidenceRanking(
         rankings=[RankedCard(word="ALPHA", confidence=0.7)],
         llm_call=_call("measurement_sd"),
-    ), clue_giver_seat=1)
+    ), clue_giver_seat=1, guesser_seat=0)
     rec.record_sd_play_proposal(GuessProposal(
         proposals=["ALPHA"], confidence=[0.9], reasoning="r", stop_reason="s",
         llm_call=_call("guesser_sd"),
-    ), clue_giver_seat=1)
+    ), clue_giver_seat=1, guesser_seat=0)
     rec.record_sd_reveal(clue_giver_seat=1, card_id=0, result_str="victory_sd",
                          timer_tokens_after=0, ended_game=True, proposal_index=0, acting_seat=0)
     rec.set_outcome("victory", 0)

@@ -9,7 +9,7 @@ from backend.app.core.llm.client import LLMClient
 from backend.app.core.game_conductor import (
     conduct_clue, conduct_guess, conduct_sd_guess,
 )
-from backend.app.db.recorder import GameRecorder
+from backend.app.db.recorder import GameRecorder, SeatRecord
 from backend.app.models.game_schemas import (
     Board, WordCard, CardRole, GamePhase, ClueEntry,
 )
@@ -107,7 +107,8 @@ def _board() -> Board:
 
 
 def _recorder(client) -> GameRecorder:
-    return GameRecorder(game_id="g", board_id="tb", start_player=0, llm_client=client)
+    seats = [SeatRecord(0, "ollama", client.model_name), SeatRecord(1, "ollama", client.model_name)]
+    return GameRecorder(game_id="g", board_id="tb", start_player=0, seats=seats)
 
 
 def _guessing_engine(guesser: int, agents=(5, 5)) -> CodenamesDuetEngine:
@@ -210,9 +211,9 @@ async def test_conduct_clue_records_an_invalid_clue_that_starts_sudden_death():
 # conduct_guess
 @pytest.mark.asyncio
 async def test_conduct_guess_seat0_equivalence():
-    """Seat-0 guess drives engine + recorder: measurement recorded after the play proposal and 
-    before the resolve loop; per-reveal proposal_index / acting_seat; on_reveal fires per reveal in 
-    order; flush fires per reveal; all-agent proposal passes the turn."""
+    """Seat-0 guess drives engine + recorder: measurement recorded after the play proposal and
+    before the resolve loop; per-reveal proposal_index / acting_seat; reveals returned in order;
+    flush fires per reveal; all-agent proposal passes the turn."""
     eng = _guessing_engine(guesser=0, agents=(5, 5))
     client = _mock_client([_guess_json(["BRICK", "CAVE"]), _rankings_json()])
     rec = _recorder(client)
@@ -220,15 +221,13 @@ async def test_conduct_guess_seat0_equivalence():
     rec.record_clue(eng.state.current_clue, proposal=None)
     service = LLMService()
 
-    seen: list = []
     flush = MagicMock()
 
-    reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                  flush=flush, on_reveal=lambda cid, r, c: seen.append((cid, r, c)))
+    reveals = await conduct_guess(service, client, eng, rec, player_id=0, flush=flush)
 
-    # Return + hook agree, in order.
+    # Returned in order, with the card each id names.
     assert [(cid, r) for cid, r, _ in reveals] == [(1, "agent"), (5, "agent")]
-    assert seen == reveals
+    assert [card.text for _, _, card in reveals] == ["BRICK", "CAVE"]
 
     turn = rec.turns[-1]
     assert turn.play_proposal.proposals == ["BRICK", "CAVE"]
@@ -253,7 +252,8 @@ async def test_conduct_guess_seat0_equivalence():
 
 @pytest.mark.asyncio
 async def test_conduct_guess_seat1_drives_seat1_guess_and_measurement():
-    """The web never drives seat 1 through conduction; verify it records with acting_seat=1."""
+    """Seat 1 is conducted like seat 0: its guesses and measurement are recorded with
+    acting_seat=1."""
     eng = _guessing_engine(guesser=1, agents=(5, 5))
     client = _mock_client([_guess_json(["RUSSIA", "RIFLE"]),
                            _rankings_json(pairs=(("RUSSIA", 0.8), ("RIFLE", 0.7)))])
@@ -262,7 +262,7 @@ async def test_conduct_guess_seat1_drives_seat1_guess_and_measurement():
     service = LLMService()
 
     reveals = await conduct_guess(service, client, eng, rec, player_id=1,
-                                  flush=MagicMock(), on_reveal=None)
+                                  flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [(4, "agent"), (11, "agent")]
     turn = rec.turns[-1]
@@ -286,7 +286,7 @@ async def test_conduct_guess_flush_sees_game_over_on_terminal_reveal():
                       r: flush_states.append(e.state.is_game_over))
 
     reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                  flush=flush, on_reveal=None)
+                                  flush=flush)
 
     assert [(cid, r) for cid, r, _ in reveals] == [(1, "victory")]
     assert flush.call_count == 1
@@ -312,7 +312,7 @@ async def test_conduct_guess_reraises_proposal_error():
 
     with pytest.raises(ValueError, match="boom"):
         await conduct_guess(mock_service, client, eng, rec, player_id=0,
-                            flush=MagicMock(), on_reveal=None)
+                            flush=MagicMock())
 
     # The swallow is gone: no play proposal was recorded for this turn.
     assert rec.turns[-1].play_proposal is None
@@ -331,7 +331,7 @@ async def test_conduct_guess_measurement_failure_does_not_propagate():
         side_effect=ValueError("measurement boom"))
 
     reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                  flush=MagicMock(), on_reveal=None)
+                                  flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [(1, "agent"), (5, "agent")]
     turn = rec.turns[-1]
@@ -357,7 +357,7 @@ async def test_conduct_guess_skips_unplayable_item_and_continues(caplog):
 
     with caplog.at_level("WARNING"):
         reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                      flush=MagicMock(), on_reveal=None)
+                                      flush=MagicMock())
 
     # The unplayable TATTOO is skipped; the trailing valid RANCH(9) still resolves.
     assert [(cid, r) for cid, r, _ in reveals] == [
@@ -391,7 +391,7 @@ async def test_conduct_guess_stops_when_the_guesser_covers_its_last_pending_word
     flush = MagicMock()
 
     reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                  flush=flush, on_reveal=None)
+                                  flush=flush)
 
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent_turn_end")]
     assert not eng.state.is_game_over
@@ -420,7 +420,7 @@ async def test_conduct_guess_all_unmappable_raises_on_pass(caplog):
 
     with pytest.raises(ValueError, match="at least one guess"):
         await conduct_guess(service, client, eng, rec, player_id=0,
-                            flush=MagicMock(), on_reveal=None)
+                            flush=MagicMock())
 
     # Nothing was resolved; the phase is untouched (the boundary, not conduct_guess, advances it).
     assert eng.state.current_phase == GamePhase.GUESSING
@@ -436,7 +436,7 @@ async def test_conduct_sd_guess_seat0_records_measurement_and_reveal():
     service = LLMService()
 
     reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0,
-                                     flush=MagicMock(), on_reveal=None)
+                                     flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
     sd = rec.turns[-1]
@@ -464,7 +464,7 @@ async def test_conduct_sd_guess_seat1_per_seat_proposal_index():
     rec = _recorder(client)
 
     reveals = await conduct_sd_guess(service, client, eng, rec, player_id=1,
-                                     flush=MagicMock(), on_reveal=None)
+                                     flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [
         (4, "agent")]  # RUSSIA, at its own index 1
@@ -489,7 +489,7 @@ async def test_two_seat_sudden_death_populates_both_seats():
     client0 = _mock_client([_rankings_json(), _guess_json(["CAVE"])])
     rec = _recorder(client0)
     await conduct_sd_guess(service, client0, eng, rec, player_id=0,
-                           flush=MagicMock(), on_reveal=None)
+                           flush=MagicMock())
 
     assert eng.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
     assert eng.state.sd_measurement_pending is True
@@ -497,7 +497,7 @@ async def test_two_seat_sudden_death_populates_both_seats():
     # Seat 1: the real service too (SUDDEN_DEATH_HUMAN), measurement (re-armed) then proposal.
     client1 = _mock_client([_rankings_json(), _guess_json(["RUSSIA"])])
     await conduct_sd_guess(service, client1, eng, rec, player_id=1,
-                           flush=MagicMock(), on_reveal=None)
+                           flush=MagicMock())
 
     # One collective SD turn carrying BOTH seats' proposals and measurements.
     assert len(rec.turns) == 1
@@ -524,7 +524,7 @@ async def test_conduct_sd_guess_reraises_proposal_error():
 
     with pytest.raises(ValueError, match="boom"):
         await conduct_sd_guess(mock_service, client, eng, rec, player_id=1,
-                               flush=MagicMock(), on_reveal=None)
+                               flush=MagicMock())
 
 
 @pytest.mark.asyncio
@@ -545,7 +545,7 @@ async def test_conduct_sd_guess_skips_unplayable_item_and_continues(caplog):
 
     with caplog.at_level("WARNING"):
         reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0,
-                                         flush=MagicMock(), on_reveal=None)
+                                         flush=MagicMock())
 
     # The unplayable TATTOO is skipped; the trailing valid CAVE(5) STILL resolves - the turn was not
     # abandoned (a break would have returned an empty list and left that agent unfound).
@@ -579,7 +579,7 @@ async def test_conduct_sd_guess_concedes_when_nothing_is_playable():
     flush = MagicMock()
 
     reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0,
-                                     flush=flush, on_reveal=None)
+                                     flush=flush)
 
     assert reveals == []
     assert eng.state.current_phase == GamePhase.GAME_OVER
@@ -603,7 +603,7 @@ async def test_conduct_sd_guess_concedes_when_the_proposal_runs_out_with_words_p
     flush = MagicMock()
 
     reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=1,
-                                     flush=flush, on_reveal=None)
+                                     flush=flush)
 
     assert [(cid, r) for cid, r, _ in reveals] == [(4, "agent"), (11, "agent")]
     assert eng.state.pending_words == [0, 1]
@@ -626,7 +626,7 @@ async def test_conduct_sd_guess_stops_at_the_handoff_without_conceding(caplog):
 
     with caplog.at_level("WARNING"):
         reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0,
-                                         flush=MagicMock(), on_reveal=None)
+                                         flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
     assert eng.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
@@ -722,7 +722,7 @@ async def test_conduct_guess_routes_distinct_play_and_measurement_seeds():
     rec.record_clue(eng.state.current_clue, proposal=None)
 
     await conduct_guess(LLMService(), client, eng, rec, player_id=0,
-                        flush=MagicMock(), on_reveal=None, seed=111, measurement_seed=222)
+                        flush=MagicMock(), seed=111, measurement_seed=222)
 
     seeds = _seed_by_format(client)
     # play proposal carries the play seed
@@ -738,7 +738,7 @@ async def test_conduct_sd_guess_routes_distinct_play_and_measurement_seeds():
     rec = _recorder(client)
 
     await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0,
-                           flush=MagicMock(), on_reveal=None, seed=333, measurement_seed=444)
+                           flush=MagicMock(), seed=333, measurement_seed=444)
 
     seeds = _seed_by_format(client)
     assert seeds[GuessJSONFormat] == 333
@@ -753,7 +753,7 @@ async def test_conduct_guess_default_none_leaves_all_request_seeds_none():
     rec.record_clue(eng.state.current_clue, proposal=None)
 
     await conduct_guess(LLMService(), client, eng, rec, player_id=0,
-                        flush=MagicMock(), on_reveal=None)
+                        flush=MagicMock())
 
     assert all(
         call.args[0].seed is None for call in client.generate.call_args_list)

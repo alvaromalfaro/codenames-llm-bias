@@ -58,8 +58,8 @@ class LLMClientLocal(LLMClient):
         # (config.llm_models sets "think": False for every local model) and SeatSpec.think. Note the
         # flag is only ever SENT for models that advertise the capability; see _supports_thinking.
         self.think = think
-        # Bounded same-request retry of retriable LLM errors (0 = one attempt, the interactive
-        # default). The headless driver passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
+        # Bounded same-request retry of retriable LLM errors (0 = one attempt, the default). The
+        # game runner passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
         self.max_retries = max_retries
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
         self._client = Client(host=host)

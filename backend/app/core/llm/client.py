@@ -40,7 +40,7 @@ async def generate_with_retries(
     reseed); a non-retriable ``LLMError`` or an exhausted budget re-raises; all other exceptions 
     propagate untouched.
 
-    ``max_retries=0`` (the default for the interactive path) means exactly one attempt: the first
+    ``max_retries=0`` (the clients' default) means exactly one attempt: the first
     retriable error raises. ``max_retries=k`` allows up to ``k+1`` attempts. Transients produce no
     ``LLMResponse`` and hence no telemetry - they are logged, never persisted (a network failure is
     not model behavior, unlike clue-legality retries).

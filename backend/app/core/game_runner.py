@@ -1,9 +1,8 @@
 """Headless single-game LLM-vs-LLM driver.
 
-Plays one complete Codenames Duet game between two LLM seats with no HTTP layer. The driver owns
-everything the interactive path leaves to the browser: explicit, reproducible seeding; a minimal
-``run`` row; two real seat identities; and terminal persistence via the existing writer. It is the
-single-game unit that the 180-game batch will call repeatedly.
+Plays one complete Codenames Duet game between two LLM seats. The driver owns explicit,
+reproducible seeding; a minimal ``run`` row; the two seat identities; and terminal persistence via
+the writer. It is the single-game unit that the 192-game batch calls repeatedly.
 
 The same ``master_seed`` played with the same (deterministic) clients yields a byte-identical game - 
 same engine ``game_id``, same per-(seat, turn) derived seeds sent on each request, and the same 
@@ -150,8 +149,8 @@ def _enforce_local_digests(snapshot: dict, *, enforce: bool) -> None:
 
     For each local (ollama) seat, compare its served digest - resolved into ``snapshot`` by
     ``provenance.build_model_registry_snapshot`` and prefix-normalised - against
-    ``config.EXPECTED_LOCAL_DIGESTS``. ``enforce=False`` (interactive / the default) is a no-op: the
-    snapshot stays the record-only witness it is today. ``enforce=True`` (the batch path) aborts via
+    ``config.EXPECTED_LOCAL_DIGESTS``. ``enforce=False`` (the default, used by test games) is a
+    no-op: the snapshot stays a record-only witness. ``enforce=True`` (the batch path) aborts via
     ``ModelDigestMismatchError`` on any of: a served digest that differs from the expected one; a
     local model with no expected digest configured; or an unavailable digest (daemon unreachable or
     model not pulled) - none of which can certify reproducibility. API (openrouter) seats carry no
@@ -267,19 +266,19 @@ async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
         logger.info("dispatch guess: game_id=%s turn=%s seat=%s",
                     game_id, turn, g)
         await conduct_guess(svc, clients[g], engine, recorder, player_id=g, flush=flush,
-                            on_reveal=None, seed=_seed_play(seed_game, g, turn),
+                            seed=_seed_play(seed_game, g, turn),
                             measurement_seed=_seed_meas(seed_game, g, turn))
     elif phase == GamePhase.SUDDEN_DEATH_LLM:
         logger.info(
             "dispatch sudden-death seat0: game_id=%s turn=%s", game_id, turn)
         await conduct_sd_guess(svc, clients[0], engine, recorder, player_id=0, flush=flush,
-                               on_reveal=None, seed=_seed_play(seed_game, 0, turn),
+                               seed=_seed_play(seed_game, 0, turn),
                                measurement_seed=_seed_meas(seed_game, 0, turn))
     elif phase == GamePhase.SUDDEN_DEATH_HUMAN:
         logger.info(
             "dispatch sudden-death seat1: game_id=%s turn=%s", game_id, turn)
         await conduct_sd_guess(svc, clients[1], engine, recorder, player_id=1, flush=flush,
-                               on_reveal=None, seed=_seed_play(seed_game, 1, turn),
+                               seed=_seed_play(seed_game, 1, turn),
                                measurement_seed=_seed_meas(seed_game, 1, turn))
     else:
         raise RuntimeError(
@@ -312,7 +311,7 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
             game. Pass False for a dry run (mock / reproducibility tests) that touches no database.
         client_factory: builds a client per (seat_index, spec); overridden by tests with mocks.
         enforce_digests: the reproducibility gate. False (default) keeps ``model_registry_snapshot``
-            a record-only witness (interactive parity). True (the batch path) compares each local 
+            a record-only witness. True (the batch path) compares each local
             seat's served ollama digest against ``config.EXPECTED_LOCAL_DIGESTS`` at run-row creation
             and ABORTS (``ModelDigestMismatchError``) on a mismatch / unavailable digest, before the
             run row exists and before any game is dispatched. Only meaningful when this call mints
@@ -367,7 +366,7 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     engine = CodenamesDuetEngine(
         board, rng=random.Random(seed_engine), game_id=game_id)
     # Both seats carry the constant per-game temperature (it has a referent); requested_seed is left
-    # NULL because the runner seeds per (seat, turn) - see GameSeatModel and _observe_seat0_sampling.
+    # NULL because the runner seeds per (seat, turn) - see GameSeatModel.
     recorder = GameRecorder(
         game_id=game_id, board_id=board.board_id, start_player=engine.state.clue_giver,
         seats=[SeatRecord(0, seat_specs[0].provider, seat_specs[0].model_name,
@@ -380,8 +379,8 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
 
     def _flush_if_over(eng: CodenamesDuetEngine, rec: GameRecorder) -> None:
         """Terminal flush trigger passed to the conductors. Persists once at game-over (idempotent
-        via ``rec.flushed``). Unlike the interactive path this does not swallow a persist error - it
-        propagates to the game-level error boundary."""
+        via ``rec.flushed``). A persist error is not swallowed: it propagates to the game-level error
+        boundary."""
         if not eng.state.is_game_over or rec.flushed:
             return
         rec.set_outcome(eng.state.result, eng.state.timer_tokens)
