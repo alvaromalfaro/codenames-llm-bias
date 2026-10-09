@@ -60,3 +60,15 @@ EXPECTED_LOCAL_DIGESTS = {
     "mistral-small3.2:24b":
         "sha256:5a408ab55df5c1b5cf46533c368813b30bf9e4d8fc39263bf2a3338cfa3b895b",
 }
+
+# The context window, in tokens, of every local (Ollama) request. Set here so that every machine
+# plays with the same one: left unset, ollama picks it from the GPU's memory (4096 on a 16 GB card),
+# so the same batch would run with a different context on another machine. The longest exchange of
+# the test games (prompt plus answer) took 1925 tokens.
+OLLAMA_NUM_CTX = 8192
+
+# The most tokens a model may write in one answer, for every provider (ollama's num_predict,
+# OpenRouter's max_tokens). The longest answer of the test games took 576 tokens. A model that
+# loops (repeating "Let's try X. No.") is cut here, and the cut answer is drawn again (see
+# LLMTruncatedResponseError) instead of failing the game on a broken JSON.
+LLM_MAX_OUTPUT_TOKENS = 2048

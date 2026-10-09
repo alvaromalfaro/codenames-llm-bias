@@ -1,6 +1,7 @@
 import hashlib
 import json
 from typing import TYPE_CHECKING, Optional
+from backend.app import config
 from backend.app.core.llm.client import LLMClient
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage, LLMCallRecord, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat
 from backend.app.models.game_schemas import GameState, GamePhase, CardRole, ConfidenceRanking, RankedCard
@@ -39,7 +40,8 @@ class LLMService:
     SYSTEM_TEMP_MEAS_SD_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_MEASUREMENT_SD.txt"
     USER_TEMP_MEAS_SD_PATH = "data/prompt_templates/USER_TEMPLATE_MEASUREMENT_SD.txt"
 
-    def __init__(self, temperature: float = 0.7, max_tokens: int = 5000, timeout_s: int = 30):
+    def __init__(self, temperature: float = 0.7, max_tokens: int = config.LLM_MAX_OUTPUT_TOKENS,
+                 timeout_s: int = 30):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_s = timeout_s

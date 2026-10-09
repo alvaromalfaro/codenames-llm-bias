@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from pydantic import BaseModel
@@ -5,8 +6,11 @@ from openai import AsyncOpenAI, AuthenticationError, RateLimitError, APITimeoutE
 from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
-    LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMProviderUnavailableError, LLMParseError
+    LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMProviderUnavailableError, LLMParseError,
+    LLMTruncatedResponseError,
 )
+
+logger = logging.getLogger(__name__)
 
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
@@ -66,6 +70,14 @@ class LLMClientOpenRouter(LLMClient):
             latency_ms = int((time.monotonic() - start) * 1000)
 
             content = response.choices[0].message.content or ""
+
+            # The answer reached max_tokens and its JSON is unfinished: a bad draw, re-sampled
+            # within the caller's budget (see LLMTruncatedResponseError).
+            if response.choices[0].finish_reason == "length":
+                logger.debug("openrouter %s answer cut at max_tokens; discarded draw:\n%s",
+                             self.model_name, content)
+                raise LLMTruncatedResponseError(
+                    provider="openrouter", raw_payload=response.model_dump(), execution_mode="api")
 
             if expected_format:
                 try:

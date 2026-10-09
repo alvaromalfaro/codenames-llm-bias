@@ -706,7 +706,14 @@ of each template, used when the file is missing, so edit both together:
 
 **Model roster** lives in `backend/app/config.py`: `llm_models` (what the UI offers, what the batch
 defaults to, and what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the
-batch is validated against). Changing a model means updating both.
+batch is validated against). Changing a model means updating both. The same file sets what every
+request is sent with:
+* `OLLAMA_NUM_CTX`, the context window of every local request. Without it, ollama picks one from
+  the GPU's memory, so the same batch would run differently on another machine.
+* `LLM_MAX_OUTPUT_TOKENS`, the answer cap for every provider. An answer cut at the cap (a model
+  that loops) is drawn again, like an empty or a degenerate one.
+
+The run's `model_registry_snapshot` records both with each local model.
 
 **Devcontainer**: `.devcontainer/devcontainer.json` attaches VS Code to the Compose `app` service.
 

@@ -5,11 +5,12 @@ from json import JSONDecodeError
 import re
 from typing import Any
 from pydantic import BaseModel
+from backend.app import config
 from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMModelNotProvidedError, LLMRefusalError, LLMParseError, LLMEmptyResponseError,
-    LLMDegenerateResponseError,
+    LLMDegenerateResponseError, LLMTruncatedResponseError,
 )
 from ollama import Client, RequestError, ResponseError
 
@@ -115,6 +116,11 @@ class LLMClientLocal(LLMClient):
         options: dict[str, Any] = {"temperature": request.temperature}
         if request.seed is not None:
             options["seed"] = request.seed
+        # A fixed context window, so the game does not depend on the machine (ollama would pick one
+        # from the GPU's memory), and a cap on the answer, so a model that loops is cut instead of
+        # filling the context. A cut answer is drawn again (LLMTruncatedResponseError, below).
+        options["num_ctx"] = config.OLLAMA_NUM_CTX
+        options["num_predict"] = request.max_tokens
 
         # Send `think` only to models that advertise the capability, and then send it - omitting it
         # lets ollama default a reasoning model to thinking ON. Probed outside the try so a probe
@@ -142,6 +148,16 @@ class LLMClientLocal(LLMClient):
             # caller's budget instead of killing the game on a single bad draw.
             if not content.strip():
                 raise LLMEmptyResponseError(
+                    provider="ollama", raw_payload=response_json, execution_mode="local"
+                )
+
+            # The answer reached the output limit (num_predict) or filled the context, so its JSON is
+            # unfinished: a bad draw, re-sampled within the caller's budget like the empty one.
+            if ollama_response.done_reason == "length":
+                logger.debug("ollama %s answer cut at the output limit (%s prompt + %s answer "
+                             "tokens); discarded draw:\n%s", self.model_name,
+                             ollama_response.prompt_eval_count, ollama_response.eval_count, content)
+                raise LLMTruncatedResponseError(
                     provider="ollama", raw_payload=response_json, execution_mode="local"
                 )
 

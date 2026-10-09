@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
+from backend.app import config
+
 logger = logging.getLogger(__name__)
 
 # Repo root, derived from this file (backend/app/core/provenance.py -> repo root is 4 parents up).
@@ -134,5 +136,9 @@ def build_model_registry_snapshot(
                     "identity_kind": "ollama_digest_unavailable", "identity": None,
                     "note": _NOTE_OLLAMA_UNAVAILABLE,
                 }
+            # The context window and the answer cap every local request is sent with: ollama
+            # would otherwise pick the context from the GPU's memory, so it is part of what ran.
+            entry["options"] = {"num_ctx": config.OLLAMA_NUM_CTX,
+                                "num_predict": config.LLM_MAX_OUTPUT_TOKENS}
         snapshot[str(index)] = entry
     return snapshot

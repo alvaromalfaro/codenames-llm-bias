@@ -2,11 +2,12 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 from ollama import RequestError, ResponseError
+from backend.app import config
 from backend.app.core.llm import client as client_module
 from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.models.llm_errors import (
     LLMModelNotProvidedError, LLMRefusalError, LLMParseError, LLMTimeoutError,
-    LLMEmptyResponseError, LLMDegenerateResponseError,
+    LLMEmptyResponseError, LLMDegenerateResponseError, LLMTruncatedResponseError,
 )
 from backend.app.models.llm_schemas import (
     LLMResponse, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat,
@@ -711,3 +712,59 @@ async def test_empty_rankings_are_not_treated_as_degenerate(llm_request_cg):
 
         assert mock_chat.call_count == 1
         assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 0
+
+
+# The context window and the answer cap, and an answer cut at that cap (E1 of the test-game report)
+
+@pytest.mark.asyncio
+async def test_every_request_carries_the_fixed_context_and_the_answer_cap(llm_request_cg):
+    """The context window is set by config, never left to ollama (which picks it from the GPU's
+    memory), and the answer is capped at the request's max_tokens."""
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        MockClient.return_value.chat.return_value = _mock_ollama_response()
+        client = LLMClientLocal("ollama3.2:latest")
+
+        await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+        options = MockClient.return_value.chat.call_args.kwargs["options"]
+        assert options["num_ctx"] == config.OLLAMA_NUM_CTX
+        assert options["num_predict"] == llm_request_cg.max_tokens
+
+
+def _mock_cut_ollama_response() -> MagicMock:
+    """An answer cut at the output limit: a model that looped, its JSON left unfinished."""
+    content = '{"reasoning": "Let\'s try ART. No. Let\'s try ART. No. Let\'s try'
+    response = _mock_empty_ollama_response(content)
+    response.eval_count = 2048
+    response.done_reason = "length"
+    return response
+
+
+@pytest.mark.asyncio
+async def test_an_answer_cut_at_the_limit_is_drawn_again(llm_request_cg):
+    """A cut answer is a bad draw, not malformed output: it is re-sampled within the budget, and
+    counted apart from the empty and the degenerate ones."""
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = [_mock_cut_ollama_response(), _mock_ollama_response()]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+        assert mock_chat.call_count == 2
+        assert result.raw_payload[client_module.TRUNCATED_RESAMPLE_KEY] == 1
+        assert result.raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 0
+        assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 0
+
+
+@pytest.mark.asyncio
+async def test_an_answer_cut_every_time_still_fails_after_the_budget(llm_request_cg):
+    """Bounded: a model that always loops exhausts the budget and the error propagates."""
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = _mock_cut_ollama_response()
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        with pytest.raises(LLMTruncatedResponseError):
+            await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+        assert mock_chat.call_count == 4

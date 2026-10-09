@@ -181,6 +181,30 @@ class LLMDegenerateResponseError(LLMParseError):
                           raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
 
 
+class LLMTruncatedResponseError(LLMParseError):
+    """
+    A specific parse error for an answer the provider cut because it reached the output limit
+    (``done_reason``/``finish_reason`` "length"): the model kept writing, usually because it fell
+    into a loop, and the JSON is left unfinished.
+
+    Retriable, like an empty or a degenerate response: it is a bad draw, not malformed output that
+    re-sending would reproduce, and a new draw of the same request usually ends normally. Counted
+    apart from those two because it is a different model behaviour. It stays a subclass of
+    ``LLMParseError`` so existing handlers keep catching it; after the retry budget is exhausted the
+    game still errors out.
+    """
+
+    def __init__(self, message: str = "The LLM response was cut at the output limit.",
+                 provider: str | None = None, http_status: int | None = None,
+                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
+                 cause: Exception | None = None, execution_mode: str | None = None):
+        # Bypass LLMParseError.__init__ (which hardcodes retriable=False) to set the code and the
+        # retriable flag that distinguish this case.
+        LLMError.__init__(self, code="truncated_response", message=message, retriable=True,
+                          provider=provider, http_status=http_status, request_id=request_id,
+                          raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+
+
 class LLMProviderUnavailableError(LLMError):
     """
     A specific error class for LLM provider unavailability, indicating that the LLM provider is 
