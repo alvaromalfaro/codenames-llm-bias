@@ -18,8 +18,8 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 class LLMClientOpenRouter(LLMClient):
     def __init__(self, model_name: str, max_retries: int = 0):
         self.model_name = model_name
-        # Bounded same-request retry of retriable LLM errors (0 = one attempt, the default). The
-        # game runner passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
+        # Bounded retry of retriable LLM errors (0 = one attempt, the default). The game runner
+        # passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
         self.max_retries = max_retries
         self._client = AsyncOpenAI(
             base_url=_OPENROUTER_BASE_URL,
@@ -27,12 +27,12 @@ class LLMClientOpenRouter(LLMClient):
         )
 
     async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
-        """Generate a response, retrying transient (retriable) errors per ``self.max_retries``.
+        """Generate a response, retrying retriable errors per ``self.max_retries``.
 
-        The retry re-sends the identical request (same seed/prompt) around the taxonomy mapping in
-        ``_generate_once``; see ``generate_with_retries``."""
+        A cut answer is drawn again with a new seed, and a transient failure re-sends the same
+        request; see ``generate_with_retries``."""
         return await generate_with_retries(
-            lambda: self._generate_once(request, expected_format),
+            lambda req: self._generate_once(req, expected_format), request,
             max_retries=self.max_retries, provider="openrouter", model=self.model_name)
 
     async def _generate_once(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:

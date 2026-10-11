@@ -92,6 +92,7 @@ async def test_persisted_batch_ingests_the_bank_after_the_collision_check_and_be
     it was given, before the run row exists; no database is touched here (the steps are stubbed)."""
     steps = []
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    monkeypatch.setattr(batch_runner, "_check_schema_at_head", lambda: steps.append("schema"))
     monkeypatch.setattr(batch_runner, "_check_no_collisions",
                         lambda game_ids, master_seed: steps.append("collisions"))
     monkeypatch.setattr(batch_runner, "_ingest_bank",
@@ -108,12 +109,40 @@ async def test_persisted_batch_ingests_the_bank_after_the_collision_check_and_be
                              temperature=0.4, persist=True, enforce_digests=False,
                              bank_dir="some/bank")
 
-    assert [s if isinstance(s, str) else s[0] for s in steps] == ["collisions", "ingest", "mint"]
-    _, bank_dir, board_ids = steps[1]
+    assert [s if isinstance(s, str) else s[0] for s in steps] == [
+        "schema", "collisions", "ingest", "mint"]
+    _, bank_dir, board_ids = steps[2]
     assert bank_dir == Path("some/bank")
     scheduled = {c.board_id for c in build_schedule(_models(), _bank(), _MASTER_SEED)}
     assert sorted(scheduled) == board_ids
     assert report.completed == 192
+
+
+# Level 1e: the schema the games are written to
+@pytest.mark.parametrize("stamped", [set(), {"0005_run_delete_cascade"}])
+async def test_a_schema_behind_the_migrations_aborts_before_any_game(monkeypatch, stamped) -> None:
+    """A database never migrated, or one migration behind: the games would be played and then fail
+    to be stored, so the batch stops first - before the collision check and the ingestion."""
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    monkeypatch.setattr(batch_runner, "_database_revisions", lambda: stamped)
+    for step in ("_check_no_collisions", "_ingest_bank", "create_run", "run_single_game"):
+        monkeypatch.setattr(batch_runner, step, _spy_never_called())
+
+    with pytest.raises(BatchPreconditionError, match="upgrade head"):
+        await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
+                        temperature=0.4, persist=True, enforce_digests=False)
+
+
+def test_the_migrations_have_a_single_head_and_it_is_their_newest_file() -> None:
+    versions = Path(__file__).resolve().parents[2] / "backend" / "migrations" / "versions"
+    newest = max(p.stem for p in versions.glob("[0-9]*.py"))
+    assert batch_runner._migration_heads() == {newest}
+
+
+@pytest.mark.skipif(not os.environ.get("DATABASE_URL"),
+                    reason="requires a live Postgres database")
+def test_a_database_at_head_passes_the_schema_check() -> None:
+    batch_runner._check_schema_at_head()
 
 
 async def test_dry_run_never_ingests(monkeypatch) -> None:
@@ -200,6 +229,52 @@ async def test_count_and_continue_plays_all_cells(monkeypatch) -> None:
         assert not pr.aborted
         # error strings classified as provider failures (data, not noise).
         assert pr.error_kinds == {"provider": 16}
+
+
+def _llm_error_classes():
+    from backend.app.models import llm_errors
+    return [cls for cls in vars(llm_errors).values()
+            if isinstance(cls, type) and issubclass(cls, llm_errors.LLMError)
+            and cls is not llm_errors.LLMError]
+
+
+@pytest.mark.parametrize("cls", _llm_error_classes(), ids=lambda cls: cls.__name__)
+def test_every_llm_error_code_has_a_kind(cls) -> None:
+    """An LLM error is classified by its code, never by its message: the message of every LLMError
+    names its provider ("provider=ollama"), which once made a model that loops read as a provider
+    failure."""
+    exc = cls(provider="ollama")
+    assert exc.code in batch_runner._PROVIDER_ERROR_CODES | batch_runner._MODEL_ERROR_CODES
+    assert batch_runner._classify_error(str(exc), exc.code) in {"provider", "model"}
+
+
+@pytest.mark.parametrize("code, kind", [
+    ("truncated_response", "model"), ("degenerate_response", "model"), ("empty_response", "model"),
+    ("parse_error", "model"), ("refused", "model"),
+    ("timeout", "provider"), ("rate_limit", "provider"), ("provider_unavailable", "provider"),
+])
+def test_an_llm_error_is_classified_by_its_code(code, kind) -> None:
+    assert batch_runner._classify_error(
+        f"LLMError(code={code}, message=..., provider=ollama)", code) == kind
+
+
+async def test_the_report_counts_a_model_that_loops_as_a_model_error(monkeypatch) -> None:
+    from backend.app.models.llm_errors import LLMTruncatedResponseError
+    exc = LLMTruncatedResponseError(provider="ollama")
+
+    async def fake(**kwargs):
+        gi = kwargs["game_index"]
+        if gi == 0:
+            return GameRunResult(game_id="g0", run_id=kwargs["run_id"], seed_game=0,
+                                 status="error", result=None, error=str(exc), error_code=exc.code)
+        return GameRunResult(game_id=f"g{gi}", run_id=kwargs["run_id"], seed_game=0,
+                             status="completed", result=None)
+    monkeypatch.setattr(batch_runner, "run_single_game", fake)
+
+    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
+                             temperature=0.4, persist=False, enforce_digests=False)
+
+    assert report.pairings[0].error_kinds == {"model": 1}
 
 
 # Level 2: per-pairing consecutive-failure threshold

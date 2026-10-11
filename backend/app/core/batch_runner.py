@@ -16,6 +16,8 @@ Level 1 - BATCH PRECONDITIONS (fail loud, abort the whole batch before any game 
      absent (idempotent: what is stored is skipped), and every scheduled board must then be in the
      DB, since the games' rows point at it. A stored frame that contradicts the sidecar
      (``StaleFrameError``) aborts. Runs after the collision check and before minting.
+  e. schema: the database must be at the head of the Alembic migrations, or every game would be
+     played and then fail to be stored. Runs first of the database checks.
 
 Level 2 - PER-GAME FAULT ISOLATION (count-and-continue, inside the loop):
   - :func:`run_single_game` captures its own exceptions and returns a ``GameRunResult`` (status
@@ -58,6 +60,10 @@ logger = logging.getLogger("run_batch")
 # is aborted (its remaining cells skipped); the batch continues with the next pairing.
 _CONSECUTIVE_FAILURE_THRESHOLD = 5
 
+# The Alembic configuration (backend/alembic.ini), whose migrations define the schema this code
+# writes.
+_ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
+
 # A nonsense, non-English clue for the dry-run mock: in neither MorphoLex nor WordNet, so it can never
 # be a board word, a morphological or derived form of one, or a compound component - it passes
 # ClueValidator on any board.
@@ -65,8 +71,9 @@ _DRY_RUN_CLUE = "ZZXQJ"
 
 
 class BatchPreconditionError(RuntimeError):
-    """A Level-1 batch precondition failed (missing board, DB unavailable, an already-recorded seed,
-    or a bank that cannot be stored). Raised before any game plays; zero games run."""
+    """A Level-1 batch precondition failed (missing board, DB unavailable, a schema behind the
+    migrations, an already-recorded seed, or a bank that cannot be stored). Raised before any game
+    plays; zero games run."""
 
 
 def _model_id(spec: SeatSpec) -> str:
@@ -75,11 +82,27 @@ def _model_id(spec: SeatSpec) -> str:
     return f"{spec.provider}:{spec.model_name}"
 
 
-def _classify_error(error: Optional[str]) -> str:
-    """Best-effort classification of a GameRunResult.error string into an error kind, so a partial
-    batch is data, not noise. Distinguishes a provider/transport failure from the model producing no
-    legal play; falls back to 'collision' / 'other'. Deliberately modest - a coarse, honest bucket, 
-    not a taxonomy."""
+# LLMError codes (models/llm_errors.py) by kind: what went wrong with the provider, or with the
+# setup that reaches it, and what the model itself returned.
+_PROVIDER_ERROR_CODES = frozenset(
+    {"timeout", "rate_limit", "provider_unavailable", "auth", "model_not_provided"})
+_MODEL_ERROR_CODES = frozenset(
+    {"parse_error", "empty_response", "degenerate_response", "truncated_response", "refused"})
+
+
+def _classify_error(error: Optional[str], code: Optional[str] = None) -> str:
+    """Best-effort classification of a failed game into an error kind, so a partial batch is data,
+    not noise. Distinguishes a provider/transport failure from the model producing no legal play;
+    falls back to 'collision' / 'other'. Deliberately modest - a coarse, honest bucket, not a
+    taxonomy.
+
+    An LLM error is classified by its ``code`` (``GameRunResult.error_code``). Its message cannot be
+    read for it: the text of every LLMError names its provider ("provider=ollama"), so a model that
+    loops would read as a provider failure. The message is read only for the other errors."""
+    if code in _PROVIDER_ERROR_CODES:
+        return "provider"
+    if code in _MODEL_ERROR_CODES:
+        return "model"
     if not error:
         return "other"
     low = error.lower()
@@ -153,6 +176,33 @@ class BatchReport:
         }
 
 
+def _migration_heads() -> set[str]:
+    """The head revision(s) of the Alembic migrations shipped with this code."""
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    return set(ScriptDirectory.from_config(Config(str(_ALEMBIC_INI))).get_heads())
+
+
+def _database_revisions() -> set[str]:
+    """The revision(s) the database is stamped with; empty for a database that was never migrated."""
+    from alembic.runtime.migration import MigrationContext
+    from backend.app.db.session import get_engine
+    with get_engine().connect() as connection:
+        return set(MigrationContext.configure(connection).get_current_heads())
+
+
+def _check_schema_at_head() -> None:
+    """Level-1e: fail unless the database schema is at the head of the migrations. On an older schema
+    every game would be played to the end and then fail to be stored (the writer fills every mapped
+    column), and so would its error flush: the batch would burn GPU hours and keep nothing."""
+    heads, current = _migration_heads(), _database_revisions()
+    if current != heads:
+        raise BatchPreconditionError(
+            f"the database schema is at {sorted(current) or 'no revision (never migrated)'}, but "
+            f"this code's migrations end at {sorted(heads)}: every game would be played and then "
+            f"fail to be stored. Run `alembic -c backend/alembic.ini upgrade head` first.")
+
+
 def _check_no_collisions(game_ids: Sequence[str], *, master_seed: int) -> None:
     """Level-1c: fail if any of the schedule's deterministic game ids already exist. A single
     ``SELECT ... WHERE game.id IN (...)`` over the ids; raises before any provider call."""
@@ -222,8 +272,8 @@ async def run_batch(
 ) -> BatchReport:
     """Play the full batch under one run and return a structured :class:`BatchReport`.
 
-    Level-1 preconditions run first (schedule/bank, collision, bank ingestion, mint+gate); if any
-    fails it raises (:class:`ScheduleError`, :class:`BatchPreconditionError`,
+    Level-1 preconditions run first (schedule/bank, schema, collision, bank ingestion, mint+gate);
+    if any fails it raises (:class:`ScheduleError`, :class:`BatchPreconditionError`,
     :class:`ModelDigestMismatchError`) and zero games play. Then the play loop runs with
     count-and-continue and the per-pairing consecutive-failure abort.
 
@@ -250,6 +300,8 @@ async def run_batch(
             raise BatchPreconditionError(
                 "run_batch(persist=True) requires DATABASE_URL; refusing to burn provider calls on "
                 "a batch that cannot be persisted. Use the dry run for a no-DB check.")
+        # Level 1e: the schema the games will be written to, before anything reads or writes it.
+        _check_schema_at_head()
         # Level 1c: collision check before minting, so an already-recorded seed leaves no orphan
         # run row.
         _check_no_collisions([c.game_id for c in schedule],
@@ -305,7 +357,7 @@ async def run_batch(
             consecutive = 0  # reset on any completion -> the counter is consecutive, not cumulative
         else:
             pr.errored += 1
-            pr.error_kinds[_classify_error(result.error)] += 1
+            pr.error_kinds[_classify_error(result.error, result.error_code)] += 1
             consecutive += 1
             if consecutive >= consecutive_failure_threshold:
                 pr.aborted = True

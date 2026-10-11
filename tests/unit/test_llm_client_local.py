@@ -426,10 +426,10 @@ async def test_llm_client_local_empty_response_resampled_then_succeeds(
         assert isinstance(result, LLMResponse)
         assert mock_chat.call_count == 2
         assert result.raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 1
-        # The identical request is re-sent - the re-sample must never reseed.
+        # The new draw has a new seed, derived from the request's own.
         seeds = [call.kwargs["options"]["seed"]
                  for call in mock_chat.call_args_list]
-        assert seeds == [123, 123]
+        assert seeds == [123, client_module.redraw_seed(123, 1)]
 
 
 @pytest.mark.asyncio
@@ -768,3 +768,74 @@ async def test_an_answer_cut_every_time_still_fails_after_the_budget(llm_request
         with pytest.raises(LLMTruncatedResponseError):
             await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
         assert mock_chat.call_count == 4
+
+
+# a bad draw is drawn again with a new seed; a transient re-sends the same request
+def _sent_seeds(mock_chat) -> list:
+    return [call.kwargs["options"].get("seed") for call in mock_chat.call_args_list]
+
+
+@pytest.mark.asyncio
+async def test_each_new_draw_of_a_bad_answer_has_its_own_seed(llm_request_cg):
+    """With the same seed a local model gives the same answer again (gemma4 proposed nothing three
+    times in a row, word for word), so each new draw gets the next derived seed, and the answer kept
+    carries the seed it was drawn with."""
+    request = llm_request_cg.model_copy(update={"seed": 123})
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = [
+            _mock_empty_ollama_response(_DEGENERATE_GUESS_JSON),
+            _mock_cut_ollama_response(),
+            _mock_empty_ollama_response(_DEGENERATE_GUESS_JSON),
+            _mock_empty_ollama_response(_VALID_GUESS_JSON),
+        ]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        result = await client.generate(request, expected_format=GuessJSONFormat)
+
+    redraws = [client_module.redraw_seed(123, k) for k in (1, 2, 3)]
+    assert _sent_seeds(mock_chat) == [123, *redraws]
+    assert len(set(_sent_seeds(mock_chat))) == 4
+    assert result.requested_seed == redraws[-1]
+    assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 2
+    assert result.raw_payload[client_module.TRUNCATED_RESAMPLE_KEY] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_transient_failure_after_a_bad_draw_resends_that_draw(llm_request_cg, monkeypatch):
+    """A transient failure is the network's, not the model's: the request that failed is sent again
+    as it was, the redrawn seed included."""
+    monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
+    request = llm_request_cg.model_copy(update={"seed": 123})
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = [
+            _mock_cut_ollama_response(), LLMTimeoutError(), _mock_ollama_response()]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        await client.generate(request, expected_format=ClueJSONFormat)
+
+    redraw = client_module.redraw_seed(123, 1)
+    assert _sent_seeds(mock_chat) == [123, redraw, redraw]
+
+
+@pytest.mark.asyncio
+async def test_an_unseeded_request_is_drawn_again_unseeded(llm_request_cg):
+    request = llm_request_cg.model_copy(update={"seed": None})
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = [_mock_cut_ollama_response(), _mock_ollama_response()]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        await client.generate(request, expected_format=ClueJSONFormat)
+
+    assert _sent_seeds(mock_chat) == [None, None]
+
+
+def test_redraw_seeds_are_deterministic_distinct_and_64_bit():
+    seeds = [client_module.redraw_seed(2**64 - 1, k) for k in range(1, 6)]
+    assert seeds == [client_module.redraw_seed(2**64 - 1, k) for k in range(1, 6)]
+    assert len(set(seeds)) == 5 and 2**64 - 1 not in seeds
+    assert all(0 <= s < 2**64 for s in seeds)
+    assert client_module.redraw_seed(7, 1) != client_module.redraw_seed(8, 1)
+    assert client_module.redraw_seed(None, 1) is None

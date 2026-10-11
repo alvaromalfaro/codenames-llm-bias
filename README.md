@@ -62,7 +62,7 @@ core (engine, LLM service, recorder), and the analysis scripts score what it sto
 | Clue validator | `backend/app/core/clue_validator.py` | Flags clues that are not a single word, or that are a visible word, a form of one (inflected, derived, or a compound containing it), or a part of a visible compound. Forms and compounds come from the MorphoLex-en word segmentations in `data/morpholex/`, with WordNet for inflections and as a fallback. The engine plays a flagged clue with a penalty token. Repeating an earlier clue is allowed, as in the rules. |
 | Conductor | `backend/app/core/game_conductor.py` | Seat-parameterised turn orchestration (engine + service + recorder). No persistence — the caller injects a `flush` hook. |
 | LLM service | `backend/app/core/llm_service.py` | Prompt assembly from `data/prompt_templates/`, and the out-of-band **measurement** ranking elicited at the same pre-resolution state. |
-| Clients | `backend/app/core/llm/client{,_local,_openrouter}.py` | Provider adapters (Ollama / OpenRouter) with a bounded same-request retry over retriable errors, structured-output enforcement and degenerate-response detection. |
+| Clients | `backend/app/core/llm/client{,_local,_openrouter}.py` | Provider adapters (Ollama / OpenRouter) with a bounded retry of retriable errors (a bad draw is drawn again with a new seed, a network failure is re-sent as it was), structured-output enforcement and degenerate-response detection. |
 | Recorder | `backend/app/db/recorder.py` | Pure in-memory accumulator for one game. No DB imports. |
 | Writer | `backend/app/db/writer.py` | Atomic terminal flush of a whole game in one transaction; `delete_run` tears a run down via cascade. |
 | Game runner | `backend/app/core/game_runner.py` | Headless single-game driver: deterministic identity + seed derivation, run minting, provenance, the model-digest gate. |
@@ -330,7 +330,10 @@ duplicates it.
 
 **Determinism.** `game_id = uuid5(ns, f"{master_seed}:{game_index}")`, and every per-call seed is
 derived by SHA-256 from it (`seed_game`, `seed_engine`, `seed_play(seat, turn)`,
-`seed_meas(seat, turn)`). `run_id` is deliberately *not* an input to identity — it is bookkeeping. A
+`seed_meas(seat, turn)`). A bad draw — an empty, degenerate or cut answer — is drawn again with a
+seed derived the same way from the call's own (`redraw_seed(seed, k)` for the k-th new draw), since
+with the same seed a local model gives the same answer again; `llm_call.requested_seed` holds the
+seed of the answer kept. `run_id` is deliberately *not* an input to identity — it is bookkeeping. A
 consequence worth internalising: re-running the same `(master_seed, game_index)` re-derives the same
 `game_id` and therefore **collides on the primary key**. That is the intended "this experiment is
 already recorded" signal; to legitimately re-run, delete the run first (see below).
@@ -413,7 +416,8 @@ set -a; source .env; set +a
 export OLLAMA_HOST="http://localhost:11434"
 export DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}"
 
-# Schema at head? (the batch stores the frame and the boards itself, before minting its run)
+# Schema at head? The batch checks it too, and aborts if it is not. (It stores the frame and the
+# boards itself, before minting its run.)
 alembic -c backend/alembic.ini current
 
 # Models served and pinned?
@@ -469,13 +473,14 @@ Two levels, kept deliberately separate:
 
 * **Level 1 — preconditions.** Checked before any game plays; each aborts the whole batch with exit
   code `2` and zero games run: a board-bank shortfall (`ScheduleError`), a missing `DATABASE_URL`,
-  any of the 192 deterministic `game_id`s already present, a bank that cannot be stored
-  (`BatchPreconditionError`), or a digest mismatch (`ModelDigestMismatchError`). Storing the bank
-  comes after the `game_id` check and before the run is minted: the measurement frame, then every
-  board under `data/boards/`, skipping what is already stored. It fails if the frame's sidecar is
-  missing, if it contradicts the frame already stored (the frame is immutable: `StaleFrameError`),
-  or if a scheduled board is still not in the database afterwards (an unreadable board file is
-  skipped with a warning).
+  a database schema that is not at the head of the migrations (the games would be played and then
+  fail to be stored), any of the 192 deterministic `game_id`s already present, a bank that cannot
+  be stored (`BatchPreconditionError`), or a digest mismatch (`ModelDigestMismatchError`). Storing
+  the bank comes after the `game_id` check and before the run is minted: the measurement frame,
+  then every board under `data/boards/`, skipping what is already stored. It fails if the frame's
+  sidecar is missing, if it contradicts the frame already stored (the frame is immutable:
+  `StaleFrameError`), or if a scheduled board is still not in the database afterwards (an
+  unreadable board file is skipped with a warning).
 * **Level 2 — per-game fault isolation.** A game that errors is recorded, classified
   (`provider` / `model` / `collision` / `other`) and the loop continues. **Five consecutive failures
   abort that pairing only** — its remaining cells are skipped and the batch moves to the next
@@ -546,6 +551,13 @@ $env:OLLAMA_MODELS = (Resolve-Path docker_volumes\ollama_data\models).Path
 $env:OLLAMA_NOPRUNE = "1"   # never delete files from the shared model directory
 ollama serve
 ```
+
+`OLLAMA_NOPRUNE` stops Ollama from deleting files, but not from adding them. Ollama 0.40 serves
+`mistral-small3.2` with its llamacpp runner: the first time it loads the model, it converts it into
+the shared directory (the text weights and the vision projector, 15 GB more) and rewrites the tag's
+manifest, so the served digest changes. `config.EXPECTED_LOCAL_DIGESTS` pins the converted one, as
+Ollama 0.40.2 serves it. An Ollama of another version may serve another digest, and the digest gate
+then stops the batch.
 
 ---
 
@@ -739,12 +751,13 @@ of each template, used when the file is missing, so edit both together:
 
 **Model roster** lives in `backend/app/config.py`: `llm_models` (what the batch defaults to, and
 what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the
-batch is validated against). Changing a model means updating both. The same file sets what every
-request is sent with:
+batch is validated against; for `mistral-small3.2`, the variant Ollama converts it to, see
+[Ollama without Docker](#test-games-with-a-full-log)). Changing a model means updating both. The
+same file sets what every request is sent with:
 * `OLLAMA_NUM_CTX`, the context window of every local request. Without it, ollama picks one from
   the GPU's memory, so the same batch would run differently on another machine.
 * `LLM_MAX_OUTPUT_TOKENS`, the answer cap for every provider. An answer cut at the cap (a model
-  that loops) is drawn again, like an empty or a degenerate one.
+  that loops) is drawn again with a new seed, like an empty or a degenerate one.
 
 The run's `model_registry_snapshot` records both with each local model.
 

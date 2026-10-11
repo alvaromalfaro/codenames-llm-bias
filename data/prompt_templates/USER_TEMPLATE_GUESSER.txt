@@ -1,6 +1,6 @@
 ### YOUR TASK ###
 Propose your optimal sequence of guesses. 
-Remember: You may stop early if the risk is high, or guess MORE than the target count if you find strong matches for previous clues.
+Remember: You must propose at least one word. You may stop early if the risk is high, or guess MORE than the target count if you find strong matches for previous clues.
 Follow the required JSON format exactly.
 
 Turn: {turn_number}

@@ -10,7 +10,8 @@ parsing, model/board loading, the dry-run wiring and the final report print.
 
 Preconditions (all fail loud before any provider call - see batch_runner.run_batch):
   * the loaded bank has >= 4 career + 4 science + 8 control boards;
-  * DATABASE_URL is set (real path) and none of the 192 deterministic game ids already exist;
+  * DATABASE_URL is set (real path), the database schema is at the head of the migrations, and
+    none of the 192 deterministic game ids already exist;
   * the measurement frame and the boards under data/boards are stored in the database (the batch
     stores whatever is missing; the database needs only the migrated schema);
   * the digest gate passes once at run-mint (enforce_digests=True on the real path).

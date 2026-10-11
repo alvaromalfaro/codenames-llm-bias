@@ -49,6 +49,13 @@ llm_models = {
 # expected one below ABORTS the run before any game is dispatched (see game_runner._enforce_local_digests /
 # ModelDigestMismatchError).
 # Human-readable: llama3.1 = 8B Q4_K_M; mistral-small3.2 = 24B Q4_K_M.
+#
+# mistral-small3.2 is a vision model. Ollama 0.40 serves it with its llamacpp runner: the first time
+# it loads the pulled model, it converts it - the text weights and the vision projector in two
+# files - and rewrites the tag's manifest as a list of both variants, in the model store itself.
+# The digest below is that converted variant's, as Ollama 0.40.2 serves it. Before the conversion,
+# the model as pulled had this one, which is the one exp_data.sql records:
+#   sha256:5a408ab55df5c1b5cf46533c368813b30bf9e4d8fc39263bf2a3338cfa3b895b
 EXPECTED_LOCAL_DIGESTS = {
     "llama3.1:8b":
         "sha256:46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
@@ -57,7 +64,7 @@ EXPECTED_LOCAL_DIGESTS = {
     "qwen2.5:14b":
         "sha256:7cdf5a0187d5c58cc5d369b255592f7841d1c4696d45a8c8a9489440385b22f6",
     "mistral-small3.2:24b":
-        "sha256:5a408ab55df5c1b5cf46533c368813b30bf9e4d8fc39263bf2a3338cfa3b895b",
+        "sha256:57bbe3480604be532b76a11087b4028a73e251a22c34380527281039a3967a06",
 }
 
 # The context window, in tokens, of every local (Ollama) request. Set here so that every machine

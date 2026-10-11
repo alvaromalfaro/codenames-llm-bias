@@ -165,3 +165,22 @@ async def test_openrouter_exhausts_retry_budget(llm_request_cg, monkeypatch):
         with pytest.raises(LLMTimeoutError):
             await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
         assert mock_create.call_count == k + 1
+
+
+@pytest.mark.asyncio
+async def test_openrouter_draws_a_cut_answer_again_with_a_new_seed(llm_request_cg):
+    """A cut answer is a bad draw: unlike a transient, it is drawn again with the next derived seed
+    (masked to the 31 bits OpenRouter takes)."""
+    request = llm_request_cg.model_copy(update={"seed": 321})
+    cut = _mock_openai_response()
+    cut.choices[0].finish_reason = "length"
+
+    with patch("backend.app.core.llm.client_openrouter.AsyncOpenAI") as MockOpenAI:
+        mock_create = AsyncMock(side_effect=[cut, _mock_openai_response()])
+        MockOpenAI.return_value.chat.completions.create = mock_create
+        client = LLMClientOpenRouter("openrouter/some-model", max_retries=2)
+
+        await client.generate(request, expected_format=ClueJSONFormat)
+
+    seeds = [call.kwargs["seed"] for call in mock_create.call_args_list]
+    assert seeds == [321, client_module.redraw_seed(321, 1) & 0x7FFFFFFF]

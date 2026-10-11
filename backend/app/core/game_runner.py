@@ -5,8 +5,9 @@ reproducible seeding; a minimal ``run`` row; the two seat identities; and termin
 the writer. It is the single-game unit that the 192-game batch calls repeatedly.
 
 The same ``master_seed`` played with the same (deterministic) clients yields a byte-identical game - 
-same engine ``game_id``, same per-(seat, turn) derived seeds sent on each request, and the same 
-recorder turn/reveal/proposal sequence. The engine, service and conductor stay seed-agnostic; all 
+same engine ``game_id``, same per-(seat, turn) derived seeds sent on each request (and, for a bad
+draw drawn again, the same seeds derived from those), and the same recorder
+turn/reveal/proposal sequence. The engine, service and conductor stay seed-agnostic; all 
 derivation lives here (see ``_derive`` and the seed scheme below).
 """
 from __future__ import annotations
@@ -31,6 +32,7 @@ from backend.app.core.llm_service import LLMService
 from backend.app.db import writer
 from backend.app.db.recorder import GameRecorder, SeatRecord
 from backend.app.models.game_schemas import Board, GamePhase
+from backend.app.models.llm_errors import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -39,9 +41,10 @@ logger = logging.getLogger(__name__)
 _GAME_NAMESPACE = uuid.UUID("6ba7b814-9dad-11d1-80b4-00c04fd430c8")
 
 _MASK64 = (1 << 64) - 1
-# The driver's transient-retry policy: each seat's client retries a retriable LLM error up to this
-# many times (re-sending the identical request, no reseed) before it surfaces as terminal. Retry
-# lives in the client, not the dispatch, so it is idempotent and loses no telemetry.
+# The driver's retry policy: each seat's client retries a retriable LLM error up to this many
+# times before it surfaces as terminal - a bad draw is drawn again with a new seed, a transient
+# failure re-sends the same request (see llm.client.generate_with_retries). Retry lives in the
+# client, not the dispatch, so it is idempotent and loses no telemetry.
 _CLIENT_MAX_RETRIES = 3
 # safety cap so a non-progressing (mis-scripted) game cannot hang
 _MAX_DISPATCHES = 2000
@@ -120,6 +123,9 @@ class GameRunResult:
     # engine.state.result (e.g. "victory" / "loss_assassin" / ...)
     result: Optional[str]
     error: Optional[str] = None    # error message when status == "error"
+    # The LLMError code ("truncated_response", "timeout", ...) when an LLM call ended the game, so the
+    # batch can tell a model's behaviour from a provider failure; None for any other error.
+    error_code: Optional[str] = None
 
 
 # digest enforcement (reproducibility gate)
@@ -248,8 +254,8 @@ async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
     """Dispatch exactly one turn for the current phase to the acting seat's client, with the
     per-(seat, turn) derived seeds. The engine is the single source of truth for whose turn it is.
 
-    Transient retry note: this is a plain dispatch - the client owns the bounded same-request retry 
-    of retriable LLM errors, so no telemetry is lost and a succeeded call is never re-run. A
+    Retry note: this is a plain dispatch - the client owns the bounded retry of retriable LLM
+    errors, so no telemetry is lost and a succeeded call is never re-run. A
     retriable error that exhausts the client's budget, and every deterministic error, propagates
     straight to the game-level error boundary as terminal."""
     phase = engine.state.current_phase
@@ -416,7 +422,8 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
                      game_id, run_id, exc, exc_info=True)
         _error_flush(engine, recorder, game_id, persist=persist)
         return GameRunResult(game_id=game_id, run_id=run_id, seed_game=seed_game,
-                             status="error", result=engine.state.result, error=str(exc))
+                             status="error", result=engine.state.result, error=str(exc),
+                             error_code=exc.code if isinstance(exc, LLMError) else None)
     finally:
         for client in clients:
             try:

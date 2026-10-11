@@ -135,7 +135,7 @@ class LLMEmptyResponseError(LLMParseError):
     A specific parse error for when the provider returns empty or whitespace-only content. Unlike its
     parent, this error is retriable: an empty draw is not malformed model output that re-sending
     would reproduce, it is a stochastic non-answer (observed intermittently from ollama at
-    temperature > 0), and re-sampling the identical request usually succeeds. It stays a subclass of
+    temperature > 0), and a new draw, with a new seed, usually succeeds. It stays a subclass of
     LLMParseError so existing ``except LLMParseError`` handlers keep catching it, while narrowly
     scoping retriability to the empty case - genuinely malformed NON-empty output remains
     non-retriable, since re-sending it would only reproduce the same bad parse.
@@ -160,7 +160,7 @@ class LLMDegenerateResponseError(LLMParseError):
     ``GuessProposal.proposals`` (``min_length=1``).
 
     Retriable for the same reason as an empty response: the model produced a non-answer, not
-    malformed output, and re-sampling the identical request usually yields a usable one. This is
+    malformed output, and a new draw, with a new seed, usually yields a usable one. This is
     tracked separately from ``LLMEmptyResponseError`` because the two describe different model
     behaviours - "returned nothing" versus "returned a well-formed refusal to guess" - and the
     experiment wants to count them apart.
@@ -188,7 +188,7 @@ class LLMTruncatedResponseError(LLMParseError):
     into a loop, and the JSON is left unfinished.
 
     Retriable, like an empty or a degenerate response: it is a bad draw, not malformed output that
-    re-sending would reproduce, and a new draw of the same request usually ends normally. Counted
+    re-sending would reproduce, and a new draw, with a new seed, usually ends normally. Counted
     apart from those two because it is a different model behaviour. It stays a subclass of
     ``LLMParseError`` so existing handlers keep catching it; after the retry budget is exhausted the
     game still errors out.

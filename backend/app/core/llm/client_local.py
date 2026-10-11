@@ -58,8 +58,8 @@ class LLMClientLocal(LLMClient):
         # (config.llm_models sets "think": False for every local model) and SeatSpec.think. Note the
         # flag is only ever SENT for models that advertise the capability; see _supports_thinking.
         self.think = think
-        # Bounded same-request retry of retriable LLM errors (0 = one attempt, the default). The
-        # game runner passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
+        # Bounded retry of retriable LLM errors (0 = one attempt, the default). The game runner
+        # passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
         self.max_retries = max_retries
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
         self._client = Client(host=host)
@@ -95,12 +95,12 @@ class LLMClientLocal(LLMClient):
         return self._thinking_capable
 
     async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
-        """Generate a response, retrying transient (retriable) errors per ``self.max_retries``.
+        """Generate a response, retrying retriable errors per ``self.max_retries``.
 
-        The retry re-sends the identical request (same seed/prompt) around the taxonomy mapping in
-        ``_generate_once``; see ``generate_with_retries``."""
+        A bad draw (empty, degenerate or cut) is drawn again with a new seed, and a transient
+        failure re-sends the same request; see ``generate_with_retries``."""
         return await generate_with_retries(
-            lambda: self._generate_once(request, expected_format),
+            lambda req: self._generate_once(req, expected_format), request,
             max_retries=self.max_retries, provider="ollama", model=self.model_name)
 
     async def _generate_once(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:

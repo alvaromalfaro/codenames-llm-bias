@@ -10,8 +10,14 @@ import logging
 from typing import Callable, Optional
 
 from backend.app.models.game_schemas import ClueEntry, WordCard
+from backend.app.models.llm_errors import LLMError
 
 logger = logging.getLogger(__name__)
+
+# What a failed measurement can raise: the service's own checks, and a model call that failed for
+# good (an exhausted retry budget, a parse error). The measurement is a data gap then, never the
+# end of the game.
+_MEASUREMENT_ERRORS = (ValueError, PermissionError, LLMError)
 
 # A reveal, as returned to the caller: (card_id, resolve_guess result string, card).
 Reveal = tuple[int, str, WordCard]
@@ -63,7 +69,7 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
     try:
         await service.measure_and_attach_confidence_ranking(
             client, engine, player_id=player_id, seed=measurement_seed)
-    except (ValueError, PermissionError):
+    except _MEASUREMENT_ERRORS:
         logger.error("confidence-ranking measurement failed (seat %s); the game goes on",
                      player_id, exc_info=True)
 
@@ -149,7 +155,7 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
         try:
             await service.measure_and_attach_confidence_ranking_sd(
                 client, engine, player_id=player_id, seed=measurement_seed)
-        except (ValueError, PermissionError):
+        except _MEASUREMENT_ERRORS:
             logger.error("sudden-death confidence-ranking measurement failed (seat %s); the game "
                          "goes on", player_id, exc_info=True)
 

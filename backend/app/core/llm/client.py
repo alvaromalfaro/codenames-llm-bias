@@ -1,7 +1,9 @@
 import asyncio
+import hashlib
 import logging
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
+from typing import Optional
 from pydantic import BaseModel
 from backend.app.models.llm_errors import (
     LLMError, LLMEmptyResponseError, LLMDegenerateResponseError, LLMTruncatedResponseError,
@@ -26,51 +28,70 @@ DEGENERATE_RESAMPLE_KEY = "degenerate_response_resamples"
 # Same, for answers cut at the output limit (a model that loops until it is stopped).
 TRUNCATED_RESAMPLE_KEY = "truncated_response_resamples"
 
+_MASK64 = (1 << 64) - 1
+
+
+def redraw_seed(seed: Optional[int], draw: int) -> Optional[int]:
+    """The seed of the ``draw``-th new draw (1, 2, ...) of a request whose own seed is ``seed``:
+    ``SHA-256(seed_as_8B_be || b"redraw" || draw_as_8B_be) mod 2**64``, the scheme of the game
+    runner's own seeds. Deterministic, so a run with redraws is still reproducible from its master
+    seed. An unseeded request (``None``) stays unseeded: each of its draws is already a new one."""
+    if seed is None:
+        return None
+    h = hashlib.sha256((seed & _MASK64).to_bytes(8, "big"))
+    h.update(b"redraw")
+    h.update(draw.to_bytes(8, "big"))
+    return int.from_bytes(h.digest(), "big") & _MASK64
+
 
 async def generate_with_retries(
-    attempt: Callable[[], Awaitable[LLMResponse]], *,
+    attempt: Callable[[LLMRequest], Awaitable[LLMResponse]], request: LLMRequest, *,
     max_retries: int, provider: str, model: str,
 ) -> LLMResponse:
-    """Run a single provider attempt with a bounded, same-REQUEST retry of retriable LLM errors.
+    """Send ``request`` with ``attempt``, with a bounded retry of retriable LLM errors.
 
-    ``attempt`` is a zero-arg coroutine factory that performs one provider call and either returns an
+    ``attempt`` performs one provider call for the request it is given, and either returns an
     ``LLMResponse`` or raises an ``LLMError`` from the taxonomy (the mapping already applied). This
-    helper classifies on the MAPPED error's ``retriable`` flag: a retriable error is retried after an
-    exponential backoff (re-invoking ``attempt``, which re-sends the identical request - never
-    reseed); a non-retriable ``LLMError`` or an exhausted budget re-raises; all other exceptions 
-    propagate untouched.
+    helper classifies on the MAPPED error's ``retriable`` flag; a non-retriable ``LLMError`` or an
+    exhausted budget re-raises, and all other exceptions propagate untouched. A retriable error is
+    retried in one of two ways:
+
+    - **A bad draw** - an empty (``LLMEmptyResponseError``), degenerate
+      (``LLMDegenerateResponseError``) or cut (``LLMTruncatedResponseError``) answer - is drawn
+      again at once, with a new seed: ``redraw_seed(request.seed, k)`` for the k-th new draw. With
+      the same seed a local model gives the same answer again (a model that loops loops again), so
+      re-sending the request would only spend the budget. The answer that is finally kept carries
+      the seed it was drawn with (``LLMResponse.requested_seed``, hence ``llm_call.requested_seed``).
+    - **A transient failure** (timeout, rate limit, provider unavailable) re-sends the same request
+      after an exponential backoff: the network failed, not the model.
 
     ``max_retries=0`` (the clients' default) means exactly one attempt: the first
     retriable error raises. ``max_retries=k`` allows up to ``k+1`` attempts. Transients produce no
     ``LLMResponse`` and hence no telemetry - they are logged, never persisted (a network failure is
     not model behavior, unlike clue-legality retries).
 
-    The one exception is the empty-response re-sample (``LLMEmptyResponseError``): an empty draw is
-    model behavior, so the number absorbed by this call is stamped onto the successful response's
-    ``raw_payload`` under ``EMPTY_RESAMPLE_KEY`` and rides the existing audit path to
-    ``llm_call.raw_payload``. It is also skipped for backoff, being a local re-roll not a transient.
+    Bad draws are model behavior, so the number of each kind absorbed by this call is stamped onto
+    the successful response's ``raw_payload`` (``EMPTY_RESAMPLE_KEY``, ``DEGENERATE_RESAMPLE_KEY``,
+    ``TRUNCATED_RESAMPLE_KEY``) and rides the existing audit path to ``llm_call.raw_payload``. Their
+    sum is the ``k`` of the kept answer's seed.
     """
     n = 0
     empty_resamples = 0
     degenerate_resamples = 0
     truncated_resamples = 0
+    current = request
     while True:
         try:
-            response = await attempt()
+            response = await attempt(current)
         except LLMError as exc:
             if not exc.retriable or n >= max_retries:
                 raise
-            # An empty, degenerate or truncated draw is a local re-sample, not a network transient:
-            # back off only for the latter, so a stochastic non-answer costs a re-roll rather than
-            # minutes of sleeping.
+            # An empty, degenerate or truncated draw is a bad draw, not a network transient: it is
+            # drawn again at once with a new seed. Only a transient backs off, and re-sends the same
+            # request.
             is_empty = isinstance(exc, LLMEmptyResponseError)
             is_degenerate = isinstance(exc, LLMDegenerateResponseError)
             is_truncated = isinstance(exc, LLMTruncatedResponseError)
-            is_resample = is_empty or is_degenerate or is_truncated
-            backoff = 0.0 if is_resample else _RETRY_BACKOFF_BASE_S * (2 ** n)
-            logger.warning(
-                "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; retrying after %.2fs",
-                provider, model, n + 1, max_retries + 1, exc, backoff)
             n += 1
             if is_empty:
                 empty_resamples += 1
@@ -78,7 +99,18 @@ async def generate_with_retries(
                 degenerate_resamples += 1
             if is_truncated:
                 truncated_resamples += 1
-            if backoff:
+            if is_empty or is_degenerate or is_truncated:
+                redraws = empty_resamples + degenerate_resamples + truncated_resamples
+                current = request.model_copy(
+                    update={"seed": redraw_seed(request.seed, redraws)})
+                logger.warning(
+                    "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; drawing again "
+                    "with seed %s", provider, model, n, max_retries + 1, exc, current.seed)
+            else:
+                backoff = _RETRY_BACKOFF_BASE_S * (2 ** (n - 1))
+                logger.warning(
+                    "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; retrying after "
+                    "%.2fs", provider, model, n, max_retries + 1, exc, backoff)
                 await asyncio.sleep(backoff)
         else:
             # Stamp the re-sample counts onto the response that finally succeeded, so the audit trail

@@ -13,6 +13,7 @@ from backend.app.db.recorder import GameRecorder, SeatRecord
 from backend.app.models.game_schemas import (
     Board, WordCard, CardRole, GamePhase, ClueEntry,
 )
+from backend.app.models.llm_errors import LLMParseError, LLMTruncatedResponseError
 from backend.app.models.llm_schemas import (
     GuessJSONFormat, ConfidenceRankingJSONFormat, ClueJSONFormat,
 )
@@ -337,6 +338,45 @@ async def test_conduct_guess_measurement_failure_does_not_propagate():
     turn = rec.turns[-1]
     assert turn.play_proposal.proposals == ["BRICK", "CAVE"]
     assert turn.measurement is None
+
+
+@pytest.mark.asyncio
+async def test_conduct_guess_measurement_model_failure_does_not_end_the_turn():
+    """A measurement call that fails for good - here an answer cut at the output limit every time,
+    the retry budget spent - is an LLMError, not a ValueError. It is a data gap: the guesses are
+    still played."""
+    eng = _guessing_engine(guesser=0, agents=(5, 5))
+    client = _mock_client([_guess_json(["BRICK", "CAVE"])])
+    rec = _recorder(client)
+    rec.record_clue(eng.state.current_clue, proposal=None)
+    service = LLMService()
+    service.measure_and_attach_confidence_ranking = AsyncMock(
+        side_effect=LLMTruncatedResponseError(provider="ollama"))
+
+    reveals = await conduct_guess(service, client, eng, rec, player_id=0,
+                                  flush=MagicMock())
+
+    assert [(cid, r) for cid, r, _ in reveals] == [(1, "agent"), (5, "agent")]
+    assert rec.turns[-1].measurement is None
+
+
+@pytest.mark.asyncio
+async def test_conduct_sd_guess_measurement_model_failure_does_not_end_the_turn():
+    """The same in sudden death: the seat still plays its proposal."""
+    eng = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=1, agents=(2, 3))
+    client = _mock_client([_guess_json(["CAVE"])])
+    rec = _recorder(client)
+    service = LLMService()
+    service.measure_and_attach_confidence_ranking_sd = AsyncMock(
+        side_effect=LLMParseError(provider="ollama"))
+
+    reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0,
+                                     flush=MagicMock())
+
+    assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
+    sd = rec.turns[-1]
+    assert 0 in sd.sd_play_by_seat
+    assert sd.sd_measurement_by_seat == {}
 
 
 @pytest.mark.asyncio
