@@ -54,7 +54,7 @@ _KNOWN_PROVIDERS = ("ollama", "openrouter")
 
 # models
 def _models_from_config() -> list[SeatSpec]:
-    """The 4 batch models from ``config.llm_models`` (2 Ollama + 2 OpenRouter). Provider keys are
+    """The batch models from ``config.llm_models`` (the schedule needs exactly 4). Provider keys are
     lowercased to the SeatSpec convention; the local-only ``think`` flag is read per model."""
     specs: list[SeatSpec] = []
     all_models = cast("dict[str, dict[str, Any]]", config.llm_models)
@@ -68,7 +68,7 @@ def _models_from_config() -> list[SeatSpec]:
 
 def _parse_model(arg: str) -> SeatSpec:
     """Parse a ``provider:model`` flag into a SeatSpec (split on the FIRST colon; model names contain
-    colons). Mirrors run_pilot._parse_seat's validation."""
+    colons)."""
     if ":" not in arg:
         raise SystemExit(
             f"--model {arg!r} must be provider:model (e.g. ollama:llama3.1:8b).")
@@ -96,7 +96,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="sampling temperature (REQUIRED; no default).")
     p.add_argument("--model", action="append", metavar="PROVIDER:MODEL",
                    help="a batch model as provider:model; repeat exactly 4 times to override the "
-                        "config default (2 Ollama + 2 OpenRouter).")
+                        "roster in backend/app/config.py.")
     p.add_argument("--dry-run", action="store_true",
                    help="no-DB reproducibility check of the schedule + loop wiring using "
                         "deterministic mock clients (persist off, digest gate off).")

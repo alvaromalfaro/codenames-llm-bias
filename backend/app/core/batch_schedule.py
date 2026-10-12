@@ -1,8 +1,7 @@
 """The batch schedule.
 
-This is the probe/control calendar, seat mirroring and pairing cross that ``run_pilot.py`` explicitly
-is not. Given the models and a ``master_seed``, :func:`build_schedule` produces the exact list of
-games to play - each with its pairing, board, seat assignment and ``game_index``.
+This is the batch's probe/control calendar, seat mirroring and pairing cross. Given the models and
+a ``master_seed``, :func:`build_schedule` produces the exact list of games to play - each with its pairing, board, seat assignment and ``game_index``.
 Because a silent error here becomes a biased dataset discovered only at analysis time, identity is 
 derived through the very same :func:`_game_identity` the runner and DB use, so the tests can prove 
 no two cells collide on the real ``game_id``.
@@ -29,7 +28,8 @@ from itertools import combinations
 from backend.app.core.game_runner import SeatSpec, _game_identity
 from backend.app.models.game_schemas import Board
 
-# The board budget per pairing (also the bank precondition, seed of 5c.c's check).
+# The board budget per pairing, and so the bank precondition: build_schedule raises ScheduleError
+# when the bank holds fewer boards of a kind.
 _N_CAREER = 4
 _N_SCIENCE = 4
 _N_CONTROL = 8

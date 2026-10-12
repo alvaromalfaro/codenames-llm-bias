@@ -339,7 +339,7 @@ async def test_report_shape_and_provenance(monkeypatch) -> None:
     assert len(aborted) == 1 and aborted[0].pairing_ordinal == 2
     # classified as model-no-legal-play
     assert aborted[0].error_kinds == {"model": 5}
-    # a round-trippable dict for the step-7 analysis.
+    # a round-trippable dict for the analysis.
     d = report.as_dict()
     assert d["run_id"] == report.run_id and d["master_seed"] == _MASTER_SEED
     assert len(d["pairings"]) == 6 and d["pairings"][2]["aborted"] is True

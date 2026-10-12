@@ -154,8 +154,8 @@ class PairingReport:
 
 @dataclass
 class BatchReport:
-    """The whole batch's outcome, structured so step-7 can read reduced effective-n off it: which
-    pairings aborted and why, and the per-pairing completed/errored split."""
+    """The whole batch's outcome, structured so the analysis can read reduced effective-n off it:
+    which pairings aborted and why, and the per-pairing completed/errored split."""
     run_id: str
     master_seed: int
     attempted: int
@@ -217,8 +217,9 @@ def _check_no_collisions(game_ids: Sequence[str], *, master_seed: int) -> None:
             f"{len(existing)} of {len(game_ids)} games for master_seed={master_seed} are already "
             f"recorded - this seed's experiment is in the database (deterministic game.id "
             f"collision). Delete the prior run first, then re-run this master_seed. "
-            f"(e.g. python scripts/run_pilot.py --delete-run <RUN_ID>; the run id is on the "
-            f"existing game rows.) Colliding ids (first 3): {list(existing)[:3]}")
+            f"(backend.app.db.writer.delete_run(<RUN_ID>), see 'Re-running a seed' in the README; "
+            f"the run id is on the existing game rows.) "
+            f"Colliding ids (first 3): {list(existing)[:3]}")
 
 
 def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> None:
