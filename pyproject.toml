@@ -37,3 +37,6 @@ include = ["backend*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# board_generator/ is a separate project with its own venv and test suite (it needs scipy, which
+# this one does not install), so a bare `pytest` here must not walk into it.
+testpaths = ["tests"]
