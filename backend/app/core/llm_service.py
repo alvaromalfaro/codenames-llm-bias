@@ -250,7 +250,8 @@ class LLMService:
             raise ValueError(
                 "The player must be the guesser to propose a guess.")
 
-        if game_state.current_clue.turn_number != game_state.turn_number:
+        if (game_state.current_clue is None
+                or game_state.current_clue.turn_number != game_state.turn_number):
             raise ValueError(
                 "Cannot propose a guess when there is no clue available."
             )
@@ -315,6 +316,11 @@ class LLMService:
         if game_state.guesser != player_id:
             raise ValueError(
                 "The player must be the guesser to elicit a confidence ranking.")
+
+        if (game_state.current_clue is None
+                or game_state.current_clue.turn_number != game_state.turn_number):
+            raise ValueError(
+                "Cannot elicit a confidence ranking when there is no clue available.")
 
         request = self._build_measurement_request(
             game_state, llm_client.model_name, player_id, seed=seed)

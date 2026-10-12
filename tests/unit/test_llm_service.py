@@ -195,6 +195,39 @@ async def test_llm_service_propose_guess_no_clue(game_state_guessing):
         await service.propose_guess(mock_client, game_state_guessing)
 
 
+@pytest.mark.asyncio
+async def test_llm_service_propose_guess_clue_none(game_state_guessing):
+    """
+    Tests that propose_guess raises the same ValueError, not an AttributeError, when the game state
+    has no current clue at all.
+    """
+    mock_client = MagicMock(spec=LLMClient)
+    service = LLMService()
+    game_state_guessing.current_clue = None
+
+    with pytest.raises(ValueError, match="Cannot propose a guess when there is no clue available."):
+        await service.propose_guess(mock_client, game_state_guessing)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stale", [False, True])
+async def test_elicit_confidence_ranking_no_clue(game_state_guessing, stale):
+    """
+    Tests that elicit_confidence_ranking raises a ValueError, not an AttributeError, when there is
+    no clue for this turn: none at all, or one from an earlier turn.
+    """
+    mock_client = MagicMock(spec=LLMClient)
+    service = LLMService()
+    if stale:
+        game_state_guessing.current_clue.turn_number -= 1
+    else:
+        game_state_guessing.current_clue = None
+
+    with pytest.raises(ValueError,
+                       match="Cannot elicit a confidence ranking when there is no clue available."):
+        await service.elicit_confidence_ranking(mock_client, game_state_guessing)
+
+
 def test_llm_service_build_clue_request_player1(game_state_cg):
     """
     Tests that the LLMService correctly builds an LLMRequest for proposing a clue when the current
