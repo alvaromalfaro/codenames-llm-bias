@@ -166,10 +166,13 @@ class LLMClientLocal(LLMClient):
                 try:
                     parsed = expected_format.model_validate_json(content)
                 except Exception as e:
-                    logger.debug("ollama %s response does not match %s (%s); discarded draw:\n%s",
-                                 self.model_name, expected_format.__name__, e, content)
+                    # A parse error is not drawn again, so this answer is all there is to audit: it
+                    # is logged whole (num_predict bounds it), at a level the batch's log keeps.
+                    logger.warning("ollama %s response does not match %s (%s); the answer:\n%s",
+                                   self.model_name, expected_format.__name__, e, content)
                     raise LLMParseError(
-                        provider="ollama", cause=e, execution_mode="local"
+                        provider="ollama", raw_payload=response_json, cause=e,
+                        execution_mode="local"
                     )
 
                 # Well-formed but degenerate (e.g. an empty proposals list): the permissive

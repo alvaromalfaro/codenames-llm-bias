@@ -83,8 +83,13 @@ class LLMClientOpenRouter(LLMClient):
                 try:
                     expected_format.model_validate_json(content)
                 except Exception as e:
+                    # A parse error is not drawn again, so this answer is all there is to audit: it
+                    # is logged whole (max_tokens bounds it), at a level the batch's log keeps.
+                    logger.warning("openrouter %s response does not match %s (%s); the answer:\n%s",
+                                   self.model_name, expected_format.__name__, e, content)
                     raise LLMParseError(
-                        provider="openrouter", cause=e, execution_mode="api")
+                        provider="openrouter", raw_payload=response.model_dump(), cause=e,
+                        execution_mode="api")
 
             usage = response.usage
             raw_payload = response.model_dump()

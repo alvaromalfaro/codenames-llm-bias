@@ -1,4 +1,5 @@
 import json
+import logging
 import pytest
 from unittest.mock import patch, MagicMock
 from ollama import RequestError, ResponseError
@@ -152,6 +153,31 @@ async def test_llm_client_local_raises_parse_error_on_schema_mismatch(llm_reques
 
         with pytest.raises(LLMParseError):
             await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_parse_error_keeps_the_answer(llm_request_cg, caplog):
+    """
+    Tests that a parse error carries the provider's payload and logs the whole answer at WARNING:
+    the answer is not drawn again, and the batch logs at INFO.
+    """
+    mock_content = json.dumps(
+        {"reasoning": "some reasoning", "clue": "battle"})  # missing "count"
+    mock_response = MagicMock()
+    mock_response.message.content = mock_content
+    mock_response.model_dump_json.return_value = json.dumps(
+        {"message": {"content": mock_content}})
+
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        MockClient.return_value.chat.return_value = mock_response
+        client = LLMClientLocal('ollama3.2:latest')
+
+        with caplog.at_level(logging.WARNING, logger="backend.app.core.llm.client_local"):
+            with pytest.raises(LLMParseError) as excinfo:
+                await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert excinfo.value.raw_payload == {"message": {"content": mock_content}}
+    assert mock_content in caplog.text
 
 
 @pytest.mark.asyncio

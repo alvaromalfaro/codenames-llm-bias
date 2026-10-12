@@ -1,4 +1,5 @@
 import json
+import logging
 import httpx
 import pytest
 from openai import APITimeoutError
@@ -133,6 +134,25 @@ async def test_openrouter_non_retriable_raises_immediately(llm_request_cg, monke
         with pytest.raises(LLMParseError):
             await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
         assert mock_create.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_openrouter_parse_error_keeps_the_answer(llm_request_cg, caplog):
+    """A parse error carries the provider's payload and logs the whole answer at WARNING: the answer
+    is not drawn again, and the batch logs at INFO."""
+    bad = _mock_openai_response()
+    bad.choices[0].message.content = "not valid json for the schema"
+
+    with patch("backend.app.core.llm.client_openrouter.AsyncOpenAI") as MockOpenAI:
+        MockOpenAI.return_value.chat.completions.create = AsyncMock(return_value=bad)
+        client = LLMClientOpenRouter("openrouter/some-model")
+
+        with caplog.at_level(logging.WARNING, logger="backend.app.core.llm.client_openrouter"):
+            with pytest.raises(LLMParseError) as excinfo:
+                await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert excinfo.value.raw_payload == {"id": "req-123"}
+    assert "not valid json for the schema" in caplog.text
 
 
 @pytest.mark.asyncio
