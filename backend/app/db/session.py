@@ -38,8 +38,7 @@ def get_engine() -> Engine:
     """Return a lazily-constructed, process-wide sync engine."""
     global _engine
     if _engine is None:
-        _engine = create_engine(
-            _database_url(), future=True, pool_pre_ping=True)
+        _engine = create_engine(_database_url(), pool_pre_ping=True)
     return _engine
 
 
@@ -48,7 +47,7 @@ def get_sessionmaker() -> sessionmaker[Session]:
     global _SessionLocal
     if _SessionLocal is None:
         _SessionLocal = sessionmaker(
-            bind=get_engine(), autoflush=False, expire_on_commit=False, future=True
+            bind=get_engine(), autoflush=False, expire_on_commit=False
         )
     return _SessionLocal
 
