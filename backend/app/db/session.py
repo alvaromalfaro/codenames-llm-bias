@@ -1,9 +1,8 @@
 """Sync SQLAlchemy engine and session wiring.
 
-Mirrors the ``os.environ.get`` idiom used in the backend rather than introducing a pydantic-settings
-``BaseSettings`` class. ``DATABASE_URL`` is read on first use, not at import time, so this module 
-imports cleanly even when ``DATABASE_URL`` is unset - failure is deferred to the first attempt to 
-build an engine.
+``DATABASE_URL`` is read with ``os.environ.get``, like the rest of the backend's environment, and
+on first use, not at import time, so this module imports cleanly even when it is unset - failure is
+deferred to the first attempt to build an engine.
 """
 
 from __future__ import annotations
