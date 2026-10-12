@@ -200,7 +200,7 @@ class LLMService:
     async def propose_clue(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> ClueProposal:
         """
         Proposes a clue for the current game state. This method checks that the game is in the 
-        correct phase and that the LLM is the clue giver before building the request, sending it to
+        correct phase and that the seat is the clue giver before building the request, sending it to
         the LLM, and processing the response.
 
         The clue is not checked against the validity rules here, and an invalid one is not
@@ -208,7 +208,7 @@ class LLMService:
 
         :param llm_client: The LLM client to use for generating responses.
         :param game_state: The current state of the game.
-        :param player_id: The ID of the player proposing the clue (0 for LLM).
+        :param player_id: The ID of the player proposing the clue (0 or 1).
 
         :return: An instance of ClueProposal containing the proposed clue and count from the LLM.
         """
@@ -233,12 +233,12 @@ class LLMService:
     async def propose_guess(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> GuessProposal:
         """
         Proposes guesses for the current game state. This method checks that the game is in the 
-        correct phase and that the LLM is the guesser before building the request, sending it to
+        correct phase and that the seat is the guesser before building the request, sending it to
         the LLM, and processing the response.
 
         :param llm_client: The LLM client to use for generating responses.
         :param game_state: The current state of the game.
-        :param player_id: The ID of the player proposing the guesses (0 for LLM).
+        :param player_id: The ID of the player proposing the guesses (0 or 1).
 
         :return: An instance of GuessProposal containing the proposed guesses from the LLM.
         """
@@ -278,7 +278,7 @@ class LLMService:
 
         :param llm_client: The LLM client to use for generating responses.
         :param game_state: The current state of the game.
-        :param player_id: The ID of the player proposing the guesses (0 for LLM).
+        :param player_id: The ID of the player proposing the guesses (0 or 1).
 
         :return: An instance of GuessProposal containing the proposed guesses from the LLM.
         """
@@ -305,7 +305,7 @@ class LLMService:
 
         :param llm_client: The LLM client to use for generating the response.
         :param game_state: The current state of the game (guessing phase, before resolution).
-        :param player_id: The seat of the guesser (0 for LLM).
+        :param player_id: The seat of the guesser (0 or 1).
 
         :return: The parsed ConfidenceRanking over the unrevealed cards.
         """
@@ -338,7 +338,7 @@ class LLMService:
 
         :param llm_client: The LLM client to use for generating the response.
         :param game_state: The current state of the game (SUDDEN_DEATH_LLM phase).
-        :param player_id: The seat of the guesser (0 for LLM).
+        :param player_id: The seat of the guesser (0 or 1).
 
         :return: The parsed ConfidenceRanking over the unrevealed cards.
         """
@@ -361,7 +361,7 @@ class LLMService:
 
         :param llm_client: The LLM client to use for generating the response.
         :param engine: The game engine whose current-turn record receives the ranking.
-        :param player_id: The seat of the guesser (0 for LLM).
+        :param player_id: The seat of the guesser (0 or 1).
 
         :return: The parsed ConfidenceRanking that was attached.
         """
@@ -378,7 +378,7 @@ class LLMService:
 
         :param llm_client: The LLM client to use for generating the response.
         :param engine: The game engine whose SuddenDeathEntry receives the ranking.
-        :param player_id: The seat of the guesser (0 for LLM).
+        :param player_id: The seat of the guesser (0 or 1).
 
         :return: The parsed ConfidenceRanking that was attached.
         """
@@ -395,7 +395,7 @@ class LLMService:
 
         :param game_state: The current state of the game.
         :param model: The LLM model to use for generating the clue.
-        :param player_id: The ID of the player proposing the clue (0 for LLM).
+        :param player_id: The ID of the player proposing the clue (0 or 1).
 
         :return: An instance of LLMRequest containing the messages and parameters for the LLM
             generation.
@@ -469,7 +469,7 @@ class LLMService:
 
         :param game_state: The current state of the game.
         :param model: The LLM model to use for generating the guess.
-        :param player_id: The ID of the player proposing the guess (0 for LLM).
+        :param player_id: The ID of the player proposing the guess (0 or 1).
 
         :return: An instance of LLMRequest containing the messages and parameters for the LLM
             generation.
@@ -522,7 +522,7 @@ class LLMService:
 
         :param game_state: The current state of the game (sudden death).
         :param model: The LLM model to use.
-        :param player_id: The seat of the guesser (0 for LLM).
+        :param player_id: The seat of the guesser (0 or 1).
         """
         clue_history = "\n".join([
             f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
@@ -591,7 +591,7 @@ class LLMService:
 
         :param game_state: The current state of the game.
         :param model: The LLM model to use.
-        :param player_id: The seat of the guesser (0 for LLM).
+        :param player_id: The seat of the guesser (0 or 1).
 
         :return: The LLMRequest for the measurement call.
         """
@@ -631,7 +631,7 @@ class LLMService:
 
         :param game_state: The current state of the game (sudden death).
         :param model: The LLM model to use.
-        :param player_id: The seat of the guesser (0 for LLM).
+        :param player_id: The seat of the guesser (0 or 1).
 
         :return: The LLMRequest for the sudden-death measurement call.
         """
@@ -704,7 +704,7 @@ class LLMService:
         The measurement builders never call this: the measurement scores what the clue points to.
 
         :param game_state: The current state of the game.
-        :param player_id: The seat of the guesser (0 for LLM).
+        :param player_id: The seat of the guesser (0 or 1).
 
         :return: The rendered section, without its heading.
         """
@@ -752,7 +752,7 @@ class LLMService:
         so it is in none of the lists, except a covered green word, which is listed in ``revealed``.
 
         :param game_state: The current state of the game.
-        :param player_id: The seat of the clue giver (0 for LLM).
+        :param player_id: The seat of the clue giver (0 or 1).
 
         :return: The ``- WORD`` lines of each list, in board order.
         """

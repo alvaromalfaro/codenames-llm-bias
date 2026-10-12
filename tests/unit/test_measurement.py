@@ -425,7 +425,7 @@ def test_switch_roles_sets_sd_pending_flag(valid_board_data):
 # per-seat predicate WordCard.is_guessable_by(player_id) that mirrors resolve_guess's guard.
 
 def _seat1_guessing_engine(valid_board_data: dict) -> CodenamesDuetEngine:
-    """A guessing-phase engine with seat 1 as the guesser (the future LLM-vs-LLM seat)."""
+    """A guessing-phase engine with seat 1 as the guesser."""
     board = Board(**valid_board_data)
     engine = CodenamesDuetEngine(board)
     engine.state.clue_giver = 0
