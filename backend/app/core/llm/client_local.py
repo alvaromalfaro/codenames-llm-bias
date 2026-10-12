@@ -194,10 +194,11 @@ class LLMClientLocal(LLMClient):
                 # Convert ns -> ms
                 latency_ms=(round(ollama_response.total_duration / 1_000_000)
                             if ollama_response.total_duration is not None else 0),
+                # The ollama client types both counts as optional: one the server leaves out is
+                # recorded as None (and the total with it), never summed as if it were 0.
                 usage=TokenUsage(
                     prompt_tokens=ollama_response.prompt_eval_count,
                     completion_tokens=ollama_response.eval_count,
-                    total_tokens=ollama_response.prompt_eval_count + ollama_response.eval_count,
                 ),
                 finish_reason=ollama_response.done_reason,
                 raw_payload=response_json,

@@ -98,6 +98,22 @@ def test_token_usage_negative_tokens():
     assert "completion_tokens" in str(exc_info.value)
 
 
+def test_token_usage_unknown_count_leaves_total_unknown():
+    """
+    Validates that a count the provider did not report is None, and that the total is then left
+    unknown instead of being summed as if the missing count were 0.
+    """
+    token_usage = TokenUsage(prompt_tokens=None, completion_tokens=5)
+
+    assert token_usage.prompt_tokens is None
+    assert token_usage.completion_tokens == 5
+    assert token_usage.total_tokens is None
+
+    # Both counts stay required, so a client cannot leave one out by mistake.
+    with pytest.raises(ValidationError):
+        TokenUsage(completion_tokens=5)
+
+
 def test_llm_request_valid():
     """
     Validates that a correctly structured LLMRequest instance passes validation without errors.

@@ -56,6 +56,23 @@ async def test_llm_client_openrouter_forwards_seed(llm_request_cg):
 
 
 @pytest.mark.asyncio
+async def test_llm_client_openrouter_without_usage_records_unknown_counts(llm_request_cg):
+    """A response without a usage block records the token counts as unknown (None), not as 0."""
+    response = _mock_openai_response()
+    response.usage = None
+
+    with patch("backend.app.core.llm.client_openrouter.AsyncOpenAI") as MockOpenAI:
+        MockOpenAI.return_value.chat.completions.create = AsyncMock(return_value=response)
+        client = LLMClientOpenRouter("openrouter/some-model")
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert result.usage.prompt_tokens is None
+    assert result.usage.completion_tokens is None
+    assert result.usage.total_tokens is None
+
+
+@pytest.mark.asyncio
 async def test_llm_client_openrouter_populates_telemetry(llm_request_cg):
     """
     Tests that the OpenRouter client populates the sampling telemetry on LLMResponse:

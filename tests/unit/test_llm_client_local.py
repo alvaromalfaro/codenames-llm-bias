@@ -107,6 +107,35 @@ async def test_llm_client_local_raises_llm_parse_error(llm_request_cg):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("prompt_count", "answer_count"), [(None, 20), (10, None), (None, None)])
+async def test_llm_client_local_missing_token_count(llm_request_cg, prompt_count, answer_count):
+    """
+    Tests that a token count the server leaves out is recorded as None, with the total unknown,
+    instead of failing the call with a TypeError when the two are added.
+    """
+    mock_content = json.dumps(
+        {"reasoning": "test reasoning", "clue": "battle", "count": 3})
+    mock_response = MagicMock()
+    mock_response.message.content = mock_content
+    mock_response.total_duration = 3200
+    mock_response.prompt_eval_count = prompt_count
+    mock_response.eval_count = answer_count
+    mock_response.done_reason = "stop"
+    mock_response.model_dump_json.return_value = json.dumps(
+        {"message": {"content": mock_content}})
+
+    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+        MockClient.return_value.chat.return_value = mock_response
+        client = LLMClientLocal('ollama3.2:latest')
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert result.usage.prompt_tokens == prompt_count
+    assert result.usage.completion_tokens == answer_count
+    assert result.usage.total_tokens is None
+
+
+@pytest.mark.asyncio
 async def test_llm_client_local_generate_think_false(llm_request_cg):
     """
     Tests that when think=False, the chat() call is made without the think parameter.

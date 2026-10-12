@@ -98,10 +98,11 @@ class LLMClientOpenRouter(LLMClient):
                 text=content,
                 model_used=response.model,
                 latency_ms=latency_ms,
+                # Without a usage block the counts are unknown: None, not 0.
                 usage=TokenUsage(
-                    prompt_tokens=usage.prompt_tokens if usage else 0,
-                    completion_tokens=usage.completion_tokens if usage else 0,
-                    total_tokens=usage.total_tokens if usage else 0,
+                    prompt_tokens=usage.prompt_tokens if usage else None,
+                    completion_tokens=usage.completion_tokens if usage else None,
+                    total_tokens=usage.total_tokens if usage else None,
                 ),
                 finish_reason=response.choices[0].finish_reason,
                 raw_payload=raw_payload,
