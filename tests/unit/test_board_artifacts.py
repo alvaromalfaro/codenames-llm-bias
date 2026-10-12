@@ -8,6 +8,7 @@ from backend.app.core.loader import BoardLoader
 from backend.app.models.game_schemas import Board
 
 DATA_PATH = "data/boards"
+FIXTURES_PATH = "tests/fixtures"
 PROBE_FILE = "gender_probe-gender-career-000.json"
 CONTROL_FILE = "neutral_control-000.json"
 EXAMPLE_FILE = "example_board.json"
@@ -58,13 +59,22 @@ def test_control_board_is_all_neutral_without_dilemma(loader):
     assert all(card.category == "neutral" for card in board.cards)
 
 
-def test_example_board_minimal_shape_still_loads(loader):
+def test_example_board_minimal_shape_still_loads():
     """The minimal runtime shape (example_board.json) still validates; type/dilemma are None."""
-    board = loader.load_board(EXAMPLE_FILE)
+    board = BoardLoader(data_path=FIXTURES_PATH).load_board(EXAMPLE_FILE)
 
     assert board.type is None
     assert board.dilemma is None
     assert len(board.cards) == 25
+
+
+def test_bank_holds_only_probe_and_control_boards(loader):
+    """The batch stores every board under data/boards in the database, so an untyped fixture there
+    would become a board of the experiment's data. The example board lives in tests/fixtures."""
+    boards = [board for group in loader.boards.values() for board in group]
+
+    assert boards
+    assert {board.type for board in boards} <= {"probe", "control"}
 
 
 def test_extra_forbid_rejects_unknown_top_level_key(valid_board_data):

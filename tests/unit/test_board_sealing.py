@@ -44,7 +44,6 @@ def test_all_28_bank_boards_sealed_and_load_via_backend():
         assert board.measurement_frame_id == target
 
 
-def test_balance_report_and_example_board_are_not_sealed():
-    for name in ("balance_report.json", "example_board.json"):
-        raw = json.load(open(os.path.join(_BOARDS_DIR, name), encoding="utf-8"))
-        assert _SEAL_KEY not in raw
+def test_balance_report_is_not_sealed():
+    raw = json.load(open(os.path.join(_BOARDS_DIR, "balance_report.json"), encoding="utf-8"))
+    assert _SEAL_KEY not in raw

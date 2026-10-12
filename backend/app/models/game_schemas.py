@@ -285,7 +285,8 @@ class Board(BaseModel):
     def type_coherence_validation(self) -> "Board":
         """
         Validates coherence between the artifact's ``type`` and the rest of the board metadata.
-        The minimal runtime shape (``example_board.json``) has ``type is None`` and is exempt.
+        The minimal runtime shape (``tests/fixtures/example_board.json``) has ``type is None`` and
+        is exempt.
 
         - probe   => dilemma and specification present, and at least one gendered card.
         - control => dilemma and specification absent, and every card is neutral.
