@@ -1,5 +1,5 @@
 import pytest
-from backend.app.core.clue_validator import ClueValidator
+from backend.app.core.clue_validator import ClueValidator, _Morphology
 from backend.app.models.game_schemas import CardRole, ClueEntry, WordCard
 
 
@@ -394,3 +394,25 @@ def test_remove_word_is_case_insensitive(validator_hide):
 def test_remove_nonexistent_word_does_not_raise(validator_hide):
     """Removing a word that is not on the board does not raise an error."""
     validator_hide.remove_word("NOTAWORD")
+
+
+def test_morpholex_skips_blank_lines(tmp_path):
+    """A blank line in the MorphoLex file, such as one an editor leaves at the end, is skipped."""
+    path = tmp_path / "morpholex.tsv"
+    path.write_text("word\tsegmentation\nearth\t{(earth)}\n\n  \nquake\t{(quake)}\n\n",
+                    encoding="utf-8")
+
+    morphology = _Morphology(path)
+
+    assert "earth" in morphology and "quake" in morphology
+
+
+@pytest.mark.parametrize("line", ["earth", "earth\t{(earth)}\textra"])
+def test_morpholex_malformed_line_names_file_and_line(tmp_path, line):
+    """A line without exactly two columns stops the load, naming the file and the line: skipping it
+    would silently change which clues are flagged."""
+    path = tmp_path / "morpholex.tsv"
+    path.write_text(f"word\tsegmentation\nquake\t{{(quake)}}\n{line}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"morpholex\.tsv:3: expected 'word<TAB>segmentation'"):
+        _Morphology(path)

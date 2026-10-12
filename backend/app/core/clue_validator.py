@@ -41,8 +41,17 @@ class _Morphology:
         self._segmentations: dict[str, str] = {}
         with open(path, encoding="utf-8") as f:
             next(f)  # header
-            for line in f:
-                word, segmentation = line.rstrip("\r\n").split("\t")
+            for line_number, line in enumerate(f, start=2):
+                line = line.rstrip("\r\n")
+                if not line.strip():
+                    continue
+                # A malformed line fails loudly: skipping it would silently change which clues the
+                # validator flags.
+                fields = line.split("\t")
+                if len(fields) != 2:
+                    raise ValueError(
+                        f"{path}:{line_number}: expected 'word<TAB>segmentation', got {line!r}")
+                word, segmentation = fields
                 self._segmentations[word] = segmentation
         self._units: dict[str, tuple[_Unit, ...] | None] = {}
 
