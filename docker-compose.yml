@@ -8,8 +8,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Loopback only: the host's scripts reach it, the rest of the network does not.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - ./docker_volumes/postgres_data:/var/lib/postgresql/data
 
@@ -23,8 +24,9 @@ services:
       - /bin/bash
       - -c
       - sed 's/\r$$//' /ollama_entrypoint.sh > /tmp/ollama_entrypoint.sh && exec /bin/bash /tmp/ollama_entrypoint.sh
+    # Loopback only: Ollama has no authentication, so the rest of the network must not reach it.
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     volumes:
       - ./docker_volumes/ollama_data:/root/.ollama
       - ./ollama_entrypoint.sh:/ollama_entrypoint.sh:ro

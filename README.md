@@ -174,7 +174,8 @@ before it mints its run, and skips whatever is already stored (see
 
 > **Host vs container hostnames.** Inside Compose the database is `db:5432` and Ollama is
 > `codenames-ollama:11434` — that is what `.env` holds. The batch and analysis CLIs are normally run
-> **from the host**, where the same services are `localhost:5432` and `localhost:11434`. Every
+> **from the host**, where the same services are `localhost:5432` and `localhost:11434` (published
+> on 127.0.0.1 only, so other machines on the network cannot reach them). Every
 > host-side snippet below overrides those two variables accordingly; forgetting to do so is the most
 > common failure. The host-side snippets are bash; on Windows see
 > [Running on Windows](#running-on-windows) for the PowerShell equivalents.
