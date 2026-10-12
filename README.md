@@ -106,7 +106,7 @@ codenames-llm-bias/
 ├── tests/unit/                platform test suite (DB-backed tests gated on DATABASE_URL)
 ├── docker-compose.yml         db (pgvector) + ollama + app (the Python environment)
 ├── docker-compose.gpu.yml     optional override: reserves an NVIDIA GPU for ollama
-├── ollama_entrypoint.sh       pulls every model named in backend/app/config.py
+├── ollama_entrypoint.sh       pulls every Ollama model in backend/app/config.py
 ├── .gitattributes             forces LF on *.sh / Dockerfile (Windows checkouts)
 ├── .dockerignore              keeps docker_volumes/ and .env out of the app image
 ├── exp_data.sql               pg_dump of the completed experiment (see Reproducing)
@@ -164,7 +164,7 @@ experiment with [the batch](#running-the-batch-unattended).
 | Service | Container | Port | Notes |
 |---|---|---|---|
 | `db` | `codenames-db` | 5432 | `ankane/pgvector`. Data in `./docker_volumes/postgres_data` (root-owned, gitignored). |
-| `ollama` | `codenames-ollama` | 11434 | Runs `ollama_entrypoint.sh`, which greps `"name:tag"` strings out of the bind-mounted `backend/app/config.py` and `ollama pull`s each one. **The roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. CPU unless `docker-compose.gpu.yml` is included. |
+| `ollama` | `codenames-ollama` | 11434 | Runs `ollama_entrypoint.sh`, which reads the keys of `llm_models["Ollama"]` from the bind-mounted `backend/app/config.py` and `ollama pull`s each one that is not installed. **The Ollama roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. CPU unless `docker-compose.gpu.yml` is included. |
 | `app` | `codenames-backend` | — | The Python environment, over the repo bind-mounted at `/workspace`. It serves nothing and stays up so that the migrations, the batch and the scripts can run in it (`docker compose exec app …`). Reads `.env`. |
 
 **Board ingestion.** The database needs only the migrated schema. The batch stores
