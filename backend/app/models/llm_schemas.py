@@ -4,8 +4,8 @@ from typing import Optional, Literal, Any
 
 class LLMMessage(BaseModel):
     """
-    A message in the conversation between the LLM and the human player. It has a role (system, user,
-    or assistant) and content (the text of the message). 
+    A message in the conversation with an LLM. It has a role (system, user, or assistant) and
+    content (the text of the message).
     """
     role: Literal["system", "user", "assistant"]
     content: str  # The content of the message

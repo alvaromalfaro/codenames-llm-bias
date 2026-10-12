@@ -31,7 +31,9 @@ _SEAT_COLUMNS: dict[int, str] = {
 def perspective_column(seat: int) -> str:
     """Return the ``card`` column holding ``seat``'s own view of each card's role.
 
-    Seat 0 is the LLM, seat 1 the human. Any other seat is a programming error, not a default.
+    Seat 0 reads ``llm_perspective_role``, seat 1 ``human_perspective_role``; both seats are LLMs,
+    the names are from the earlier human-vs-model setup. Any other seat is a programming error, not
+    a default.
     """
     try:
         return _SEAT_COLUMNS[seat]

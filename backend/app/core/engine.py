@@ -11,7 +11,8 @@ from backend.app.core.clue_validator import ClueValidator
 
 logger = logging.getLogger(__name__)
 
-# The sudden-death phase in which each seat (0 = LLM, 1 = human) is the one guessing.
+# The sudden-death phase in which each seat is the one guessing. Both seats are LLMs; the phase
+# names are from the earlier human-vs-model setup.
 _SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM,
                      1: GamePhase.SUDDEN_DEATH_HUMAN}
 
@@ -139,12 +140,13 @@ class CodenamesDuetEngine:
         measurement snapshot only; it is never used for game rules and never reaches the guesser.
 
         Each emitted word is matched case-insensitively against the board. A word that maps to a
-        card carries its ``card_id``, the card's role from the giver's perspective (LLM role when
-        ``player_id == 0``, otherwise the human role), and the card's reveal state at this moment.
+        card carries its ``card_id``, the card's role from the giver's perspective
+        (``llm_perspective_role`` when ``player_id == 0``, otherwise ``human_perspective_role``),
+        and the card's reveal state at this moment.
         An unmappable word yields an all-``None`` snapshot (the diagnostic that S was malformed).
 
         :param targets: The intended target words exactly as emitted by the clue-giver.
-        :param player_id: The seat of the clue-giver (0 = LLM, 1 = human).
+        :param player_id: The seat of the clue-giver (0 or 1).
 
         :return: One ResolvedTarget per emitted word, in order.
         """
@@ -192,7 +194,7 @@ class CodenamesDuetEngine:
 
         :param ranking: The parsed confidence ranking over the guesser's remaining agents at that
             seat's sudden-death entry.
-        :param player_id: The seat of the guesser whose ranking this is (0 = LLM, 1 = human).
+        :param player_id: The seat of the guesser whose ranking this is (0 or 1).
         """
         if self.state.sudden_death is None:
             self.state.sudden_death = SuddenDeathEntry()
@@ -429,8 +431,8 @@ class CodenamesDuetEngine:
             self.pass_turn(guessed_by)
             return "agent_turn_end"
 
-        # LLM just found their last agent in SUDDEN_DEATH_LLM -> hand off to Human (seat 1); this is
-        # the only handoff of the fixed LLM -> human order (see _switch_roles). Re-arm the
+        # Seat 0 just found its last agent in SUDDEN_DEATH_LLM -> hand off to seat 1; this is the
+        # only handoff of the fixed seat 0 -> seat 1 order (see _switch_roles). Re-arm the
         # measurement flag so seat 1's sudden-death confidence ranking is elicited once, at its own
         # pre-first-selection instant (consumed at that seat's SD proposal entry).
         if (self.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
@@ -483,10 +485,10 @@ class CodenamesDuetEngine:
         self.state.current_clue = None
 
         # If the timer tokens have run out and there are still pending words, transition to the
-        # sudden death phase - LLM goes first unless it has nothing pending. When both seats have
-        # words pending the rules let them guess in any order (§7.3); fixing the order LLM -> human
-        # is a deliberate deviation that gives every seat a single sudden-death play: the human may
-        # only guess once the LLM has found all its words. A seat that stops before that concedes
+        # sudden death phase - seat 0 goes first unless it has nothing pending. When both seats have
+        # words pending the rules let them guess in any order (§7.3); fixing the order seat 0 ->
+        # seat 1 is a deliberate deviation that gives every seat a single sudden-death play: seat 1
+        # may only guess once seat 0 has found all its words. A seat that stops before that concedes
         # (concede_sudden_death).
         if self.state.timer_tokens <= 0 and self._any_pending_words():
             if self.state.pending_words[0] == 0:

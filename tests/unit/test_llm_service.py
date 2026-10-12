@@ -198,7 +198,7 @@ async def test_llm_service_propose_guess_no_clue(game_state_guessing):
 def test_llm_service_build_clue_request_player1(game_state_cg):
     """
     Tests that the LLMService correctly builds an LLMRequest for proposing a clue when the current
-    player is Player 1 (human [an LLM in fact, to automate future games]).
+    player is seat 1.
     """
     mock_client = MagicMock(spec=LLMClient)
     service = LLMService()

@@ -30,9 +30,11 @@ class Covariates(BaseModel):
 
 class WordCard(BaseModel):
     """
-    A card in the game, defined by its text (the word on the card) and its role for both the LLM and
-    the human player, plus the two independent pieces of physical state the rules put on a word: the
-    agent card that may cover it and the time tokens that may sit on it.
+    A card in the game, defined by its text (the word on the card) and its role on each side - seat
+    0 reads ``llm_perspective_role``, seat 1 ``human_perspective_role`` (both seats are LLMs; the
+    names are from the earlier human-vs-model setup) - plus the two independent pieces of physical
+    state the rules put on a word: the agent card that may cover it and the time tokens that may sit
+    on it.
 
     The two state families answer different questions and must not be conflated (see
     ``is_covered`` vs ``revealed_by``):
@@ -57,13 +59,13 @@ class WordCard(BaseModel):
     # seat-independent - a covered word is covered for BOTH players.
     revealed: bool = False
     # Seats for which this word has stopped being pending: the guesser who found it, plus the other
-    # seat when the word is a shared agent. 0: "llm" or 1: "human". NOT a guess guard.
+    # seat when the word is a shared agent. Seats 0 and/or 1. NOT a guess guard.
     revealed_by: list[int] = []
 
     # Time marker state: the seats that touched this word and hit an innocent bystander. A token
     # carries a direction (clue giver -> guesser) and the seat stored here is the guesser, i.e. the
     # seat that may no longer touch this word. Two tokens (one per direction) cover it.
-    time_marker_by: list[int] = []  # 0: "llm" or 1: "human"
+    time_marker_by: list[int] = []  # seats 0 and/or 1
 
     @property
     def is_covered(self) -> bool:
@@ -89,7 +91,7 @@ class WordCard(BaseModel):
         This is the single predicate behind the engine's guess guard and the words offered to an
         LLM guesser.
 
-        :param player_id: The seat asking (0 = LLM, 1 = human).
+        :param player_id: The seat asking (0 or 1).
 
         :return: True if that seat may still guess this word, False otherwise.
         """
@@ -343,12 +345,13 @@ class GamePhase(str, Enum):
     GUESSING = "guessing"
     # The phase when the game has ended, either by win, loss, or other termination conditions.
     GAME_OVER = "game_over"
-    # Endgame phase when the timer tokens have run out with words still pending, human guessing.
-    # Entered once the LLM has nothing left to find: straight away if it had nothing at the start of
-    # sudden death, or from SUDDEN_DEATH_LLM when the LLM finds its last agent.
+    # Endgame phase when the timer tokens have run out with words still pending, seat 1 guessing
+    # (both sudden-death names are from the earlier human-vs-model setup). Entered once seat 0 has
+    # nothing left to find: straight away if it had nothing at the start of sudden death, or from
+    # SUDDEN_DEATH_LLM when seat 0 finds its last agent.
     SUDDEN_DEATH_HUMAN = "sudden_death_human"
-    # Endgame phase, LLM guessing. Always entered first when the LLM has words pending: the engine
-    # fixes the order LLM -> human (the rules allow any order, §7.3).
+    # Endgame phase, seat 0 guessing. Always entered first when seat 0 has words pending: the engine
+    # fixes the order seat 0 -> seat 1 (the rules allow any order, §7.3).
     SUDDEN_DEATH_LLM = "sudden_death_llm"
 
 
@@ -365,7 +368,8 @@ class ResolvedTarget(BaseModel):
     word: str  # The target word exactly as emitted by the clue-giver
     # Board card id, via Board.get_card_id_by_word; None if unmappable
     card_id: Optional[int] = None
-    # The target's role from the CLUE-GIVER's perspective (llm if player_id==0 else human role);
+    # The target's role from the CLUE-GIVER's perspective (llm_perspective_role if player_id==0,
+    # else human_perspective_role);
     # None if unmappable.
     giver_role: Optional[CardRole] = None
     # The card's reveal state at the moment the clue was given; None if unmappable.
@@ -410,11 +414,11 @@ class ClueEntry(BaseModel):
     # this one", and the guesser must still make at least one guess. Supporting it would mean
     # explaining that inverted meaning in both prompts (when to give a zero clue, and that "count 0"
     # does not mean "do not guess"). That makes the prompts longer and the task more complex, which
-    # makes the models more likely to hallucinate. Applies to both seats, LLM and human; a count of
-    # 0 is rejected here. See "Deviations from the Duet rules" in the README.
+    # makes the models more likely to hallucinate. Applies to both seats; a count of 0 is rejected
+    # here. See "Deviations from the Duet rules" in the README.
     count: int = Field(ge=1)
     # The player who gave the clue
-    clue_giver: int = Field(ge=0, le=1)  # 0: "llm" or 1: "human"
+    clue_giver: int = Field(ge=0, le=1)  # seat 0 or 1
     # The turn number when the clue was given (for historical tracking)
     turn_number: int = 0
     # The intended target set S, exactly as emitted by the clue-giver (measurement only).
@@ -455,8 +459,8 @@ class GameState(BaseModel):
     # for the clue giver and guesser, but these will be set randomly at the start of the game in the
     # game engine.
     current_phase: GamePhase = GamePhase.GIVING_CLUE
-    clue_giver: int = 1  # 0: "llm" or 1: "human"
-    guesser: int = 0  # 0: "llm" or 1: "human"
+    clue_giver: int = 1  # seat 0 or 1
+    guesser: int = 0  # seat 0 or 1
     turn_number: int = 1
 
     # Current clue data
