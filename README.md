@@ -761,7 +761,8 @@ same file sets what every request is sent with:
 
 The run's `model_registry_snapshot` records both with each local model.
 
-**Devcontainer**: `.devcontainer/devcontainer.json` attaches VS Code to the Compose `app` service.
+**Devcontainer**: `.devcontainer/devcontainer.json` attaches VS Code to the Compose `app` service,
+as `appuser`, in the bind-mounted repo at `/workspace` (not `/app`, the copy baked into the image).
 
 **`board_generator` has its own toolchain** — `uv run pytest`, `uv run ruff check .`, `uv run mypy`
 from inside `board_generator/`. See its README.
