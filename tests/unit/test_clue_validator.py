@@ -37,6 +37,16 @@ def test_clue_of_several_words_is_invalid(validator_hide, clue):
     assert validator_hide.is_valid(_make_clue("Michelangelo")) == (True, "")
 
 
+@pytest.mark.parametrize("clue", ["!!!", "...", "?!", "---", "___", "¿?"])
+def test_clue_without_letters_or_digits_is_invalid(validator_hide, clue):
+    """A clue is a word (§6.2), and punctuation or symbols alone are not one. A number is: "8"."""
+    valid, reason = validator_hide.is_valid(_make_clue(clue))
+
+    assert not valid
+    assert reason == f"'{clue}' is not a word."
+    assert validator_hide.is_valid(_make_clue("8")) == (True, "")
+
+
 def test_direct_match_exact(validator_hide):
     """A clue that exactly matches a visible board word is invalid."""
     valid, reason = validator_hide.is_valid(_make_clue("hide"))

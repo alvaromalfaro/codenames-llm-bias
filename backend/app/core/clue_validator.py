@@ -225,6 +225,10 @@ class ClueValidator:
         """
         normalized_clue = self._normalize(clue.clue)
 
+        # A clue is a word (§6.2): punctuation or symbols alone are not, and normalize to nothing
+        if not any(char.isalnum() for char in normalized_clue):
+            return False, f"'{clue.clue}' is not a word."
+
         # A clue is one word (§6.2), and a proper name of several words is not allowed (§8.1.10)
         if len(normalized_clue.split()) > 1:
             return False, f"'{clue.clue}' is not a single word."
