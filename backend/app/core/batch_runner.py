@@ -85,7 +85,8 @@ def _model_id(spec: SeatSpec) -> str:
 # LLMError codes (models/llm_errors.py) by kind: what went wrong with the provider, or with the
 # setup that reaches it, and what the model itself returned.
 _PROVIDER_ERROR_CODES = frozenset(
-    {"timeout", "rate_limit", "provider_unavailable", "auth", "model_not_provided"})
+    {"timeout", "rate_limit", "provider_unavailable", "auth", "model_not_provided",
+     "model_not_found", "invalid_request"})
 _MODEL_ERROR_CODES = frozenset(
     {"parse_error", "empty_response", "degenerate_response", "truncated_response", "refused"})
 

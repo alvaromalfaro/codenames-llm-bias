@@ -10,6 +10,8 @@ from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.models.llm_errors import (
     LLMModelNotProvidedError, LLMRefusalError, LLMParseError, LLMTimeoutError,
     LLMEmptyResponseError, LLMDegenerateResponseError, LLMTruncatedResponseError,
+    LLMModelNotFoundError, LLMInvalidRequestError, LLMAuthError, LLMRateLimitError,
+    LLMProviderUnavailableError,
 )
 from backend.app.models.llm_schemas import (
     LLMResponse, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat,
@@ -80,19 +82,74 @@ async def test_llm_client_local_raises_model_not_provided_error(llm_request_cg):
             await client.generate(llm_request_cg)
 
 
+# An error status is the daemon's or the request's, never a refusal by the model.
+@pytest.mark.parametrize("status, text, expected, retriable", [
+    (404, "model 'ollama3.2:latest' not found", LLMModelNotFoundError, False),
+    (400, '"ollama3.2:latest" does not support thinking', LLMInvalidRequestError, False),
+    (401, "unauthorized", LLMAuthError, False),
+    (429, "too many requests", LLMRateLimitError, True),
+    (500, "llama runner process has terminated: CUDA error: out of memory",
+     LLMProviderUnavailableError, True),
+    (503, "server busy, please try again.  maximum pending requests exceeded",
+     LLMProviderUnavailableError, True),
+])
 @pytest.mark.asyncio
-async def test_llm_client_local_raises_llm_refusal_error(llm_request_cg):
-    """
-    Tests that the LLMClientLocal raises an LLMRefusalError when the Ollama client raises a
-    ResponseError indicating that the LLM refused to generate a response.
-    """
+async def test_an_error_status_is_mapped_by_its_code(
+        llm_request_cg, status, text, expected, retriable):
     with _patch_ollama() as MockClient:
         MockClient.return_value.chat.side_effect = ResponseError(
-            "LLM refused to generate a response")
+            json.dumps({"error": text}), status)
         client = LLMClientLocal('ollama3.2:latest')
 
-        with pytest.raises(LLMRefusalError):
+        with pytest.raises(expected) as excinfo:
             await client.generate(llm_request_cg)
+
+    assert not isinstance(excinfo.value, LLMRefusalError)
+    assert excinfo.value.retriable is retriable
+    assert excinfo.value.http_status == status
+    assert excinfo.value.provider == "ollama"
+
+
+@pytest.mark.parametrize("raw", [
+    # What ollama raises when nothing listens at OLLAMA_HOST.
+    ConnectionError("Failed to connect to Ollama."),
+    # What httpx raises when the daemon drops the connection mid-answer (stopped, or crashed).
+    httpx.RemoteProtocolError("Server disconnected without sending a response."),
+    httpx.ReadError("connection reset"),
+])
+@pytest.mark.asyncio
+async def test_a_daemon_that_cannot_be_reached_is_unavailable(llm_request_cg, raw):
+    """ollama wraps neither: unmapped, they escaped as plain exceptions, never retried and with no
+    error code for the batch."""
+    with _patch_ollama() as MockClient:
+        MockClient.return_value.chat.side_effect = raw
+        client = LLMClientLocal('ollama3.2:latest')
+
+        with pytest.raises(LLMProviderUnavailableError) as excinfo:
+            await client.generate(llm_request_cg)
+
+    assert excinfo.value.retriable is True
+    assert excinfo.value.cause is raw
+
+
+@pytest.mark.asyncio
+async def test_a_daemon_that_fails_is_sent_the_same_request_again(llm_request_cg, monkeypatch):
+    """A runner that crashed (500) is the daemon's failure, not the model's: the same request is
+    sent again after the backoff, its seed unchanged, and the daemon's next answer is kept."""
+    monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
+    request = llm_request_cg.model_copy(update={"seed": 123})
+    with _patch_ollama() as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = [
+            ResponseError('{"error": "llama runner process has terminated"}', 500),
+            ConnectionError("Failed to connect to Ollama."),
+            _mock_ollama_response()]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        result = await client.generate(request, expected_format=ClueJSONFormat)
+
+    assert isinstance(result, LLMResponse)
+    assert _sent_seeds(mock_chat) == [123, 123, 123]
 
 
 @pytest.mark.asyncio
@@ -403,27 +460,27 @@ async def test_llm_client_local_latency_ms_none_duration_is_zero(llm_request_cg)
 # transient retry
 @pytest.mark.asyncio
 async def test_llm_client_local_non_retriable_raises_immediately(llm_request_cg):
-    """A non-retriable error (refusal) raises on the first attempt even with a retry budget:
-    exactly one chat() call."""
+    """A non-retriable error (a model that is not pulled) raises on the first attempt even with a
+    retry budget: exactly one chat() call."""
     with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
-        mock_chat.side_effect = ResponseError("refused")
+        mock_chat.side_effect = ResponseError("model 'ollama3.2:latest' not found", 404)
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
 
-        with pytest.raises(LLMRefusalError):
+        with pytest.raises(LLMModelNotFoundError):
             await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
         assert mock_chat.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_llm_client_local_default_no_retry(llm_request_cg):
-    """max_retries defaults to 0: a single attempt."""
+    """max_retries defaults to 0: a single attempt, even for a retriable error."""
     with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
-        mock_chat.side_effect = ResponseError("refused")
+        mock_chat.side_effect = ResponseError("llama runner process has terminated", 500)
         client = LLMClientLocal("ollama3.2:latest")  # no max_retries
 
-        with pytest.raises(LLMRefusalError):
+        with pytest.raises(LLMProviderUnavailableError):
             await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
         assert mock_chat.call_count == 1
 
@@ -499,15 +556,19 @@ async def test_a_daemon_that_never_answers_fails_after_the_budget(llm_request_cg
 
 
 @pytest.mark.asyncio
-async def test_a_probe_that_times_out_is_probed_again_not_cached(llm_request_cg, monkeypatch):
-    """A capability probe that times out fails the attempt as a timeout and caches nothing. Cached as
-    "not capable", it would leave `think` out for the whole game, and a reasoning model would play
-    with thinking on once the daemon came back."""
+@pytest.mark.parametrize("raw", [
+    httpx.ReadTimeout("timed out"),
+    ConnectionError("Failed to connect to Ollama."),
+    ResponseError('{"error": "llama runner process has terminated"}', 500),
+])
+async def test_a_probe_the_daemon_fails_is_made_again_not_cached(llm_request_cg, monkeypatch, raw):
+    """A capability probe the daemon fails fails the attempt as the chat would, and caches nothing.
+    Cached as "not capable", it would leave `think` out for the whole game, and a reasoning model
+    would play with thinking on once the daemon came back."""
     monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
     with _patch_ollama() as MockClient:
         instance = MockClient.return_value
-        instance.show.side_effect = [
-            httpx.ReadTimeout("timed out"), MagicMock(capabilities=["completion", "thinking"])]
+        instance.show.side_effect = [raw, MagicMock(capabilities=["completion", "thinking"])]
         instance.chat.return_value = _mock_ollama_response()
         client = LLMClientLocal("gemma4:12b", think=False, max_retries=3)
 
@@ -516,6 +577,22 @@ async def test_a_probe_that_times_out_is_probed_again_not_cached(llm_request_cg,
     assert instance.show.call_count == 2
     assert instance.chat.call_count == 1
     assert instance.chat.call_args.kwargs["think"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_probe_for_a_model_that_is_not_pulled_fails_the_call(llm_request_cg):
+    """The probe maps a status as the chat would: a model that is not pulled ends the call at once,
+    before the chat is sent."""
+    with _patch_ollama() as MockClient:
+        instance = MockClient.return_value
+        instance.show.side_effect = ResponseError("model 'gemma4:12b' not found", 404)
+        client = LLMClientLocal("gemma4:12b", think=False, max_retries=3)
+
+        with pytest.raises(LLMModelNotFoundError):
+            await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert instance.show.call_count == 1
+    instance.chat.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -630,11 +707,12 @@ async def test_llm_client_local_no_empty_draws_records_zero(llm_request_cg):
 def _patch_client_with_capabilities(MockClient, capabilities):
     """Wire the mocked ollama Client so /api/show reports ``capabilities`` and chat() succeeds.
 
-    ``capabilities=None`` makes the probe raise, standing in for an unreachable daemon.
+    ``capabilities=None`` makes the probe fail for a reason other than the daemon: an answer the
+    client cannot read.
     """
     instance = MockClient.return_value
     if capabilities is None:
-        instance.show.side_effect = ConnectionError("daemon unreachable")
+        instance.show.side_effect = ValueError("unreadable /api/show answer")
     else:
         instance.show.return_value.capabilities = capabilities
     instance.chat.return_value = _mock_ollama_response()
@@ -710,7 +788,8 @@ async def test_think_true_is_still_honoured_for_capable_model(llm_request_cg):
 
 @pytest.mark.asyncio
 async def test_capability_probe_failure_degrades_to_omitting_think(llm_request_cg):
-    """An unreachable daemon must not break generation: the probe degrades to omitting `think`."""
+    """A probe that fails for a reason other than the daemon must not break generation: it degrades
+    to omitting `think`."""
     with _patch_ollama() as MockClient:
         instance = _patch_client_with_capabilities(MockClient, None)
         client = LLMClientLocal("gemma4:12b", think=False, max_retries=3)

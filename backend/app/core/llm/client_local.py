@@ -10,8 +10,9 @@ from backend.app import config
 from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
-    LLMModelNotProvidedError, LLMRefusalError, LLMParseError, LLMEmptyResponseError,
-    LLMDegenerateResponseError, LLMTruncatedResponseError, LLMTimeoutError,
+    LLMError, LLMModelNotProvidedError, LLMParseError, LLMEmptyResponseError,
+    LLMDegenerateResponseError, LLMTruncatedResponseError, LLMTimeoutError, LLMAuthError,
+    LLMRateLimitError, LLMProviderUnavailableError, LLMModelNotFoundError, LLMInvalidRequestError,
 )
 from ollama import AsyncClient, RequestError, ResponseError
 
@@ -19,6 +20,42 @@ logger = logging.getLogger(__name__)
 
 # The capability string ollama's /api/show reports for reasoning-capable models.
 _THINKING_CAPABILITY = "thinking"
+
+# What a call to the daemon raises when it fails instead of answering: an error status
+# (ResponseError), the builtin ConnectionError ollama raises when it cannot connect, and the httpx
+# errors it lets through (a timeout, a connection dropped mid-answer).
+_DAEMON_ERRORS = (ResponseError, ConnectionError, httpx.TransportError)
+
+
+def _daemon_error(e: Exception) -> LLMError:
+    """The taxonomy error for a call to the daemon that failed with ``e`` (a ``_DAEMON_ERRORS``).
+
+    None of them is a refusal by the model: a model that will not play still answers, in text. An
+    error status is the daemon's or the request's, so nothing here maps to ``LLMRefusalError``,
+    which the batch counts as the model's behaviour."""
+    context: dict[str, Any] = {"provider": "ollama", "cause": e, "execution_mode": "local"}
+    # No answer within config.OLLAMA_TIMEOUT_S, or no connection within the connect limit.
+    if isinstance(e, httpx.TimeoutException):
+        return LLMTimeoutError(**context)
+    # The daemon is not running, or dropped the connection mid-answer (stopped, or crashed).
+    if not isinstance(e, ResponseError):
+        return LLMProviderUnavailableError(**context)
+    status = e.status_code
+    context["http_status"] = status if status > 0 else None
+    if status == 404:
+        # The model is not pulled.
+        return LLMModelNotFoundError(**context)
+    if status in (401, 403):
+        return LLMAuthError(**context)
+    if status == 429:
+        return LLMRateLimitError(**context)
+    if 400 <= status < 500:
+        # The daemon rejects what was sent (an option or a parameter the model does not support):
+        # the same request would be rejected again.
+        return LLMInvalidRequestError(**context)
+    # A 5xx: the daemon failed (its runner crashed or ran out of memory, or its queue is full), and
+    # may recover. Also an error reported mid-answer, which has no status.
+    return LLMProviderUnavailableError(**context)
 
 
 def degenerate_reason(parsed: BaseModel) -> str | None:
@@ -84,20 +121,21 @@ class LLMClientLocal(LLMClient):
         ``think=True`` for them outright (HTTP 400 "does not support thinking"), and older daemons
         may reject the parameter in any form.
 
-        An unreachable daemon or a client without ``show`` degrades to False, i.e. omit ``think``
-        and preserve the previous behaviour rather than break generation on a probe. A daemon that
-        does not answer in time is the one exception: it raises ``LLMTimeoutError``, retried like a
-        timed-out chat, and nothing is cached, so the next attempt probes again. Degrading would
-        cache "not capable" for the whole game, and if the daemon came back a reasoning model would
-        play the rest of it thinking.
+        A failed call to the daemon (no answer in time, no connection, an error status) raises what
+        a failed chat would (see ``_daemon_error``), retried the same way, and nothing is cached, so
+        the next attempt probes again. Degrading would cache "not capable" for the whole game, and
+        once the daemon came back a reasoning model would play the rest of it thinking. A probe
+        that fails for any other reason (a client without ``show``, an answer it cannot read)
+        degrades to False, i.e. omit ``think`` and preserve the previous behaviour rather than break
+        generation on a probe.
         """
         if self._thinking_capable is None:
             try:
                 capabilities = (await self._client.show(self.model_name)).capabilities
                 self._thinking_capable = any(
                     str(c) == _THINKING_CAPABILITY for c in (capabilities or []))
-            except httpx.TimeoutException as e:
-                raise LLMTimeoutError(provider="ollama", cause=e, execution_mode="local")
+            except _DAEMON_ERRORS as e:
+                raise _daemon_error(e)
             except Exception as e:
                 logger.warning(
                     "capability probe failed for %r (%s); omitting `think` from the request.",
@@ -134,8 +172,8 @@ class LLMClientLocal(LLMClient):
         options["num_predict"] = request.max_tokens
 
         # Send `think` only to models that advertise the capability, and then send it - omitting it
-        # lets ollama default a reasoning model to thinking ON. Probed outside the try so a probe
-        # failure can never be mis-mapped onto the provider-error taxonomy below.
+        # lets ollama default a reasoning model to thinking ON. Probed outside the try: the probe
+        # handles its own failures (see _supports_thinking).
         chat_kwargs: dict[str, Any] = {}
         if await self._supports_thinking():
             chat_kwargs["think"] = self.think
@@ -222,18 +260,10 @@ class LLMClientLocal(LLMClient):
                 resolved_model=response_json.get("model") or self.model_name,
             )
 
-        # No answer within config.OLLAMA_TIMEOUT_S, or no connection within the connect limit. The
-        # ollama client wraps neither: httpx's own exception reaches here.
-        except httpx.TimeoutException as te:
-            raise LLMTimeoutError(
-                provider="ollama", cause=te, execution_mode="local"
-            )
+        except _DAEMON_ERRORS as de:
+            raise _daemon_error(de)
         except RequestError as re:
             raise LLMModelNotProvidedError(
-                provider="ollama", cause=re, execution_mode="local"
-            )
-        except ResponseError as re:
-            raise LLMRefusalError(
                 provider="ollama", cause=re, execution_mode="local"
             )
         except JSONDecodeError as je:

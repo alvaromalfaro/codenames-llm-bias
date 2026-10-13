@@ -46,6 +46,38 @@ class LLMModelNotProvidedError(LLMError):
                          raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
 
 
+class LLMModelNotFoundError(LLMError):
+    """
+    A specific error class for when the provider does not have the requested model (e.g., a local
+    model that was never pulled, or was removed). This error is not retriable, as the model must be
+    made available before the request can succeed on a subsequent attempt.
+    """
+
+    def __init__(self, message: str = "The LLM provider does not have the requested model.",
+                 provider: str | None = None, http_status: int | None = None,
+                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
+                 cause: Exception | None = None, execution_mode: str | None = None):
+        super().__init__(code="model_not_found", message=message, retriable=False,
+                         provider=provider, http_status=http_status, request_id=request_id,
+                         raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+
+
+class LLMInvalidRequestError(LLMError):
+    """
+    A specific error class for when the provider rejects the request as invalid (e.g., an option or
+    a parameter the model does not support). This error is not retriable, as the same request would
+    be rejected again: the code or the configuration that built it must be fixed.
+    """
+
+    def __init__(self, message: str = "The LLM provider rejected the request as invalid.",
+                 provider: str | None = None, http_status: int | None = None,
+                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
+                 cause: Exception | None = None, execution_mode: str | None = None):
+        super().__init__(code="invalid_request", message=message, retriable=False,
+                         provider=provider, http_status=http_status, request_id=request_id,
+                         raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+
+
 class LLMRefusalError(LLMError):
     """
     A specific error class for when the LLM refuses to generate a response (e.g., due to content
