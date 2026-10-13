@@ -4,15 +4,16 @@ import os
 from json import JSONDecodeError
 import re
 from typing import Any
+import httpx
 from pydantic import BaseModel
 from backend.app import config
 from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMModelNotProvidedError, LLMRefusalError, LLMParseError, LLMEmptyResponseError,
-    LLMDegenerateResponseError, LLMTruncatedResponseError,
+    LLMDegenerateResponseError, LLMTruncatedResponseError, LLMTimeoutError,
 )
-from ollama import Client, RequestError, ResponseError
+from ollama import AsyncClient, RequestError, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -62,16 +63,20 @@ class LLMClientLocal(LLMClient):
         # passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
         self.max_retries = max_retries
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-        self._client = Client(host=host)
+        # The async client, so a call in flight leaves the event loop free, and a bounded wait, so a
+        # hung daemon fails the call as a timeout instead of stopping the batch (ollama's own default
+        # is no limit at all). See config.OLLAMA_TIMEOUT_S for the value.
+        self._client = AsyncClient(host=host, timeout=httpx.Timeout(
+            config.OLLAMA_TIMEOUT_S, connect=config.OLLAMA_CONNECT_TIMEOUT_S))
         # Lazily resolved, then cached for the client's lifetime: the daemon's answer for a given
         # model cannot change without a re-pull, and this must not cost an /api/show per call.
         self._thinking_capable: bool | None = None
 
-    def _supports_thinking(self) -> bool:
+    async def _supports_thinking(self) -> bool:
         """Whether this model advertises the ``thinking`` capability, per the daemon's /api/show.
 
-        For a reasoning-capable model ollama defaults thinking ON, which under structured output can 
-        leave ``message.content`` empty and always puts that model in a different inference regime 
+        For a reasoning-capable model ollama defaults thinking ON, which under structured output can
+        leave ``message.content`` empty and always puts that model in a different inference regime
         (and a far slower one) than the non-reasoning models it is compared against. So thinking-capable
         models must be sent an explicit ``think`` value.
 
@@ -79,14 +84,20 @@ class LLMClientLocal(LLMClient):
         ``think=True`` for them outright (HTTP 400 "does not support thinking"), and older daemons
         may reject the parameter in any form.
 
-        Never raises: an unreachable daemon or a client without ``show`` degrades to False, i.e.
-        omit ``think`` and preserve the previous behaviour rather than break generation on a probe.
+        An unreachable daemon or a client without ``show`` degrades to False, i.e. omit ``think``
+        and preserve the previous behaviour rather than break generation on a probe. A daemon that
+        does not answer in time is the one exception: it raises ``LLMTimeoutError``, retried like a
+        timed-out chat, and nothing is cached, so the next attempt probes again. Degrading would
+        cache "not capable" for the whole game, and if the daemon came back a reasoning model would
+        play the rest of it thinking.
         """
         if self._thinking_capable is None:
             try:
-                capabilities = self._client.show(self.model_name).capabilities
+                capabilities = (await self._client.show(self.model_name)).capabilities
                 self._thinking_capable = any(
                     str(c) == _THINKING_CAPABILITY for c in (capabilities or []))
+            except httpx.TimeoutException as e:
+                raise LLMTimeoutError(provider="ollama", cause=e, execution_mode="local")
             except Exception as e:
                 logger.warning(
                     "capability probe failed for %r (%s); omitting `think` from the request.",
@@ -126,11 +137,11 @@ class LLMClientLocal(LLMClient):
         # lets ollama default a reasoning model to thinking ON. Probed outside the try so a probe
         # failure can never be mis-mapped onto the provider-error taxonomy below.
         chat_kwargs: dict[str, Any] = {}
-        if self._supports_thinking():
+        if await self._supports_thinking():
             chat_kwargs["think"] = self.think
 
         try:
-            ollama_response = self._client.chat(
+            ollama_response = await self._client.chat(
                 model=self.model_name,
                 messages=messages,
                 format=format,
@@ -211,6 +222,12 @@ class LLMClientLocal(LLMClient):
                 resolved_model=response_json.get("model") or self.model_name,
             )
 
+        # No answer within config.OLLAMA_TIMEOUT_S, or no connection within the connect limit. The
+        # ollama client wraps neither: httpx's own exception reaches here.
+        except httpx.TimeoutException as te:
+            raise LLMTimeoutError(
+                provider="ollama", cause=te, execution_mode="local"
+            )
         except RequestError as re:
             raise LLMModelNotProvidedError(
                 provider="ollama", cause=re, execution_mode="local"
@@ -223,6 +240,9 @@ class LLMClientLocal(LLMClient):
             raise LLMParseError(
                 provider="ollama", cause=je, execution_mode="local"
             )
+
+    async def close(self) -> None:
+        await self._client.close()
 
     def _remove_markdown_code_blocks(self, text: str) -> str:
         """

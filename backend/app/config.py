@@ -73,6 +73,19 @@ EXPECTED_LOCAL_DIGESTS = {
 # the test games (prompt plus answer) took 1925 tokens.
 OLLAMA_NUM_CTX = 8192
 
+# How long, in seconds, a local (Ollama) call may wait for its answer before it fails as a timeout,
+# which is retried after a backoff (see LLMTimeoutError). Without a limit, a hung daemon would stop
+# the batch for good. The answer is not streamed, so the wait covers the whole call: loading the
+# model, reading the prompt and writing the answer, which LLM_MAX_OUTPUT_TOKENS bounds. In
+# exp_data.sql the slowest model, mistral-small3.2:24b, writes 24 tokens/s at its slowest and loads
+# in up to 9 s, so a full 2048-token answer takes about 95 s. A call cut here is sent again with the
+# same seed, and would take as long again, so the limit must stay well above any legitimate call.
+OLLAMA_TIMEOUT_S = 300
+
+# How long, in seconds, reaching the daemon may take. A daemon that is up accepts at once, and one
+# that is down refuses at once; this only bounds a host that does not answer at all.
+OLLAMA_CONNECT_TIMEOUT_S = 10
+
 # The most tokens a model may write in one answer, for every provider (ollama's num_predict,
 # OpenRouter's max_tokens). The longest answer of the test games took 576 tokens. A model that
 # loops (repeating "Let's try X. No.") is cut here, and the cut answer is drawn again (see

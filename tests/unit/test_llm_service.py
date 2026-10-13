@@ -753,7 +753,7 @@ async def test_propose_clue_survives_empty_draw_and_audits_the_resample(game_sta
     attempt 2 returns valid JSON. propose_clue must return a usable clue, and the audit carrier for
     that call must record exactly 1 empty-response re-sample.
     """
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with patch("backend.app.core.llm.client_local.AsyncClient", autospec=True) as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = [
             _mock_ollama_chat_response(""),
@@ -778,7 +778,7 @@ async def test_propose_clue_survives_empty_draw_and_audits_the_resample(game_sta
 async def test_propose_clue_still_fails_when_every_draw_is_empty(game_state_cg):
     """The re-sample is bounded: when every draw is empty the budget is exhausted and the error
     surfaces rather than looping forever."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with patch("backend.app.core.llm.client_local.AsyncClient", autospec=True) as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_ollama_chat_response("")
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)

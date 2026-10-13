@@ -1,5 +1,6 @@
 import json
 import logging
+import httpx
 import pytest
 from unittest.mock import patch, MagicMock
 from ollama import RequestError, ResponseError
@@ -13,6 +14,12 @@ from backend.app.models.llm_errors import (
 from backend.app.models.llm_schemas import (
     LLMResponse, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat,
 )
+
+
+def _patch_ollama():
+    """Patch the ollama client the local client builds. Specced on the real AsyncClient, so its
+    awaited methods (chat, show, close) are AsyncMocks and a call with a wrong argument fails."""
+    return patch("backend.app.core.llm.client_local.AsyncClient", autospec=True)
 
 
 @pytest.mark.asyncio
@@ -37,7 +44,7 @@ async def test_llm_client_local_generate_success(llm_request_cg):
         "message": {"content": mock_content}
     })
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = mock_response
         client = LLMClientLocal('ollama3.2:latest')
 
@@ -64,7 +71,7 @@ async def test_llm_client_local_raises_model_not_provided_error(llm_request_cg):
     Tests that the LLMClientLocal raises an LLMModelNotProvidedError when the Ollama client raises a
     RequestError indicating that the model was not provided.
     """
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.side_effect = RequestError(
             "Model not provided")
         client = LLMClientLocal(None)
@@ -79,7 +86,7 @@ async def test_llm_client_local_raises_llm_refusal_error(llm_request_cg):
     Tests that the LLMClientLocal raises an LLMRefusalError when the Ollama client raises a
     ResponseError indicating that the LLM refused to generate a response.
     """
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.side_effect = ResponseError(
             "LLM refused to generate a response")
         client = LLMClientLocal('ollama3.2:latest')
@@ -98,7 +105,7 @@ async def test_llm_client_local_raises_llm_parse_error(llm_request_cg):
     mock_response.message.content = "This is not a valid JSON response"
     mock_response.model_dump_json.return_value = mock_response.message.content
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = mock_response
         client = LLMClientLocal('ollama3.2:latest')
 
@@ -124,7 +131,7 @@ async def test_llm_client_local_missing_token_count(llm_request_cg, prompt_count
     mock_response.model_dump_json.return_value = json.dumps(
         {"message": {"content": mock_content}})
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = mock_response
         client = LLMClientLocal('ollama3.2:latest')
 
@@ -151,7 +158,7 @@ async def test_llm_client_local_generate_think_false(llm_request_cg):
     mock_response.model_dump_json.return_value = json.dumps(
         {"message": {"content": mock_content}})
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = mock_response
         client = LLMClientLocal('ollama3.2:latest', think=False)
@@ -176,7 +183,7 @@ async def test_llm_client_local_raises_parse_error_on_schema_mismatch(llm_reques
     mock_response.model_dump_json.return_value = json.dumps(
         {"message": {"content": mock_content}})
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = mock_response
         client = LLMClientLocal('ollama3.2:latest')
 
@@ -197,7 +204,7 @@ async def test_llm_client_local_parse_error_keeps_the_answer(llm_request_cg, cap
     mock_response.model_dump_json.return_value = json.dumps(
         {"message": {"content": mock_content}})
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = mock_response
         client = LLMClientLocal('ollama3.2:latest')
 
@@ -226,7 +233,7 @@ async def test_llm_client_local_generate_without_expected_format(llm_request_cg)
     mock_response.model_dump_json.return_value = json.dumps(
         {"message": {"content": mock_content}})
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = mock_response
         client = LLMClientLocal('ollama3.2:latest')
@@ -264,7 +271,7 @@ async def test_llm_client_local_forwards_temperature_and_seed_when_seeded(llm_re
     """
     request = llm_request_cg.model_copy(update={"seed": 123})
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_ollama_response()
         client = LLMClientLocal("ollama3.2:latest")
@@ -285,7 +292,7 @@ async def test_llm_client_local_omits_seed_when_unset(llm_request_cg):
     """
     assert llm_request_cg.seed is None
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_ollama_response()
         client = LLMClientLocal("ollama3.2:latest")
@@ -304,7 +311,7 @@ async def test_llm_client_local_always_passes_options_with_temperature(llm_reque
     Regression guard against the temperature leak returning: chat() must ALWAYS be called with an
     `options` dict carrying `temperature`.
     """
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_ollama_response()
         client = LLMClientLocal("ollama3.2:latest")
@@ -325,7 +332,7 @@ async def test_llm_client_local_populates_sampling_telemetry(llm_request_cg):
     request = llm_request_cg.model_copy(
         update={"seed": 99, "temperature": 0.3})
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_ollama_response(model="llama3.2:latest")
         client = LLMClientLocal("ollama3.2:latest")
@@ -344,7 +351,7 @@ async def test_llm_client_local_resolved_model_falls_back_to_model_name(llm_requ
     When the Ollama response carries no `model` field, resolved_model falls back to the configured
     model name.
     """
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_ollama_response(model=None)
         client = LLMClientLocal("ollama3.2:latest")
@@ -368,7 +375,7 @@ async def test_llm_client_local_latency_ms_converts_nanoseconds(llm_request_cg):
     mock_response = _mock_ollama_response()
     mock_response.total_duration = 42_706_620_491  # ~42.7s in nanoseconds
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = mock_response
         client = LLMClientLocal("ollama3.2:latest")
 
@@ -384,7 +391,7 @@ async def test_llm_client_local_latency_ms_none_duration_is_zero(llm_request_cg)
     mock_response = _mock_ollama_response()
     mock_response.total_duration = None
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = mock_response
         client = LLMClientLocal("ollama3.2:latest")
 
@@ -398,7 +405,7 @@ async def test_llm_client_local_latency_ms_none_duration_is_zero(llm_request_cg)
 async def test_llm_client_local_non_retriable_raises_immediately(llm_request_cg):
     """A non-retriable error (refusal) raises on the first attempt even with a retry budget:
     exactly one chat() call."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = ResponseError("refused")
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
@@ -411,7 +418,7 @@ async def test_llm_client_local_non_retriable_raises_immediately(llm_request_cg)
 @pytest.mark.asyncio
 async def test_llm_client_local_default_no_retry(llm_request_cg):
     """max_retries defaults to 0: a single attempt."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = ResponseError("refused")
         client = LLMClientLocal("ollama3.2:latest")  # no max_retries
@@ -423,19 +430,18 @@ async def test_llm_client_local_default_no_retry(llm_request_cg):
 
 @pytest.mark.asyncio
 async def test_llm_client_local_retries_retriable_then_succeeds(llm_request_cg, monkeypatch):
-    """Apart from the empty-response case (covered below), the local client's own mapping yields no
-    retriable error, so we inject a retriable mapped
-    error (LLMTimeoutError) at the provider boundary to exercise the retry wiring: it propagates
-    uncaught through _generate_once and is retried by generate_with_retries. generate() returns after
-    exactly 3 attempts, each re-sending the identical request (same seed) - no reseed."""
+    """A transient is retried by generate_with_retries: two timeouts, then an answer. generate()
+    returns after exactly 3 attempts, each re-sending the identical request (same seed) - no
+    reseed."""
     monkeypatch.setattr(
         client_module, "_RETRY_BACKOFF_BASE_S", 0.0)  # no real sleeping
     request = llm_request_cg.model_copy(update={"seed": 123})
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = [
-            LLMTimeoutError(), LLMTimeoutError(), _mock_ollama_response()]
+            httpx.ReadTimeout("timed out"), httpx.ReadTimeout("timed out"),
+            _mock_ollama_response()]
         client = LLMClientLocal("ollama3.2:latest", max_retries=2)
 
         result = await client.generate(request, expected_format=ClueJSONFormat)
@@ -445,6 +451,81 @@ async def test_llm_client_local_retries_retriable_then_succeeds(llm_request_cg, 
         seeds = [call.kwargs["options"]["seed"]
                  for call in mock_chat.call_args_list]
         assert seeds == [123, 123, 123]  # same request re-sent, never reseeded
+
+
+# the wait on the daemon is bounded
+def test_the_ollama_client_waits_the_configured_time():
+    """ollama's own default is no limit at all: a hung daemon would stop the batch for good."""
+    with _patch_ollama() as MockClient:
+        LLMClientLocal("ollama3.2:latest")
+
+    timeout = MockClient.call_args.kwargs["timeout"]
+    assert timeout.read == timeout.write == timeout.pool == config.OLLAMA_TIMEOUT_S
+    assert timeout.connect == config.OLLAMA_CONNECT_TIMEOUT_S
+
+
+@pytest.mark.parametrize("raw", [
+    httpx.ReadTimeout("timed out"), httpx.ConnectTimeout("timed out")])
+@pytest.mark.asyncio
+async def test_a_call_that_times_out_is_a_retriable_timeout(llm_request_cg, raw):
+    """The ollama client does not wrap httpx's timeouts; the local client maps them onto the
+    taxonomy, as the retriable LLMTimeoutError (a provider error for the batch)."""
+    with _patch_ollama() as MockClient:
+        MockClient.return_value.chat.side_effect = raw
+        client = LLMClientLocal("ollama3.2:latest")
+
+        with pytest.raises(LLMTimeoutError) as excinfo:
+            await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert excinfo.value.retriable is True
+    assert excinfo.value.cause is raw
+    assert excinfo.value.provider == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_a_daemon_that_never_answers_fails_after_the_budget(llm_request_cg, monkeypatch):
+    """Bounded: every attempt times out, the budget runs out (max_retries=3 -> 4 attempts) and the
+    timeout ends the call instead of waiting forever."""
+    monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
+    with _patch_ollama() as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = httpx.ReadTimeout("timed out")
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        with pytest.raises(LLMTimeoutError):
+            await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert mock_chat.call_count == 4
+
+
+@pytest.mark.asyncio
+async def test_a_probe_that_times_out_is_probed_again_not_cached(llm_request_cg, monkeypatch):
+    """A capability probe that times out fails the attempt as a timeout and caches nothing. Cached as
+    "not capable", it would leave `think` out for the whole game, and a reasoning model would play
+    with thinking on once the daemon came back."""
+    monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
+    with _patch_ollama() as MockClient:
+        instance = MockClient.return_value
+        instance.show.side_effect = [
+            httpx.ReadTimeout("timed out"), MagicMock(capabilities=["completion", "thinking"])]
+        instance.chat.return_value = _mock_ollama_response()
+        client = LLMClientLocal("gemma4:12b", think=False, max_retries=3)
+
+        await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert instance.show.call_count == 2
+    assert instance.chat.call_count == 1
+    assert instance.chat.call_args.kwargs["think"] is False
+
+
+@pytest.mark.asyncio
+async def test_close_closes_the_ollama_client():
+    with _patch_ollama() as MockClient:
+        client = LLMClientLocal("ollama3.2:latest")
+
+        await client.close()
+
+    MockClient.return_value.close.assert_awaited_once()
 
 
 # empty-response re-sample
@@ -470,7 +551,7 @@ async def test_llm_client_local_empty_response_resampled_then_succeeds(
     is stamped on raw_payload for downstream audit."""
     request = llm_request_cg.model_copy(update={"seed": 123})
 
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = [
             _mock_empty_ollama_response(empty_content), _mock_ollama_response()]
@@ -491,7 +572,7 @@ async def test_llm_client_local_empty_response_resampled_then_succeeds(
 async def test_llm_client_local_empty_response_raises_after_cap(llm_request_cg):
     """A persistently empty response is NOT retried forever: it exhausts the budget (max_retries=3
     -> 4 attempts) and then raises."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_empty_ollama_response()
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
@@ -504,7 +585,7 @@ async def test_llm_client_local_empty_response_raises_after_cap(llm_request_cg):
 @pytest.mark.asyncio
 async def test_llm_client_local_empty_response_not_retried_by_default(llm_request_cg):
     """With the default max_retries=0, an empty response raises on attempt 1."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_empty_ollama_response()
         client = LLMClientLocal("ollama3.2:latest")  # no max_retries
@@ -519,7 +600,7 @@ async def test_llm_client_local_malformed_nonempty_stays_non_retriable(llm_reque
     """The retry is scoped to the empty case only. Genuinely malformed non-empty output remains a
     non-retriable LLMParseError and raises on the first attempt even with a full retry budget -
     re-sending it would only reproduce the same bad parse."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         # Well-formed JSON, but missing the fields ClueJSONFormat requires.
         mock_chat.return_value = _mock_empty_ollama_response(
@@ -536,7 +617,7 @@ async def test_llm_client_local_malformed_nonempty_stays_non_retriable(llm_reque
 @pytest.mark.asyncio
 async def test_llm_client_local_no_empty_draws_records_zero(llm_request_cg):
     """The common case is still auditable: zero empty draws is recorded as 0, not omitted."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = _mock_ollama_response()
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
 
@@ -567,7 +648,7 @@ async def test_thinking_capable_model_is_sent_think_false(llm_request_cg):
     Omitting the flag is NOT equivalent: ollama defaults a reasoning model to thinking ON, which
     leaves it in a different inference regime than the non-reasoning roster models.
     """
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         instance = _patch_client_with_capabilities(
             MockClient, ["completion", "vision", "tools", "thinking"])
         client = LLMClientLocal("gemma4:12b", think=False, max_retries=3)
@@ -583,7 +664,7 @@ async def test_thinking_capable_model_is_sent_think_false(llm_request_cg):
 async def test_non_thinking_model_is_not_sent_think(llm_request_cg):
     """A model that does not advertise `thinking` must NOT receive the flag at all: ollama rejects
     think=True for such models (HTTP 400 'does not support thinking')."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         instance = _patch_client_with_capabilities(
             MockClient, ["completion", "tools"])
         client = LLMClientLocal("llama3.1:8b", think=False, max_retries=3)
@@ -597,7 +678,7 @@ async def test_non_thinking_model_is_not_sent_think(llm_request_cg):
 @pytest.mark.asyncio
 async def test_thinking_gate_applies_to_guess_calls_too(llm_request_cg):
     """The gate lives in _generate_once, so it covers guess/ranking calls, not just clues."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         instance = _patch_client_with_capabilities(
             MockClient, ["completion", "thinking"])
         instance.chat.return_value = _mock_empty_ollama_response(json.dumps({
@@ -616,7 +697,7 @@ async def test_thinking_gate_applies_to_guess_calls_too(llm_request_cg):
 async def test_think_true_is_still_honoured_for_capable_model(llm_request_cg):
     """The gate decides whether the flag is SENT, not what it says: an explicit think=True on a
     capable model still enables reasoning."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         instance = _patch_client_with_capabilities(
             MockClient, ["completion", "thinking"])
         client = LLMClientLocal("gemma4:12b", think=True, max_retries=3)
@@ -630,7 +711,7 @@ async def test_think_true_is_still_honoured_for_capable_model(llm_request_cg):
 @pytest.mark.asyncio
 async def test_capability_probe_failure_degrades_to_omitting_think(llm_request_cg):
     """An unreachable daemon must not break generation: the probe degrades to omitting `think`."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         instance = _patch_client_with_capabilities(MockClient, None)
         client = LLMClientLocal("gemma4:12b", think=False, max_retries=3)
 
@@ -644,7 +725,7 @@ async def test_capability_probe_failure_degrades_to_omitting_think(llm_request_c
 @pytest.mark.asyncio
 async def test_capability_probe_is_cached_across_calls(llm_request_cg):
     """The probe costs one /api/show per client, not one per generate()."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         instance = _patch_client_with_capabilities(
             MockClient, ["completion", "thinking"])
         client = LLMClientLocal("gemma4:12b", think=False, max_retries=3)
@@ -672,7 +753,7 @@ _DEGENERATE_GUESS_JSON = json.dumps({
 async def test_degenerate_empty_proposals_is_resampled_then_succeeds(llm_request_cg):
     """An empty proposals list parses fine but cannot build a GuessProposal. It must be re-sampled
     by the SAME bounded machinery, and counted separately from empty-content draws."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = [
             _mock_empty_ollama_response(_DEGENERATE_GUESS_JSON),
@@ -693,7 +774,7 @@ async def test_degenerate_empty_proposals_is_resampled_then_succeeds(llm_request
 async def test_degenerate_empty_proposals_raises_after_cap(llm_request_cg):
     """Bounded: a persistently degenerate model exhausts the budget and still errors out. The domain
     rule (an empty guess list is illegal) is never relaxed."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_empty_ollama_response(
             _DEGENERATE_GUESS_JSON)
@@ -707,7 +788,7 @@ async def test_degenerate_empty_proposals_raises_after_cap(llm_request_cg):
 @pytest.mark.asyncio
 async def test_degenerate_not_retried_by_default(llm_request_cg):
     """With the default max_retries=0: one attempt, then raise."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_empty_ollama_response(
             _DEGENERATE_GUESS_JSON)
@@ -726,7 +807,7 @@ async def test_degenerate_not_retried_by_default(llm_request_cg):
 async def test_degenerate_clue_is_resampled_then_succeeds(llm_request_cg, bad_clue, label):
     """The clue path has the same gap: ClueJSONFormat accepts a blank clue / count=0, ClueProposal
     rejects both. Covered by the same re-sample."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = [
             _mock_empty_ollama_response(json.dumps(bad_clue)),
@@ -743,7 +824,7 @@ async def test_degenerate_clue_is_resampled_then_succeeds(llm_request_cg, bad_cl
 @pytest.mark.asyncio
 async def test_healthy_response_records_zero_degenerate_resamples(llm_request_cg):
     """The common case stays auditable: zero is recorded, not omitted."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = _mock_ollama_response()
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
 
@@ -756,7 +837,7 @@ async def test_healthy_response_records_zero_degenerate_resamples(llm_request_cg
 async def test_empty_rankings_are_not_treated_as_degenerate(llm_request_cg):
     """Measurement rankings are permissive BY DESIGN: an empty ranking must NOT trigger a re-sample,
     or the measurement path would start burning budget on responses it is happy to accept."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_empty_ollama_response(
             json.dumps({"reasoning": "r", "rankings": []}))
@@ -775,7 +856,7 @@ async def test_empty_rankings_are_not_treated_as_degenerate(llm_request_cg):
 async def test_every_request_carries_the_fixed_context_and_the_answer_cap(llm_request_cg):
     """The context window is set by config, never left to ollama (which picks it from the GPU's
     memory), and the answer is capped at the request's max_tokens."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = _mock_ollama_response()
         client = LLMClientLocal("ollama3.2:latest")
 
@@ -799,7 +880,7 @@ def _mock_cut_ollama_response() -> MagicMock:
 async def test_an_answer_cut_at_the_limit_is_drawn_again(llm_request_cg):
     """A cut answer is a bad draw, not malformed output: it is re-sampled within the budget, and
     counted apart from the empty and the degenerate ones."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = [_mock_cut_ollama_response(), _mock_ollama_response()]
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
@@ -815,7 +896,7 @@ async def test_an_answer_cut_at_the_limit_is_drawn_again(llm_request_cg):
 @pytest.mark.asyncio
 async def test_an_answer_cut_every_time_still_fails_after_the_budget(llm_request_cg):
     """Bounded: a model that always loops exhausts the budget and the error propagates."""
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.return_value = _mock_cut_ollama_response()
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
@@ -836,7 +917,7 @@ async def test_each_new_draw_of_a_bad_answer_has_its_own_seed(llm_request_cg):
     times in a row, word for word), so each new draw gets the next derived seed, and the answer kept
     carries the seed it was drawn with."""
     request = llm_request_cg.model_copy(update={"seed": 123})
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = [
             _mock_empty_ollama_response(_DEGENERATE_GUESS_JSON),
@@ -862,10 +943,10 @@ async def test_a_transient_failure_after_a_bad_draw_resends_that_draw(llm_reques
     as it was, the redrawn seed included."""
     monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
     request = llm_request_cg.model_copy(update={"seed": 123})
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = [
-            _mock_cut_ollama_response(), LLMTimeoutError(), _mock_ollama_response()]
+            _mock_cut_ollama_response(), httpx.ReadTimeout("timed out"), _mock_ollama_response()]
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
 
         await client.generate(request, expected_format=ClueJSONFormat)
@@ -877,7 +958,7 @@ async def test_a_transient_failure_after_a_bad_draw_resends_that_draw(llm_reques
 @pytest.mark.asyncio
 async def test_an_unseeded_request_is_drawn_again_unseeded(llm_request_cg):
     request = llm_request_cg.model_copy(update={"seed": None})
-    with patch("backend.app.core.llm.client_local.Client") as MockClient:
+    with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         mock_chat.side_effect = [_mock_cut_ollama_response(), _mock_ollama_response()]
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)

@@ -73,7 +73,9 @@ class LLMRequest(BaseModel):
     seed: Optional[int] = None
     # Maximum number of tokens for the LLM response (default is 5000, must be non-negative)
     max_tokens: int = Field(ge=1, default=5000)
-    # Timeout for the LLM response in seconds (default is 30, must be non-negative)
+    # Timeout for the LLM response in seconds (default is 30, must be non-negative). Only the API
+    # client reads it: a local call also loads the model, and one value cannot fit both, so the
+    # local client waits config.OLLAMA_TIMEOUT_S instead.
     timeout_s: int = Field(ge=1, default=30)
     # Additional metadata for logging purposes
     metadata: dict[str, Any] = Field(default_factory=dict)

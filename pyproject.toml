@@ -15,6 +15,8 @@ dependencies = [
     "openai",
     "numpy",
     "ollama",
+    # Imported directly by the local client, for its timeout; ollama itself is built on it.
+    "httpx",
     "nltk",
 ]
 
