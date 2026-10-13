@@ -3,9 +3,12 @@ fingerprint. These run without a database; the end-to-end persisted-run provenan
 test_game_runner.py (DB-gated)."""
 import re
 import subprocess
+from types import SimpleNamespace
 
+import httpx
 import pytest
 
+from backend.app import config
 from backend.app.core import provenance
 from backend.app.core.game_runner import SeatSpec
 from backend.app.core.llm_service import LLMService
@@ -110,6 +113,40 @@ def test_snapshot_default_resolver_honours_monkeypatch(monkeypatch):
     snap = provenance.build_model_registry_snapshot([SeatSpec("ollama", "m0")])
     assert snap["0"]["identity"] == "sha256:patched"
     assert snap["0"]["identity_kind"] == "ollama_digest"
+
+
+# the digest lookup waits a bounded time on the daemon
+def test_digest_lookup_waits_the_configured_time(monkeypatch):
+    """ollama's own default is no limit at all: a hung daemon would stop the batch before it began."""
+    seen = {}
+
+    class FakeClient:
+        def __init__(self, host=None, **kwargs):
+            seen.update(kwargs)
+
+        def list(self):
+            return SimpleNamespace(models=[SimpleNamespace(model="m0:latest", digest="sha256:d")])
+
+    monkeypatch.setattr("ollama.Client", FakeClient)
+
+    assert provenance.resolve_ollama_digest("m0") == "sha256:d"
+    assert seen["timeout"].read == config.OLLAMA_TIMEOUT_S
+    assert seen["timeout"].connect == config.OLLAMA_CONNECT_TIMEOUT_S
+
+
+def test_digest_lookup_that_times_out_records_none(monkeypatch):
+    """Record-only: a lookup cut by the limit is a null identity, never an exception (the batch's
+    digest gate then refuses to start)."""
+    class FakeClient:
+        def __init__(self, host=None, **kwargs):
+            pass
+
+        def list(self):
+            raise httpx.ReadTimeout("timed out")
+
+    monkeypatch.setattr("ollama.Client", FakeClient)
+
+    assert provenance.resolve_ollama_digest("m0") is None
 
 
 # code_version

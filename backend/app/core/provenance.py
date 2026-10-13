@@ -54,10 +54,14 @@ def resolve_ollama_digest(model_name: str, host: Optional[str] = None) -> Option
     we list local models and match by name, tolerating the implicit ``:latest`` tag.
     """
     try:
+        import httpx
         from ollama import Client
 
+        # Bounded as the game's own calls are: without a limit a hung daemon would stop the batch
+        # before its first game. A lookup that times out records null, which the digest gate refuses.
         client = Client(host=host or os.environ.get(
-            "OLLAMA_HOST", "http://localhost:11434"))
+            "OLLAMA_HOST", "http://localhost:11434"), timeout=httpx.Timeout(
+                config.OLLAMA_TIMEOUT_S, connect=config.OLLAMA_CONNECT_TIMEOUT_S))
         for model in client.list().models:
             name = getattr(model, "model", None)
             if name == model_name or name == f"{model_name}:latest" or (
