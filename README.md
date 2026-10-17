@@ -487,6 +487,15 @@ Two levels, kept deliberately separate:
   abort that pairing only** — its remaining cells are skipped and the batch moves to the next
   pairing, because a systematic failure is a finding about one pairing, not a reason to lose the
   other five.
+* **Level 2 — a game lost to the provider is played again.** When Ollama times out, is unavailable
+  or rate limits, and still fails after the client's own retries, the game was lost to the
+  provider, not the model. The batch probes both seats' providers (`health_check`, Ollama's
+  `/api/show` for the model) until they answer, deletes the game's error row and plays the
+  **same** game again: same `game_id`, same seeds, so the same game. At most two replays per game; a game the provider still
+  fails after them stays an error and counts like any other. If the provider does not answer within
+  `--provider-wait-minutes` (default 30), the batch **stops** there instead of failing pairing after
+  pairing: the games after it are not played, the report ends with `STOPPED: <reason>`
+  (`aborted_reason` in the JSON) and the exit code is `3`.
 
 ### 5. The report
 

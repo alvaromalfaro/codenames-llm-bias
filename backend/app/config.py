@@ -86,6 +86,11 @@ OLLAMA_TIMEOUT_S = 300
 # that is down refuses at once; this only bounds a host that does not answer at all.
 OLLAMA_CONNECT_TIMEOUT_S = 10
 
+# How long, in seconds, the daemon may take to answer a health check (its /api/show for a model).
+# A daemon that is up answers at once, even while it is writing an answer; the batch asks before it
+# plays again a game the daemon failed, and must not wait OLLAMA_TIMEOUT_S on a wedged one.
+OLLAMA_HEALTH_TIMEOUT_S = 10
+
 # The most tokens a model may write in one answer, for every provider (ollama's num_predict,
 # OpenRouter's max_tokens). The longest answer of the test games took 576 tokens. A model that
 # loops (repeating "Let's try X. No.") is cut here, and the cut answer is drawn again (see

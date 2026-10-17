@@ -16,6 +16,10 @@ Preconditions (all fail loud before any provider call - see batch_runner.run_bat
     stores whatever is missing; the database needs only the migrated schema);
   * the digest gate passes once at run-mint (enforce_digests=True on the real path).
 
+A game lost to the provider (Ollama timing out or unavailable) is played again once the provider
+answers again. A provider that does not answer within --provider-wait-minutes (default 30) stops the
+batch: the report says where, and the exit code is 3.
+
 Environment: export the vars yourself (no dotenv). DATABASE_URL, OLLAMA_HOST and/or
 OPENROUTER_API_KEY must be in the process environment. Run from the REPO ROOT.
 
@@ -100,6 +104,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true",
                    help="no-DB reproducibility check of the schedule + loop wiring using "
                         "deterministic mock clients (persist off, digest gate off).")
+    p.add_argument("--provider-wait-minutes", type=float, metavar="MIN",
+                   help="how long to wait for a provider that stops answering before stopping "
+                        "the batch (default 30).")
     return p
 
 
@@ -130,6 +137,8 @@ def _print_report(report: BatchReport, *, dry_run: bool) -> None:
     print("-" * 72)
     print(f"  TOTALS: attempted={report.attempted} completed={report.completed} "
           f"errored={report.errored} pairings_aborted={report.pairings_aborted}")
+    if report.aborted_reason:
+        print(f"  STOPPED: {report.aborted_reason}")
     print("=" * 72)
     print("\n" + json.dumps(report.as_dict(), indent=2))
 
@@ -162,13 +171,15 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[batch] master_seed={args.master_seed} temperature={args.temperature} "
           f"dry_run={dry} enforce_digests={not dry}")
 
+    wait = ({} if args.provider_wait_minutes is None
+            else {"provider_wait_s": args.provider_wait_minutes * 60})
     try:
         report = asyncio.run(run_batch(
             models=models, boards=boards, master_seed=args.master_seed,
             temperature=args.temperature,
             persist=not dry, enforce_digests=not dry,
             make_client_factory=(dry_run_client_factory if dry else None),
-            bank_dir=_BOARD_DATA_PATH,
+            bank_dir=_BOARD_DATA_PATH, **wait,
         ))
     except (ScheduleError, BatchPreconditionError, ModelDigestMismatchError) as e:
         print(
@@ -176,6 +187,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     _print_report(report, dry_run=dry)
+    if report.aborted_reason:
+        print(f"\n[batch STOPPED - provider] {report.aborted_reason}. The games played so far are "
+              f"stored under run {report.run_id}.", file=sys.stderr)
+        return 3
     return 0
 
 

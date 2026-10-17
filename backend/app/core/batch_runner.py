@@ -27,25 +27,36 @@ Level 2 - PER-GAME FAULT ISOLATION (count-and-continue, inside the loop):
   - a per-pairing CONSECUTIVE-failure threshold (default 5) aborts THAT pairing (skips its remaining
     cells) and continues with the next pairing - a systematic failure is a finding for one pairing,
     not a reason to kill the other five. The counter is per-pairing and resets on any completion.
+  - a game lost to the provider (a timeout, or a provider unavailable or rate limiting, still
+    failing after the client's own retries) is the provider's failure, not the model's. The batch
+    waits for both seats' providers to pass their health check, then plays the SAME game again: its
+    error row is deleted first, and the same game_id and seeds make it the same game. It waits up to
+    ``provider_wait_s`` (30 min); a provider that does not come back STOPS the batch there, the
+    games after it unplayed and the reason on the report (``BatchReport.aborted_reason``), so an
+    outage never reaches the threshold and never aborts pairings one after another. A game the
+    provider still fails after ``provider_replays`` replays (2) stays an error and counts like any
+    other: the provider answers, so the failure is that game's.
 
 The CLI wrapper lives in ``scripts/run_batch.py``; the orchestration lives here.
 """
 from __future__ import annotations
 
+import asyncio
+import functools
 import json
 import logging
 import os
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import select
 
-from backend.app.core.batch_schedule import build_schedule
+from backend.app.core.batch_schedule import BatchCell, build_schedule
 from backend.app.core.game_runner import (
-    ClientFactory, SeatSpec, create_run, run_single_game,
+    ClientFactory, SeatSpec, create_run, default_client_factory, run_single_game,
 )
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm_service import LLMService
@@ -59,6 +70,15 @@ logger = logging.getLogger("run_batch")
 # Per-pairing consecutive-failure abort threshold (Level 2). A pairing with this many errors in a row
 # is aborted (its remaining cells skipped); the batch continues with the next pairing.
 _CONSECUTIVE_FAILURE_THRESHOLD = 5
+
+# A game lost to the provider is played again once the provider answers again (Level 2): at most
+# this many times per game, each time waiting at most _PROVIDER_WAIT_S for the provider to answer.
+_PROVIDER_REPLAYS = 2
+_PROVIDER_WAIT_S = 30 * 60
+# The wait probes the provider at once, then after waits of 15 s, 30 s, 60 s, ..., never more than
+# 5 min apart.
+_PROVIDER_PROBE_BASE_S = 15
+_PROVIDER_PROBE_MAX_S = 5 * 60
 
 # The Alembic configuration (backend/alembic.ini), whose migrations define the schema this code
 # writes.
@@ -89,6 +109,10 @@ _PROVIDER_ERROR_CODES = frozenset(
      "model_not_found", "invalid_request"})
 _MODEL_ERROR_CODES = frozenset(
     {"parse_error", "empty_response", "degenerate_response", "truncated_response", "refused"})
+# The provider errors that say the provider failed, not the setup: the retriable ones. A game lost
+# to one of them is played again once the provider answers (Level 2). The other provider errors (a
+# model not pulled, a bad key, a rejected request) would fail the game the same way again.
+_TRANSIENT_PROVIDER_CODES = frozenset({"timeout", "rate_limit", "provider_unavailable"})
 
 
 def _classify_error(error: Optional[str], code: Optional[str] = None) -> str:
@@ -164,6 +188,9 @@ class BatchReport:
     errored: int
     pairings_aborted: int
     pairings: list[PairingReport]
+    # Why the batch stopped before its last game (a provider that did not come back), or None when
+    # it played the whole schedule.
+    aborted_reason: Optional[str] = None
 
     def as_dict(self) -> dict:
         return {
@@ -173,6 +200,7 @@ class BatchReport:
             "completed": self.completed,
             "errored": self.errored,
             "pairings_aborted": self.pairings_aborted,
+            "aborted_reason": self.aborted_reason,
             "pairings": [p.as_dict() for p in self.pairings],
         }
 
@@ -259,6 +287,50 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> None:
             f"scheduled boards missing from the database after ingesting {bank_dir}: {missing}")
 
 
+async def _wait_for_provider(probe: Callable[[], Awaitable[bool]], *, max_wait_s: float,
+                             sleep: Callable[[float], Awaitable[object]] = asyncio.sleep) -> bool:
+    """Wait until ``probe`` says the provider answers again: True once it does, False if it still
+    does not after ``max_wait_s`` seconds of waiting. Probes at once, then after each wait of an
+    exponential backoff (``_PROVIDER_PROBE_BASE_S``, doubling, at most ``_PROVIDER_PROBE_MAX_S``),
+    the last wait cut to the budget."""
+    waited = 0.0
+    delay = _PROVIDER_PROBE_BASE_S
+    while not await probe():
+        if waited >= max_wait_s:
+            return False
+        step = min(delay, _PROVIDER_PROBE_MAX_S, max_wait_s - waited)
+        logger.warning("the provider does not answer; probing again in %.0fs "
+                       "(waited %.0fs of %.0fs)", step, waited, max_wait_s)
+        await sleep(step)
+        waited += step
+        delay *= 2
+    return True
+
+
+async def _provider_healthy(cell: BatchCell, factory: ClientFactory) -> bool:
+    """Whether both seats' providers pass their health check, asked of clients built as the game
+    builds them (``factory``) and closed afterwards."""
+    clients = [factory(0, cell.seat0_spec), factory(1, cell.seat1_spec)]
+    try:
+        for client in clients:
+            if not await client.health_check():
+                return False
+        return True
+    finally:
+        for client in clients:
+            try:
+                await client.close()
+            except Exception:
+                logger.debug("client close failed after a health check", exc_info=True)
+
+
+def _forget_error_game(game_id: str, run_id: str) -> None:
+    """Delete the error row of a game about to be played again, which would otherwise collide with
+    the replay on its deterministic ``game.id``."""
+    from backend.app.db.writer import delete_error_game
+    delete_error_game(game_id, run_id)
+
+
 async def run_batch(
     *,
     models: Sequence[SeatSpec],
@@ -270,6 +342,8 @@ async def run_batch(
     client_factory: Optional[ClientFactory] = None,
     make_client_factory: Optional[Callable[[Board], ClientFactory]] = None,
     consecutive_failure_threshold: int = _CONSECUTIVE_FAILURE_THRESHOLD,
+    provider_wait_s: float = _PROVIDER_WAIT_S,
+    provider_replays: int = _PROVIDER_REPLAYS,
     bank_dir: str | Path = "data/boards",
 ) -> BatchReport:
     """Play the full batch under one run and return a structured :class:`BatchReport`.
@@ -277,7 +351,10 @@ async def run_batch(
     Level-1 preconditions run first (schedule/bank, schema, collision, bank ingestion, mint+gate);
     if any fails it raises (:class:`ScheduleError`, :class:`BatchPreconditionError`,
     :class:`ModelDigestMismatchError`) and zero games play. Then the play loop runs with
-    count-and-continue and the per-pairing consecutive-failure abort.
+    count-and-continue and the per-pairing consecutive-failure abort. A game lost to the provider
+    is played again, up to ``provider_replays`` times, once the provider answers again; a provider
+    that does not answer within ``provider_wait_s`` seconds stops the batch, and the report's
+    ``aborted_reason`` says so.
 
     ``bank_dir`` is the directory ``boards`` was loaded from: with ``persist`` its measurement frame
     and boards are stored in the database before the run is minted.
@@ -333,6 +410,7 @@ async def run_batch(
     current_p: Optional[int] = None
     consecutive = 0
     aborted_pairings: set[int] = set()
+    aborted_reason: Optional[str] = None
     for cell in schedule:
         p = cell.pairing_ordinal
         if p != current_p:  # pairing boundary: the consecutive counter is PER-PAIRING
@@ -347,11 +425,32 @@ async def run_batch(
         factory = (make_client_factory(board) if make_client_factory is not None
                    else client_factory)
         extra = {} if factory is None else {"client_factory": factory}
-        # The gate already ran once at mint; do not re-run it per game (enforce_digests=False).
-        result = await run_single_game(
-            board=board, seat_specs=[cell.seat0_spec, cell.seat1_spec],
-            master_seed=master_seed, temperature=temperature, run_id=run_id,
-            game_index=cell.game_index, persist=persist, enforce_digests=False, **extra)
+        replays = 0
+        while True:
+            # The gate already ran once at mint; do not re-run it per game (enforce_digests=False).
+            result = await run_single_game(
+                board=board, seat_specs=[cell.seat0_spec, cell.seat1_spec],
+                master_seed=master_seed, temperature=temperature, run_id=run_id,
+                game_index=cell.game_index, persist=persist, enforce_digests=False, **extra)
+            if (result.status != "error" or result.error_code not in _TRANSIENT_PROVIDER_CODES
+                    or replays >= provider_replays):
+                break
+            # Lost to the provider, not the model: wait for it to answer again, then play the same
+            # game again.
+            logger.warning("game %s (game_index %s) lost to the provider (%s); waiting for it to "
+                           "answer again", result.game_id, cell.game_index, result.error_code)
+            probe = functools.partial(_provider_healthy, cell, factory or default_client_factory)
+            if not await _wait_for_provider(probe, max_wait_s=provider_wait_s):
+                aborted_reason = (
+                    f"the provider did not answer for {provider_wait_s / 60:g} min after "
+                    f"game_index {cell.game_index} ({result.game_id}) failed with "
+                    f"{result.error_code}; the games after it were not played")
+                break
+            if persist:
+                _forget_error_game(result.game_id, run_id)
+            replays += 1
+            logger.warning("the provider answers again; playing game %s again (replay %s of %s)",
+                           result.game_id, replays, provider_replays)
 
         pr.attempted += 1
         if result.status == "completed":
@@ -360,6 +459,10 @@ async def run_batch(
         else:
             pr.errored += 1
             pr.error_kinds[_classify_error(result.error, result.error_code)] += 1
+            if aborted_reason is not None:
+                # An outage, not a finding about this pairing: it never reaches the threshold.
+                logger.error("batch stopped: %s", aborted_reason)
+                break
             consecutive += 1
             if consecutive >= consecutive_failure_threshold:
                 pr.aborted = True
@@ -378,6 +481,7 @@ async def run_batch(
         errored=sum(pr.errored for pr in pairings),
         pairings_aborted=sum(1 for pr in pairings if pr.aborted),
         pairings=pairings,
+        aborted_reason=aborted_reason,
     )
     logger.info("batch complete: %s", json.dumps(report.as_dict()))
     return report

@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import httpx
@@ -593,6 +594,48 @@ async def test_a_probe_for_a_model_that_is_not_pulled_fails_the_call(llm_request
 
     assert instance.show.call_count == 1
     instance.chat.assert_not_called()
+
+
+# the health check the batch asks before playing a game again
+@pytest.mark.asyncio
+async def test_a_daemon_that_has_the_model_is_healthy():
+    with _patch_ollama() as MockClient:
+        client = LLMClientLocal("gemma4:12b")
+
+        assert await client.health_check() is True
+
+    MockClient.return_value.show.assert_awaited_once_with("gemma4:12b")
+
+
+@pytest.mark.parametrize("raw", [
+    ConnectionError("Failed to connect to Ollama."),
+    httpx.ConnectError("connection refused"),
+    httpx.ReadTimeout("timed out"),
+    ResponseError('{"error": "llama runner process has terminated"}', 500),
+    ResponseError("model 'gemma4:12b' not found", 404),
+])
+@pytest.mark.asyncio
+async def test_a_daemon_that_fails_the_health_check_is_not_healthy(raw):
+    with _patch_ollama() as MockClient:
+        MockClient.return_value.show.side_effect = raw
+        client = LLMClientLocal("gemma4:12b")
+
+        assert await client.health_check() is False
+
+
+@pytest.mark.asyncio
+async def test_a_wedged_daemon_is_not_healthy(monkeypatch):
+    """The check waits OLLAMA_HEALTH_TIMEOUT_S, not the 300 s a game's call may take."""
+    monkeypatch.setattr(config, "OLLAMA_HEALTH_TIMEOUT_S", 0.01)
+
+    async def never_answers(model):
+        await asyncio.sleep(10)
+
+    with _patch_ollama() as MockClient:
+        MockClient.return_value.show.side_effect = never_answers
+        client = LLMClientLocal("gemma4:12b")
+
+        assert await client.health_check() is False
 
 
 @pytest.mark.asyncio

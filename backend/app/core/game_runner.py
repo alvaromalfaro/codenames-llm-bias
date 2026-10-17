@@ -188,8 +188,9 @@ def _enforce_local_digests(snapshot: dict, *, enforce: bool) -> None:
 
 
 # client construction / db gating
-def _default_client_factory(seat_index: int, spec: SeatSpec) -> LLMClient:
-    """Build one client for a seat from its spec, wired with the driver's transient-retry budget."""
+def default_client_factory(seat_index: int, spec: SeatSpec) -> LLMClient:
+    """Build one client for a seat from its spec, wired with the driver's transient-retry budget.
+    The batch builds its provider health probes with it too."""
     if spec.provider == "openrouter":
         return LLMClientOpenRouter(model_name=spec.model_name, max_retries=_CLIENT_MAX_RETRIES)
     return LLMClientLocal(model_name=spec.model_name, think=spec.think,
@@ -294,7 +295,7 @@ async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
 # entry point
 async def run_single_game(*, board: Board, seat_specs, master_seed: int, temperature: float,
                           run_id: Optional[str] = None, game_index: int = 0, persist: bool = True,
-                          client_factory: ClientFactory = _default_client_factory,
+                          client_factory: ClientFactory = default_client_factory,
                           enforce_digests: bool = False,
                           on_dispatch: Optional[DispatchHook] = None) -> GameRunResult:
     """Play ONE complete LLM-vs-LLM Codenames Duet game and persist it.

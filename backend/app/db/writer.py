@@ -323,6 +323,27 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
     recorder.flushed = True
 
 
+def delete_error_game(game_id: str, run_id: str) -> bool:
+    """Delete one game of ``run_id`` that was recorded as an error, so it can be played again.
+
+    Game identity is deterministic, so playing a game again writes the same ``game.id``, which
+    collides with the error row unless that row goes first. The batch does this before it plays
+    again a game the provider failed. Like ``delete_run``, it leans on ``ON DELETE CASCADE`` from
+    ``game.id`` for the whole subtree.
+
+    Only a row of this run whose status is ``'error'`` is deleted: a completed game, or a game of
+    another run, is never touched.
+
+    :returns: whether a row was deleted (False when there was none: the error flush may have
+        failed).
+    """
+    with session_scope() as session:
+        deleted = session.execute(delete(GameModel).where(
+            GameModel.id == game_id, GameModel.run_id == run_id,
+            GameModel.game_status == "error")).rowcount
+    return bool(deleted)
+
+
 @dataclass(frozen=True)
 class DeleteRunResult:
     """Outcome of :func:`delete_run`.

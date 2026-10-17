@@ -252,6 +252,38 @@ def test_delete_run_nonexistent_is_noop():
     assert result.games_deleted == 0
 
 
+def test_delete_error_game_deletes_only_an_error_game_of_its_run():
+    """What the batch deletes before it plays again a game the provider failed: that game's error
+    row and its subtree, never a completed game or another run's."""
+    from backend.app.db import writer
+    from backend.app.db.session import session_scope
+
+    with session_scope() as session:
+        board_id = _insert_board(session)
+        run_id = _insert_run(session)
+        other_run_id = _insert_run(session)
+
+    error_id, completed_id, other_id = (str(uuid.uuid4()) for _ in range(3))
+    for game_id, run, status in [(error_id, run_id, "error"), (completed_id, run_id, "completed"),
+                                 (other_id, other_run_id, "error")]:
+        rec = _recorder(game_id=game_id, board_id=board_id, run_id=run)
+        _record_full_game(rec)
+        writer.persist_game(rec, status=status)
+
+    assert writer.delete_error_game(completed_id, run_id) is False
+    assert writer.delete_error_game(other_id, run_id) is False
+    assert writer.delete_error_game(error_id, run_id) is True
+    assert writer.delete_error_game(error_id, run_id) is False
+
+    with session_scope() as session:
+        assert all(n == 0 for n in _row_counts_for_game(session, error_id).values())
+        assert _row_counts_for_game(session, completed_id)["game"] == 1
+        assert _row_counts_for_game(session, other_id)["game"] == 1
+
+    writer.delete_run(run_id)
+    writer.delete_run(other_run_id)
+
+
 def test_delete_run_enables_rerun_of_same_identity():
     """The collision-as-a-feature payoff: a deterministic (master_seed, game_index) game persisted,
     deleted via delete_run, then persisted AGAIN under the same game.id - proving deterministic

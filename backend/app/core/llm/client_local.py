@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -270,6 +271,19 @@ class LLMClientLocal(LLMClient):
             raise LLMParseError(
                 provider="ollama", cause=je, execution_mode="local"
             )
+
+    async def health_check(self) -> bool:
+        """Whether the daemon answers and still has this model: its /api/show for the model, within
+        ``config.OLLAMA_HEALTH_TIMEOUT_S``. The batch asks before it plays again a game the daemon
+        failed (see ``batch_runner``). False when the daemon is down, wedged or failing (5xx), or
+        no longer has the model (404)."""
+        try:
+            await asyncio.wait_for(self._client.show(self.model_name),
+                                   timeout=config.OLLAMA_HEALTH_TIMEOUT_S)
+        except (*_DAEMON_ERRORS, TimeoutError) as e:
+            logger.info("ollama health check for %r failed: %r", self.model_name, e)
+            return False
+        return True
 
     async def close(self) -> None:
         await self._client.close()
