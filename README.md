@@ -337,7 +337,9 @@ with the same seed a local model gives the same answer again; `llm_call.requeste
 seed of the answer kept. `run_id` is deliberately *not* an input to identity — it is bookkeeping. A
 consequence worth internalising: re-running the same `(master_seed, game_index)` re-derives the same
 `game_id` and therefore **collides on the primary key**. That is the intended "this experiment is
-already recorded" signal; to legitimately re-run, delete the run first (see below).
+already recorded" signal; to legitimately re-run, delete the run first (see below). The same
+determinism is what lets a batch that stopped continue under its own run (`--resume`): the games
+still to play are the games the run would have played.
 
 **The digest gate.** `config.EXPECTED_LOCAL_DIGESTS` pins the exact local weights the batch is
 validated against. On the batch path the served digests are resolved from the Ollama daemon once, at
@@ -451,7 +453,7 @@ tmux new -s batch 'set -a; source .env; set +a; \
 ```
 
 **Required flags.** `--master-seed` and `--temperature` have no defaults — reproducibility is the
-point, so the batch refuses to guess. `--model provider:model` may be repeated **exactly four times**
+point, so the batch refuses to guess. (With `--resume` they are the run's, see below.) `--model provider:model` may be repeated **exactly four times**
 to override the roster in `config.llm_models` (e.g. `--model ollama:llama3.1:8b`); omit it to use the
 configured four.
 
@@ -481,7 +483,8 @@ Two levels, kept deliberately separate:
   then every board under `data/boards/`, skipping what is already stored. It fails if the frame's
   sidecar is missing, if it contradicts the frame already stored (the frame is immutable:
   `StaleFrameError`), or if a scheduled board is still not in the database afterwards (an
-  unreadable board file is skipped with a warning).
+  unreadable board file is skipped with a warning). On a resume, the `game_id` check and the
+  minting give way to the checks of the run being resumed (§6).
 * **Level 2 — per-game fault isolation.** A game that errors is recorded, classified
   (`provider` / `model` / `collision` / `other`) and the loop continues. **Five consecutive failures
   abort that pairing only** — its remaining cells are skipped and the batch moves to the next
@@ -495,15 +498,41 @@ Two levels, kept deliberately separate:
   fails after them stays an error and counts like any other. If the provider does not answer within
   `--provider-wait-minutes` (default 30), the batch **stops** there instead of failing pairing after
   pairing: the games after it are not played, the report ends with `STOPPED: <reason>`
-  (`aborted_reason` in the JSON) and the exit code is `3`.
+  (`aborted_reason` in the JSON) and the exit code is `3`. Once the provider answers, continue the
+  run with `--resume` (§6).
 
 ### 5. The report
 
 The batch ends by printing a per-pairing table (`attempted / completed / errored / skipped`, abort
 reason, error-kind histogram) and then the same content as JSON. Keep the log: that JSON is the
-run's receipt.
+run's receipt. A resumed batch adds `previously_completed / previously_errored`: the games the run
+had recorded, which it did not play again. `skipped` counts only the games nobody played.
 
-### 6. Re-running a seed
+### 6. Resuming a batch that stopped
+
+A batch that stopped — exit `3`, a crash, a power cut, a `Ctrl+C` — continues under its own run:
+
+```sh
+python scripts/run_batch.py --resume <run_id>                  # leave the recorded errors as they are
+python scripts/run_batch.py --resume <run_id> --retry-errors   # play them again too
+```
+
+It plays only the games the run has not recorded. A game is stored when it ends, so a game cut
+short leaves no row and is simply played. A completed game is never played again. A game recorded
+as an error stays so, unless `--retry-errors`: then its row is deleted just before the game is
+played again, with the same seeds. The games a pairing skipped after five consecutive errors have
+no row, so a resume plays them; the errors already recorded do not count towards the threshold
+again.
+
+`--master-seed` and `--temperature` default to the run's. Nothing plays (exit `2`) unless the run is
+the one this batch would mint: the same master seed, temperature, prompt-template fingerprint and
+models, the same weights served (`model_registry_snapshot`, after the digest gate), and every game it
+recorded on the board the schedule puts there now. The error lists every difference. Another
+`code_version` only warns, since resuming after a fix is the usual case. Every resume is appended
+to the run's `notes` with its time and `code_version`, so the run's provenance shows where other
+code took over.
+
+### 7. Re-running a seed
 
 ```python
 # python, with DATABASE_URL exported

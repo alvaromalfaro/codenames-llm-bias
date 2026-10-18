@@ -20,6 +20,12 @@ A game lost to the provider (Ollama timing out or unavailable) is played again o
 answers again. A provider that does not answer within --provider-wait-minutes (default 30) stops the
 batch: the report says where, and the exit code is 3.
 
+A batch that stopped (that exit 3, a crash, a Ctrl+C) continues with --resume RUN_ID: the same run,
+playing only the games it has not recorded. The run must match this batch - master seed, temperature,
+prompt templates, models and the weights served - or nothing plays; another code version only warns.
+--master-seed and --temperature may be left out, and are then the run's. The games it recorded as
+errors stay so, unless --retry-errors plays them again.
+
 Environment: export the vars yourself (no dotenv). DATABASE_URL, OLLAMA_HOST and/or
 OPENROUTER_API_KEY must be in the process environment. Run from the REPO ROOT.
 
@@ -32,6 +38,9 @@ Examples:
 
     # no-DB reproducibility check of the schedule + loop wiring (deterministic mock clients):
     python scripts/run_batch.py --master-seed 1234 --temperature 0.7 --dry-run
+
+    # continue a batch that stopped, playing its errors again too:
+    python scripts/run_batch.py --resume <RUN_ID> --retry-errors
 """
 from __future__ import annotations
 
@@ -44,7 +53,7 @@ from typing import Any, cast
 
 from backend.app import config
 from backend.app.core.batch_runner import (
-    BatchPreconditionError, BatchReport, dry_run_client_factory, run_batch,
+    BatchPreconditionError, BatchReport, dry_run_client_factory, load_run, run_batch,
 )
 from backend.app.core.batch_schedule import ScheduleError
 from backend.app.core.game_runner import ModelDigestMismatchError, SeatSpec
@@ -95,9 +104,9 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("--master-seed", type=int,
-                   help="master seed (REQUIRED; reproducibility is the point).")
+                   help="master seed (REQUIRED unless --resume; reproducibility is the point).")
     p.add_argument("--temperature", type=float,
-                   help="sampling temperature (REQUIRED; no default).")
+                   help="sampling temperature (REQUIRED unless --resume; no default).")
     p.add_argument("--model", action="append", metavar="PROVIDER:MODEL",
                    help="a batch model as provider:model; repeat exactly 4 times to override the "
                         "roster in backend/app/config.py.")
@@ -107,6 +116,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--provider-wait-minutes", type=float, metavar="MIN",
                    help="how long to wait for a provider that stops answering before stopping "
                         "the batch (default 30).")
+    p.add_argument("--resume", metavar="RUN_ID",
+                   help="continue the batch of run RUN_ID, playing only the games it has not "
+                        "recorded; --master-seed and --temperature default to the run's.")
+    p.add_argument("--retry-errors", action="store_true",
+                   help="with --resume, play again the games the run recorded as errors.")
     return p
 
 
@@ -129,6 +143,9 @@ def _print_report(report: BatchReport, *, dry_run: bool) -> None:
         line = (f"  p{pr.pairing_ordinal} {pr.pairing_key[0]} vs {pr.pairing_key[1]}: "
                 f"attempted={pr.attempted} completed={pr.completed} errored={pr.errored} "
                 f"skipped={pr.skipped}")
+        if report.resumed:
+            line += (f" previously_completed={pr.previously_completed} "
+                     f"previously_errored={pr.previously_errored}")
         if pr.aborted:
             line += f"  ABORTED ({pr.abort_reason})"
         if pr.error_kinds:
@@ -137,6 +154,9 @@ def _print_report(report: BatchReport, *, dry_run: bool) -> None:
     print("-" * 72)
     print(f"  TOTALS: attempted={report.attempted} completed={report.completed} "
           f"errored={report.errored} pairings_aborted={report.pairings_aborted}")
+    if report.resumed:
+        print(f"  RESUMED: previously_completed={report.previously_completed} "
+              f"previously_errored={report.previously_errored}")
     if report.aborted_reason:
         print(f"  STOPPED: {report.aborted_reason}")
     print("=" * 72)
@@ -151,7 +171,26 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = build_parser().parse_args(argv)
 
-    missing = [name for name, val in (("--master-seed", args.master_seed),
+    if args.resume is not None:
+        if args.dry_run:
+            raise SystemExit("--resume continues a run in the database; it cannot be combined "
+                             "with --dry-run.")
+        if args.master_seed is None or args.temperature is None:
+            try:
+                run = load_run(args.resume)
+                if run is None:
+                    raise BatchPreconditionError(f"there is no run {args.resume} to resume.")
+            except BatchPreconditionError as e:
+                print(f"\n[batch ABORTED - precondition] {e}", file=sys.stderr)
+                return 2
+            if args.master_seed is None:
+                args.master_seed = run.master_seed
+            if args.temperature is None:
+                args.temperature = run.temperature
+    elif args.retry_errors:
+        raise SystemExit("--retry-errors goes with --resume.")
+
+    missing =[name for name, val in (("--master-seed", args.master_seed),
                                       ("--temperature", args.temperature)) if val is None]
     if missing:
         raise SystemExit(f"missing required argument(s): {', '.join(missing)}")
@@ -170,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"[batch] models={[f'{m.provider}:{m.model_name}' for m in models]}")
     print(f"[batch] master_seed={args.master_seed} temperature={args.temperature} "
           f"dry_run={dry} enforce_digests={not dry}")
+    if args.resume is not None:
+        print(f"[batch] resuming run {args.resume} retry_errors={args.retry_errors}")
 
     wait = ({} if args.provider_wait_minutes is None
             else {"provider_wait_s": args.provider_wait_minutes * 60})
@@ -179,7 +220,8 @@ def main(argv: list[str] | None = None) -> int:
             temperature=args.temperature,
             persist=not dry, enforce_digests=not dry,
             make_client_factory=(dry_run_client_factory if dry else None),
-            bank_dir=_BOARD_DATA_PATH, **wait,
+            bank_dir=_BOARD_DATA_PATH, resume_run_id=args.resume,
+            retry_errors=args.retry_errors, **wait,
         ))
     except (ScheduleError, BatchPreconditionError, ModelDigestMismatchError) as e:
         print(
@@ -189,7 +231,8 @@ def main(argv: list[str] | None = None) -> int:
     _print_report(report, dry_run=dry)
     if report.aborted_reason:
         print(f"\n[batch STOPPED - provider] {report.aborted_reason}. The games played so far are "
-              f"stored under run {report.run_id}.", file=sys.stderr)
+              f"stored under run {report.run_id}; once the provider answers, continue it with "
+              f"--resume {report.run_id}.", file=sys.stderr)
         return 3
     return 0
 

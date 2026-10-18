@@ -208,6 +208,16 @@ DispatchHook = Callable[[CodenamesDuetEngine, GameRecorder], None]
 
 
 # run minting (identity + provenance + gate)
+def served_registry_snapshot(seat_specs, *, enforce_digests: bool) -> dict:
+    """Build the ``model_registry_snapshot`` of the models served now and run the digest gate over
+    it (a no-op unless ``enforce_digests``). Minting a run starts here, and a resumed batch compares
+    it with the snapshot its run was minted with. Raises ``ModelDigestMismatchError`` on a served
+    local digest that is not vetted."""
+    snapshot = provenance.build_model_registry_snapshot(seat_specs)
+    _enforce_local_digests(snapshot, enforce=enforce_digests)
+    return snapshot
+
+
 def create_run(*, seat_specs, master_seed: int, temperature: float,
                template_fingerprint: str, persist: bool = True,
                enforce_digests: bool = False) -> tuple[str, Optional[dict]]:
@@ -226,10 +236,9 @@ def create_run(*, seat_specs, master_seed: int, temperature: float,
     """
     snapshot = None
     if persist or enforce_digests:
-        snapshot = provenance.build_model_registry_snapshot(seat_specs)
-        # Abort here (before the run row exists, before any dispatch) if a served local digest is
-        # not the one the batch is validated against. No-op when off.
-        _enforce_local_digests(snapshot, enforce=enforce_digests)
+        # Aborts here (before the run row exists, before any dispatch) if a served local digest is
+        # not the one the batch is validated against.
+        snapshot = served_registry_snapshot(seat_specs, enforce_digests=enforce_digests)
     if persist:
         from backend.app.db.models import RunModel
         from backend.app.db.session import session_scope

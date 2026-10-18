@@ -19,7 +19,7 @@ from backend.app.core.batch_runner import (
     BatchPreconditionError, dry_run_client_factory, run_batch,
 )
 from backend.app.core.batch_schedule import ScheduleError, build_schedule
-from backend.app.core.game_runner import GameRunResult
+from backend.app.core.game_runner import GameRunResult, SeatSpec
 
 # Reuse the validated fixture bank + models from the schedule tests (same tests/unit package dir).
 from test_batch_schedule import _bank, _models, _MASTER_SEED
@@ -572,3 +572,338 @@ async def test_dry_run_plays_all_games_to_completion() -> None:
     assert report.errored == 0
     assert report.pairings_aborted == 0
     assert report.run_id  # synthesized deterministic run id (persist=False)
+
+
+# resume: a batch that stopped continues under its own run
+_RUN_ID = "11111111-1111-4111-8111-111111111111"
+
+
+def _snapshot(models, identity=lambda spec: f"digest-{spec.model_name}"):
+    """A model_registry_snapshot of ``models``, keyed by seat index as create_run stores it."""
+    return {str(i): {"provider": spec.provider, "model_name": spec.model_name,
+                     "identity_kind": "test", "identity": identity(spec)}
+            for i, spec in enumerate(models)}
+
+
+def _stored_run(**changes):
+    """The run this test batch would mint, with ``changes``."""
+    from backend.app.core.llm_service import LLMService
+    run = dict(run_id=_RUN_ID, master_seed=_MASTER_SEED, temperature=0.4,
+               prompt_template_version=LLMService(temperature=0.4).template_fingerprint(),
+               code_version="abc1234", model_registry_snapshot=_snapshot(_models()))
+    return batch_runner.StoredRun(**{**run, **changes})
+
+
+def _cells():
+    return {c.game_index: c for c in build_schedule(_models(), _bank(), _MASTER_SEED)}
+
+
+def _recorded(statuses, *, run_id=_RUN_ID):
+    """The games the run recorded, from ``{game_index: game_status}``, each on its scheduled
+    board."""
+    cells = _cells()
+    return {cells[gi].game_id: batch_runner.RecordedGame(run_id, cells[gi].board_id, status)
+            for gi, status in statuses.items()}
+
+
+def _never(name):
+    def spy(*args, **kwargs):  # pragma: no cover - must never run
+        raise AssertionError(f"{name} must not be called")
+    return spy
+
+
+def _resume_env(monkeypatch, *, run=None, recorded=None, served=None, code_version="abc1234"):
+    """Stub the database and the daemon around a resume of ``run`` (by default the run this batch
+    would mint) whose games ``recorded`` are in the database. Returns what the batch did to them:
+    the notes it appended to the run, the error rows it deleted, and the gate runs."""
+    run = run or _stored_run()
+    seen = {"notes": [], "forgotten": [], "gate": []}
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    monkeypatch.setattr(batch_runner, "_check_schema_at_head", lambda: None)
+    monkeypatch.setattr(batch_runner, "_ingest_bank", lambda bank_dir, board_ids: None)
+    monkeypatch.setattr(batch_runner, "_check_no_collisions", _never("the collision check"))
+    monkeypatch.setattr(batch_runner, "create_run", _never("create_run"))
+    monkeypatch.setattr(batch_runner, "load_run",
+                        lambda run_id: run if run_id == run.run_id else None)
+    monkeypatch.setattr(batch_runner, "_recorded_games", lambda game_ids: dict(recorded or {}))
+
+    def served_snapshot(specs, *, enforce_digests):
+        seen["gate"].append(enforce_digests)
+        return served if served is not None else _snapshot(_models())
+    monkeypatch.setattr(batch_runner, "served_registry_snapshot", served_snapshot)
+    monkeypatch.setattr(batch_runner.provenance, "git_code_version", lambda: code_version)
+    monkeypatch.setattr(batch_runner, "_record_resume",
+                        lambda run_id, note: seen["notes"].append((run_id, note)))
+    monkeypatch.setattr(batch_runner, "_forget_error_game",
+                        lambda game_id, run_id: seen["forgotten"].append((game_id, run_id)))
+    return seen
+
+
+async def _resume(**kwargs):
+    kwargs = {"enforce_digests": False, **kwargs}
+    return await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
+                           temperature=0.4, persist=True, resume_run_id=_RUN_ID, **kwargs)
+
+
+async def test_a_resume_plays_only_the_games_its_run_has_not_recorded(monkeypatch) -> None:
+    """The batch stopped at game 40, lost to the provider: the 40 games before it and its error
+    stay, and the resume plays the rest under the same run."""
+    seen = _resume_env(monkeypatch, recorded=_recorded(
+        {**{gi: "completed" for gi in range(40)}, 40: "error"}))
+    played = []
+
+    async def fake(**kwargs):
+        played.append((kwargs["game_index"], kwargs["run_id"]))
+        return GameRunResult(game_id=f"g{kwargs['game_index']}", run_id=kwargs["run_id"],
+                             seed_game=0, status="completed", result=None)
+    monkeypatch.setattr(batch_runner, "run_single_game", fake)
+
+    report = await _resume()
+
+    assert played == [(gi, _RUN_ID) for gi in range(41, 192)]
+    assert report.run_id == _RUN_ID and report.resumed
+    assert report.attempted == report.completed == 151
+    assert report.previously_completed == 40 and report.previously_errored == 1
+    assert all(pr.skipped == 0 for pr in report.pairings)
+    p1 = report.pairings[1]  # game_index 32..63
+    assert (p1.previously_completed, p1.previously_errored, p1.attempted) == (8, 1, 23)
+    assert report.as_dict()["previously_completed"] == 40
+    assert seen["forgotten"] == []
+    assert len(seen["notes"]) == 1
+    run_id, note = seen["notes"][0]
+    assert run_id == _RUN_ID and "resumed at code_version abc1234" in note
+    assert "minted at" not in note and "errors" not in note
+
+
+async def test_retry_errors_plays_the_recorded_errors_again_once_their_rows_are_gone(
+        monkeypatch) -> None:
+    seen = _resume_env(monkeypatch, recorded=_recorded(
+        {**{gi: "completed" for gi in range(40)}, 40: "error"}))
+    calls = []
+    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner({}, calls))
+    events = seen["forgotten"]
+    monkeypatch.setattr(batch_runner, "_forget_error_game",
+                        lambda game_id, run_id: events.append((game_id, run_id, len(calls))))
+
+    report = await _resume(retry_errors=True)
+
+    assert calls == list(range(40, 192))
+    # the error row of game 40 goes before game 40 is played
+    assert events == [(_cells()[40].game_id, _RUN_ID, 0)]
+    assert report.attempted == report.completed == 152
+    assert report.previously_completed == 40 and report.previously_errored == 0
+    assert "recorded errors played again" in seen["notes"][0][1]
+
+
+async def test_a_recorded_completion_resets_the_consecutive_failure_counter(monkeypatch) -> None:
+    """Five errors of pairing 0, each between completions, played again and failing again: in the
+    schedule they are not consecutive, so the pairing must not abort."""
+    errors = (0, 2, 4, 6, 8)
+    _resume_env(monkeypatch, recorded=_recorded(
+        {**{gi: "error" for gi in errors}, **{gi: "completed" for gi in (1, 3, 5, 7)}}))
+    calls = []
+    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner(
+        {gi: [("error", "parse_error")] for gi in errors}, calls))
+
+    report = await _resume(retry_errors=True, consecutive_failure_threshold=5)
+
+    p0 = report.pairings[0]
+    assert not p0.aborted and p0.errored == 5 and p0.attempted == 28
+    assert report.pairings_aborted == 0
+
+
+async def test_a_resume_plays_the_games_an_aborted_pairing_skipped(monkeypatch) -> None:
+    """Pairing 0 aborted after five errors: they stay, and the 27 games it skipped have no row, so
+    they are played; the recorded errors do not count towards the threshold again."""
+    _resume_env(monkeypatch, recorded=_recorded({gi: "error" for gi in range(5)}))
+    calls = []
+    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner(
+        {5: [("error", "parse_error")]}, calls))
+
+    report = await _resume(consecutive_failure_threshold=5)
+
+    assert calls == list(range(5, 192))
+    p0 = report.pairings[0]
+    assert not p0.aborted and p0.previously_errored == 5
+    assert p0.attempted == 27 and p0.errored == 1 and p0.skipped == 0
+
+
+async def test_a_pairing_that_aborts_on_a_resume_counts_only_its_unplayed_games_as_skipped(
+        monkeypatch) -> None:
+    _resume_env(monkeypatch, recorded=_recorded({gi: "completed" for gi in range(10, 32)}))
+    calls = []
+    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner(
+        {gi: [("error", "parse_error")] for gi in range(5)}, calls))
+
+    report = await _resume(consecutive_failure_threshold=5)
+
+    p0 = report.pairings[0]
+    assert p0.aborted and p0.attempted == 5 and p0.previously_completed == 22
+    assert p0.skipped == 5 and "5 remaining games skipped" in p0.abort_reason
+    assert 5 not in calls and 32 in calls
+
+
+@pytest.mark.parametrize("changes, reason", [
+    ({"master_seed": 1}, "master_seed"),
+    ({"temperature": 0.7}, "temperature"),
+    ({"prompt_template_version": "templates@other"}, "prompt templates"),
+    ({"model_registry_snapshot": _snapshot(_models()[:3] + [SeatSpec("ollama", "mistral")])},
+     "models"),
+    ({"model_registry_snapshot": None}, "models"),
+])
+async def test_a_run_minted_for_another_batch_cannot_be_resumed(monkeypatch, changes,
+                                                                reason) -> None:
+    seen = _resume_env(monkeypatch, run=_stored_run(**changes))
+    monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
+    monkeypatch.setattr(batch_runner, "served_registry_snapshot",
+                        _never("the daemon, before the run's own checks pass,"))
+
+    with pytest.raises(BatchPreconditionError, match=reason):
+        await _resume()
+    assert seen["notes"] == []
+
+
+async def test_every_reason_a_run_cannot_be_resumed_is_listed(monkeypatch) -> None:
+    _resume_env(monkeypatch, run=_stored_run(master_seed=1, temperature=0.7))
+    monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
+
+    with pytest.raises(BatchPreconditionError) as excinfo:
+        await _resume()
+    assert "master_seed" in str(excinfo.value) and "temperature" in str(excinfo.value)
+
+
+async def test_a_recorded_game_on_another_board_means_the_bank_changed(monkeypatch) -> None:
+    game_id = _cells()[3].game_id
+    _resume_env(monkeypatch, recorded={
+        game_id: batch_runner.RecordedGame(_RUN_ID, "probe-career-99", "completed")})
+    monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
+
+    with pytest.raises(BatchPreconditionError, match="board bank changed"):
+        await _resume()
+
+
+async def test_a_scheduled_game_recorded_under_another_run_blocks_the_resume(monkeypatch) -> None:
+    _resume_env(monkeypatch, recorded=_recorded({0: "completed"}, run_id="another-run"))
+    monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
+
+    with pytest.raises(BatchPreconditionError, match="another run"):
+        await _resume()
+
+
+async def test_a_resume_needs_the_weights_its_run_was_minted_on(monkeypatch) -> None:
+    seen = _resume_env(monkeypatch, served=_snapshot(
+        _models(), identity=lambda spec: "f" * 64 if spec.model_name == "qwen2.5"
+        else f"digest-{spec.model_name}"))
+    monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
+
+    with pytest.raises(BatchPreconditionError, match="ollama:qwen2.5: the run was minted on"):
+        await _resume()
+    assert seen["notes"] == []
+
+
+async def test_the_digest_gate_runs_on_a_resume(monkeypatch) -> None:
+    seen = _resume_env(monkeypatch)
+    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner({}, []))
+
+    await _resume(enforce_digests=True)
+
+    assert seen["gate"] == [True]
+
+
+async def test_other_code_only_warns_and_the_run_notes_it(monkeypatch, caplog) -> None:
+    seen = _resume_env(monkeypatch, code_version="def5678")
+    calls = []
+    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner({}, calls))
+
+    with caplog.at_level("WARNING", logger="run_batch"):
+        report = await _resume()
+
+    assert report.completed == 192 and len(calls) == 192
+    assert "minted at code_version abc1234, this code is def5678" in caplog.text
+    assert "resumed at code_version def5678 (minted at abc1234)" in seen["notes"][0][1]
+
+
+@pytest.mark.parametrize("minted, current, warns", [
+    ("abc1234", "abc1234", False),
+    ("abc1234", "def5678", True),
+    ("abc1234", None, True),
+    ("abc1234-dirty", "abc1234-dirty", True),
+])
+def test_the_code_change_warning(minted, current, warns) -> None:
+    warning = batch_runner._code_change_warning(_stored_run(code_version=minted), current)
+    assert (warning is not None) == warns
+
+
+async def test_an_unknown_run_cannot_be_resumed(monkeypatch) -> None:
+    _resume_env(monkeypatch, run=_stored_run(run_id="22222222-2222-4222-8222-222222222222"))
+    monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
+
+    with pytest.raises(BatchPreconditionError, match=f"no run {_RUN_ID}"):
+        await _resume()
+
+
+async def test_a_resume_needs_the_database(monkeypatch) -> None:
+    monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
+    with pytest.raises(BatchPreconditionError, match="needs the database"):
+        await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
+                        temperature=0.4, persist=False, enforce_digests=False,
+                        resume_run_id=_RUN_ID)
+
+
+def test_the_collision_message_names_the_run_to_resume(monkeypatch) -> None:
+    monkeypatch.setattr(batch_runner, "_recorded_games",
+                        lambda game_ids: _recorded({0: "error"}))
+    with pytest.raises(BatchPreconditionError, match="already recorded") as excinfo:
+        batch_runner._check_no_collisions(["any"], master_seed=_MASTER_SEED)
+    assert f"run(s) ['{_RUN_ID}']" in str(excinfo.value) and "--resume" in str(excinfo.value)
+
+
+def test_load_run_needs_the_database(monkeypatch) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    with pytest.raises(BatchPreconditionError, match="DATABASE_URL"):
+        batch_runner.load_run(_RUN_ID)
+
+
+def test_load_run_finds_no_run_under_an_id_that_is_not_one(monkeypatch) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
+    assert batch_runner.load_run("not-a-run-id") is None
+
+
+@_needs_db
+def test_a_run_is_read_back_and_its_resumes_are_noted() -> None:
+    import uuid
+    from decimal import Decimal
+
+    from backend.app.db.models import BoardModel, GameModel, RunModel
+    from backend.app.db.session import session_scope
+    from backend.app.db.writer import delete_run
+
+    run_id, board_id = str(uuid.uuid4()), f"test-resume-{uuid.uuid4()}"
+    game_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+    snapshot = _snapshot(_models())
+    with session_scope() as s:
+        s.add(BoardModel(board_id=board_id))
+        s.add(RunModel(id=run_id, master_seed=Decimal(987), temperature=0.4,
+                       prompt_template_version="tpl", code_version="abc1234",
+                       model_registry_snapshot=snapshot))
+        s.flush()
+        s.add(GameModel(id=game_ids[0], run_id=run_id, board_id=board_id,
+                        game_status="completed"))
+        s.add(GameModel(id=game_ids[1], run_id=run_id, board_id=board_id, game_status="error"))
+    try:
+        assert batch_runner.load_run(run_id) == batch_runner.StoredRun(
+            run_id=run_id, master_seed=987, temperature=0.4, prompt_template_version="tpl",
+            code_version="abc1234", model_registry_snapshot=snapshot)
+        assert batch_runner.load_run(str(uuid.uuid4())) is None
+        assert batch_runner._recorded_games([*game_ids, str(uuid.uuid4())]) == {
+            game_ids[0]: batch_runner.RecordedGame(run_id, board_id, "completed"),
+            game_ids[1]: batch_runner.RecordedGame(run_id, board_id, "error")}
+
+        batch_runner._record_resume(run_id, "first resume")
+        batch_runner._record_resume(run_id, "second resume")
+        with session_scope() as s:
+            assert s.get(RunModel, run_id).notes == "first resume\nsecond resume"
+    finally:
+        delete_run(run_id)
+        with session_scope() as s:
+            s.query(BoardModel).filter_by(board_id=board_id).delete()
