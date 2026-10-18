@@ -311,7 +311,6 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
                     model_ref=seat.model_ref,
                     provider=seat.provider,
                     requested_temperature=seat.requested_temperature,
-                    requested_seed=seat.requested_seed,
                 )
             )
         session.flush()

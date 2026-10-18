@@ -22,7 +22,7 @@ _RUN_ID = "11111111-1111-4111-8111-111111111111"
 def _run(run_id=_RUN_ID, **changes):
     run = dict(
         run_id=run_id, created_at=datetime(2026, 10, 12, 21, 4, 11, tzinfo=timezone.utc),
-        master_seed=2026, temperature=0.8, regime_label=None, code_version="26a115a",
+        master_seed=2026, temperature=0.8, code_version="26a115a",
         prompt_template_version="templates@3f9a",
         model_registry_snapshot={
             "1": {"provider": "ollama", "model_name": "qwen2.5:14b",

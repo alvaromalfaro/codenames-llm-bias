@@ -161,11 +161,10 @@ def test_record_measurement_sets_ranking():
 
 
 def test_seats_are_not_mutated_by_recording():
-    """The runner supplies both seat identities; recording must not overwrite them. The runner
-    seeds per (seat, turn), so requested_seed has no per-seat referent and stays as given (NULL)
-    even though the recorded LLM calls carry a seed."""
-    seats = [SeatRecord(0, "ollama", "m0", requested_temperature=0.4, requested_seed=None),
-             SeatRecord(1, "openrouter", "m1", requested_temperature=0.4, requested_seed=None)]
+    """The runner supplies both seat identities; recording must not overwrite them, even though
+    the recorded LLM calls carry a temperature of their own."""
+    seats = [SeatRecord(0, "ollama", "m0", requested_temperature=0.4),
+             SeatRecord(1, "openrouter", "m1", requested_temperature=0.4)]
     rec = GameRecorder(game_id="g", board_id="b", start_player=0, seats=seats)
     from backend.app.models.llm_schemas import ClueProposal
     # Recorded calls carrying a concrete seed and temperature of their own.
@@ -175,11 +174,9 @@ def test_seats_are_not_mutated_by_recording():
     rec.record_play_proposal(_guess_proposal(
         _call(role="guesser", temperature=0.9, seed=999)))
 
-    # Seat identities are untouched: temperature stays the explicit T, seed stays NULL for both.
+    # Seat identities are untouched: temperature stays the explicit T for both.
     assert rec.seats[0].requested_temperature == 0.4
-    assert rec.seats[0].requested_seed is None
     assert rec.seats[1].requested_temperature == 0.4
-    assert rec.seats[1].requested_seed is None
 
 
 # sudden death

@@ -74,7 +74,6 @@ def _print_run(run: RunSummary) -> None:
         ("created", _created(run, "%Y-%m-%d %H:%M:%S UTC")),
         ("master_seed", _dash(run.master_seed)),
         ("temperature", f"{run.temperature:g}"),
-        ("regime_label", _dash(run.regime_label)),
         ("code_version", _dash(run.code_version)),
         ("prompt templates", _dash(run.prompt_template_version)),
         ("games", f"{run.games} ({_games(run)})" if run.games else "none"),

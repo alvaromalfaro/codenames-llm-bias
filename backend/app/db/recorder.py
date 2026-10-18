@@ -43,7 +43,6 @@ class SeatRecord:
     provider: Optional[str]
     model_ref: Optional[str]
     requested_temperature: Optional[float] = None
-    requested_seed: Optional[int] = None
 
 
 @dataclass
@@ -109,8 +108,8 @@ class GameRecorder:
         self.flushed = False
 
         # Both seat identities, supplied by the caller and never changed by recording. The runner
-        # seeds per (seat, turn), so a seat's ``requested_seed`` has no referent and stays NULL:
-        # ``llm_call.requested_seed`` is the authoritative seed of each call.
+        # seeds per (seat, turn), so a seat has no seed of its own: ``llm_call.requested_seed`` is
+        # the seed of each call.
         self.seats: list[SeatRecord] = seats
 
         self.turns: list[TurnRecord] = []

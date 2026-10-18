@@ -39,7 +39,10 @@ class RunModel(Base):
     """One experimental batch (e.g. the 6x32 model-pairing cross).
 
     Anchors the master seed and the temperature regime that govern the batch, plus the code version
-    and model registry snapshot needed to reproduce it. 
+    and model registry snapshot needed to reproduce it. stimulus_manifest maps every board the batch
+    schedules to the SHA-256 of its artifact (board.content_sha256); environment_snapshot holds the
+    environment the batch ran in (interpreter, packages, server versions, the clue validator's
+    data). notes is free text: each resume of the batch appends a line to it.
 
     game.run_id is nullable: a game written outside a batch belongs to no run. The removed web UI
     wrote its human-vs-LLM games that way.
@@ -52,13 +55,14 @@ class RunModel(Base):
     master_seed: Mapped[Decimal | None] = mapped_column(
         Numeric(20, 0), nullable=True)
     temperature: Mapped[float] = mapped_column(Double, nullable=False)
-    regime_label: Mapped[str | None] = mapped_column(Text, nullable=True)
     code_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     prompt_template_version: Mapped[str |
                                     None] = mapped_column(Text, nullable=True)
     model_registry_snapshot: Mapped[dict | None] = mapped_column(
         postgresql.JSONB, nullable=True
     )
+    stimulus_manifest: Mapped[dict | None] = mapped_column(postgresql.JSONB, nullable=True)
+    environment_snapshot: Mapped[dict | None] = mapped_column(postgresql.JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -120,7 +124,8 @@ class BoardModel(Base):
     games. Persisting boards makes the database self-contained: the metrics pipeline joins 
     board -> cards -> covariates without reading from disk.
 
-    measurement_frame_id is nullable for now.
+    measurement_frame_id is nullable for now. content_sha256 is the SHA-256 of the board artifact's
+    canonical JSON (sorted keys, compact separators).
     """
     __tablename__ = "board"
     __table_args__ = (
@@ -145,6 +150,7 @@ class BoardModel(Base):
         postgresql.JSONB, nullable=True)
     keycard_audit: Mapped[dict | None] = mapped_column(
         postgresql.JSONB, nullable=True)
+    content_sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -210,7 +216,8 @@ class GameModel(Base):
     silently pollutes the estimators.
 
     Links to its board (which carries the probe/control type and the measurement frame) and records
-    the per-game derived seed and start player.
+    the per-game derived seed and start player. error_code and error_message say why a game
+    recorded as an error failed; both are NULL for a completed game.
     """
     __tablename__ = "game"
     __table_args__ = (
@@ -219,6 +226,8 @@ class GameModel(Base):
             "game_status IN ('in_progress','completed','aborted','error')",
             name="ck_game_status",
         ),
+        Index("ix_game_run_id", "run_id"),
+        Index("ix_game_board_id", "board_id"),
     )
 
     id: Mapped[str] = mapped_column(
@@ -248,6 +257,8 @@ class GameModel(Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class GameSeatModel(Base):
@@ -256,15 +267,8 @@ class GameSeatModel(Base):
     The provider may also be 'human', with a null model_ref: the removed web UI recorded its human
     seat that way.
 
-    requested_seed is stored per seat because it records the value actually sent to each provider, 
-    which can differ from the canonical derived seed (for instance if a local backend narrows a 
-    64-bit seed).
-
-    Note: requested_seed presupposes ONE seed per seat per game. The headless runner
-    (game_runner.run_single_game) instead derives a seed per (seat, turn), so a single per-seat seed
-    has no referent there - it is left NULL for runner games and llm_call.requested_seed is the
-    source of truth for the actual per-call value. requested_temperature does have a per-seat
-    referent (constant per game) and is populated on both seats by the runner.
+    requested_temperature is constant per game, so it is a seat's. The seed is not: the runner
+    derives one per (seat, turn), and llm_call.requested_seed holds the value of each call.
     """
     __tablename__ = "game_seat"
     __table_args__ = (
@@ -287,11 +291,8 @@ class GameSeatModel(Base):
     seat_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     model_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider: Mapped[str | None] = mapped_column(Text, nullable=True)
-    precision: Mapped[str | None] = mapped_column(Text, nullable=True)
     requested_temperature: Mapped[float |
                                   None] = mapped_column(Double, nullable=True)
-    requested_seed: Mapped[Decimal | None] = mapped_column(
-        Numeric(20, 0), nullable=True)
 
 
 class TurnModel(Base):
@@ -346,6 +347,7 @@ class LlmCallModel(Base):
         ),
         Index("ix_llm_call_game_id", "game_id"),
         Index("ix_llm_call_turn_id", "turn_id"),
+        Index("ix_llm_call_role", "role"),
     )
 
     id: Mapped[int] = mapped_column(
@@ -377,7 +379,6 @@ class LlmCallModel(Base):
     completion_tokens: Mapped[int | None] = mapped_column(
         Integer, nullable=True)
     finish_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    execution_mode: Mapped[str | None] = mapped_column(Text, nullable=True)
     request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_payload: Mapped[dict | None] = mapped_column(
         postgresql.JSONB, nullable=True)
@@ -493,9 +494,6 @@ class RevealEventModel(Base):
     ended_game: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=sa_text("false")
     )
-    time_marker_placed: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=sa_text("false")
-    )
     timer_tokens_after: Mapped[int | None] = mapped_column(
         SmallInteger, nullable=True)
 
@@ -553,6 +551,7 @@ class GuessProposalItemModel(Base):
         UniqueConstraint(
             "guess_proposal_id", "position", name="uq_guess_proposal_item_position"
         ),
+        Index("ix_guess_proposal_item_reveal_event_id", "reveal_event_id"),
     )
 
     id: Mapped[int] = mapped_column(

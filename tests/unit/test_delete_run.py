@@ -53,8 +53,7 @@ def _insert_run(session):
     from backend.app.db.models import RunModel
 
     run_id = str(uuid.uuid4())
-    session.add(RunModel(id=run_id, master_seed=12345,
-                         temperature=0.5, regime_label="test-delete-run"))
+    session.add(RunModel(id=run_id, master_seed=12345, temperature=0.5, notes="test-delete-run"))
     session.flush()
     return run_id
 
@@ -317,8 +316,8 @@ def test_delete_run_enables_rerun_of_same_identity():
 
     with session_scope() as session:
         assert session.get(GameModel, game_id) is None
-        session.add(RunModel(id=run_id, master_seed=master_seed,
-                             temperature=0.5, regime_label="test-delete-run-rerun"))
+        session.add(RunModel(id=run_id, master_seed=master_seed, temperature=0.5,
+                             notes="test-delete-run-rerun"))
 
     rec = _persist_full_game(game_id=game_id, board_id=board_id, run_id=run_id)
     assert rec.flushed is True

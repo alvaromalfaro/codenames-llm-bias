@@ -393,14 +393,14 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
                client_factory(1, seat_specs[1])]
     engine = CodenamesDuetEngine(
         board, rng=random.Random(seed_engine), game_id=game_id)
-    # Both seats carry the constant per-game temperature (it has a referent); requested_seed is left
-    # NULL because the runner seeds per (seat, turn) - see GameSeatModel.
+    # Both seats carry the constant per-game temperature; the seed of each call is on its llm_call,
+    # since the runner seeds per (seat, turn) - see GameSeatModel.
     recorder = GameRecorder(
         game_id=game_id, board_id=board.board_id, start_player=engine.state.clue_giver,
         seats=[SeatRecord(0, seat_specs[0].provider, seat_specs[0].model_name,
-                          requested_temperature=temperature, requested_seed=None),
+                          requested_temperature=temperature),
                SeatRecord(1, seat_specs[1].provider, seat_specs[1].model_name,
-                          requested_temperature=temperature, requested_seed=None)],
+                          requested_temperature=temperature)],
     )
     recorder.run_id = run_id
     recorder.derived_seed = seed_game

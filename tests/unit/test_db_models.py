@@ -77,7 +77,6 @@ def test_numeric_seed_columns_are_20_0():
         ("run", "master_seed"),
         ("board", "seed"),
         ("game", "derived_seed"),
-        ("game_seat", "requested_seed"),
         ("llm_call", "requested_seed"),
     ):
         col = tables[tname].c[cname]
@@ -126,6 +125,8 @@ def test_jsonb_columns():
         ("board", "dilemma"),
         ("board", "keycard_audit"),
         ("run", "model_registry_snapshot"),
+        ("run", "stimulus_manifest"),
+        ("run", "environment_snapshot"),
         ("llm_call", "raw_payload"),
         ("llm_call", "rendered_prompt"),
         ("clue", "targets_raw"),
@@ -150,6 +151,27 @@ def test_clue_invalid_reason_column():
     invalid_reason = Base.metadata.tables["clue"].c.invalid_reason
     assert isinstance(invalid_reason.type, sa.Text)
     assert invalid_reason.nullable is True
+
+
+def test_0007_columns():
+    """0007: the board's content hash and the game's error, nullable text."""
+    tables = Base.metadata.tables
+    for tname, cname in (("board", "content_sha256"), ("game", "error_code"),
+                         ("game", "error_message")):
+        col = tables[tname].c[cname]
+        assert isinstance(col.type, sa.Text) and col.nullable is True, (tname, cname)
+    for cname in ("stimulus_manifest", "environment_snapshot"):
+        assert tables["run"].c[cname].nullable is True
+
+
+def test_the_columns_nothing_wrote_are_gone():
+    """0007 dropped them: their defaults read as data (time_marker_placed was always false)."""
+    tables = Base.metadata.tables
+    for tname, cname in (("reveal_event", "time_marker_placed"), ("llm_call", "execution_mode"),
+                         ("run", "regime_label"), ("game_seat", "precision"),
+                         ("game_seat", "requested_seed")):
+        assert cname not in tables[tname].c, (tname, cname)
+    assert "notes" in tables["run"].c  # written by each resume
 
 
 def test_unique_constraints():
@@ -199,6 +221,10 @@ def test_extra_indexes_present():
     assert frozenset({"game_id"}) in index_cols(tables["llm_call"])
     assert frozenset({"turn_id"}) in index_cols(tables["llm_call"])
     assert frozenset({"turn_id"}) in index_cols(tables["reveal_event"])
+    assert frozenset({"role"}) in index_cols(tables["llm_call"])
+    assert frozenset({"run_id"}) in index_cols(tables["game"])
+    assert frozenset({"board_id"}) in index_cols(tables["game"])
+    assert frozenset({"reveal_event_id"}) in index_cols(tables["guess_proposal_item"])
 
 
 def test_check_constraint_vocabularies():

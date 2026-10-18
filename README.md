@@ -94,7 +94,7 @@ codenames-llm-bias/
 │   │   ├── db/                ORM models, session, recorder, writer, ingestion, embedding backfill
 │   │   ├── models/            Pydantic schemas (game + LLM I/O) and the LLM error taxonomy
 │   │   └── config.py          model roster, pinned local weight digests, request settings
-│   ├── migrations/            Alembic (head: 0006_clue_invalid_reason)
+│   ├── migrations/            Alembic (head: 0007_stimulus_integrity_and_cleanup)
 │   ├── alembic.ini
 │   └── Dockerfile
 ├── board_generator/           standalone board-bank tool — see its own README
@@ -754,7 +754,7 @@ Add `--json` to any script to capture machine-readable output for downstream agg
 **Migrations.** Alembic is wired to `Base.metadata` and reads `DATABASE_URL` from the environment.
 
 ```sh
-alembic -c backend/alembic.ini upgrade head      # apply (head: 0006_clue_invalid_reason)
+alembic -c backend/alembic.ini upgrade head      # apply (head: 0007_stimulus_integrity_and_cleanup)
 alembic -c backend/alembic.ini current           # inspect
 alembic -c backend/alembic.ini revision --autogenerate -m "..."   # after editing db/models.py
 ```

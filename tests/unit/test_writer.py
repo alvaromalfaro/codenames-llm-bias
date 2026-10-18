@@ -58,7 +58,7 @@ def _recorder(board_id):
         game_id=str(uuid.uuid4()),
         board_id=board_id,
         start_player=0,
-        seats=[SeatRecord(0, "openrouter", "or-model", requested_temperature=0.5, requested_seed=7),
+        seats=[SeatRecord(0, "openrouter", "or-model", requested_temperature=0.5),
                SeatRecord(1, "ollama", "local-model", requested_temperature=0.5)],
     )
 
@@ -121,10 +121,9 @@ def test_persist_normal_game_maps_all_rows():
         assert {s.seat_index for s in seats} == {0, 1}
         seat0 = next(s for s in seats if s.seat_index == 0)
         assert seat0.provider == "openrouter" and seat0.model_ref == "or-model"
-        assert seat0.requested_temperature == 0.5 and seat0.requested_seed == 7
+        assert seat0.requested_temperature == 0.5
         seat1 = next(s for s in seats if s.seat_index == 1)
         assert seat1.provider == "ollama" and seat1.model_ref == "local-model"
-        assert seat1.requested_seed is None
 
         turns = session.execute(select(TurnModel).where(
             TurnModel.game_id == gid)).scalars().all()
