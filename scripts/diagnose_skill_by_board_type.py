@@ -29,7 +29,7 @@ usable-replicate rule. No threshold or inference parameter is changed.
 
 Strictly read-only: one session, compute, print, no writes.
 
-Environment: DATABASE_URL must be in the process environment. Run from the REPO ROOT.
+Environment: DATABASE_URL must be in the process environment.
 
 Examples:
     set -a; source .env; set +a

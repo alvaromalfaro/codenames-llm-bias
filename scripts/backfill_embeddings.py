@@ -10,7 +10,7 @@ downloads it.
 
 Requires the optional ``embeddings`` extra (sentence-transformers): ``uv sync --extra embeddings``.
 
-DATABASE_URL must be in the process environment. Run from the REPO ROOT.
+DATABASE_URL must be in the process environment.
 
 Examples:
     set -a; source .env; set +a

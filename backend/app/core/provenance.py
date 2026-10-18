@@ -10,16 +10,15 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-from pathlib import Path
 from typing import Callable, Optional, Sequence
 
 from backend.app import config
+from backend.app.paths import REPO_ROOT
 
 logger = logging.getLogger(__name__)
 
-# Repo root, derived from this file (backend/app/core/provenance.py -> repo root is 4 parents up).
-# Used as the git cwd so code_version is correct regardless of the process working directory.
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+# The git cwd, so code_version is correct regardless of the process working directory.
+_REPO_ROOT = REPO_ROOT
 
 
 def git_code_version() -> Optional[str]:

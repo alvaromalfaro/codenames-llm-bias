@@ -3,6 +3,7 @@ import json
 import logging
 from typing import TYPE_CHECKING, Optional
 from backend.app import config
+from backend.app.paths import PROMPT_TEMPLATES_DIR
 from backend.app.core.llm.client import LLMClient
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage, LLMCallRecord, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat
 from backend.app.models.game_schemas import GameState, GamePhase, CardRole, ConfidenceRanking, RankedCard
@@ -36,20 +37,20 @@ def _require_sd_seat_phase(game_state: GameState, player_id: int, action: str) -
 
 
 class LLMService:
-    SYSTEM_TEMP_CG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_CLUE_GIVER.txt"
-    USER_TEMP_CG_PATH = "data/prompt_templates/USER_TEMPLATE_CLUE_GIVER.txt"
-    SYSTEM_TEMP_GG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_GUESSER.txt"
-    USER_TEMP_GG_PATH = "data/prompt_templates/USER_TEMPLATE_GUESSER.txt"
-    ONE_SHOT_USER_CG_PATH = "data/prompt_templates/ONE_SHOT_USER_CLUE_GIVER.txt"
-    ONE_SHOT_ASSISTANT_CG_PATH = "data/prompt_templates/ONE_SHOT_ASSISTANT_CLUE_GIVER.txt"
-    ONE_SHOT_USER_GG_PATH = "data/prompt_templates/ONE_SHOT_USER_GUESSER.txt"
-    ONE_SHOT_ASSISTANT_GG_PATH = "data/prompt_templates/ONE_SHOT_ASSISTANT_GUESSER.txt"
-    SYSTEM_TEMP_SD_GG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_SUDDEN_DEATH_GUESSER.txt"
-    USER_TEMP_SD_GG_PATH = "data/prompt_templates/USER_TEMPLATE_SUDDEN_DEATH_GUESSER.txt"
-    SYSTEM_TEMP_MEAS_GG_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_MEASUREMENT_GUESSER.txt"
-    USER_TEMP_MEAS_GG_PATH = "data/prompt_templates/USER_TEMPLATE_MEASUREMENT_GUESSER.txt"
-    SYSTEM_TEMP_MEAS_SD_PATH = "data/prompt_templates/SYSTEM_TEMPLATE_MEASUREMENT_SD.txt"
-    USER_TEMP_MEAS_SD_PATH = "data/prompt_templates/USER_TEMPLATE_MEASUREMENT_SD.txt"
+    SYSTEM_TEMP_CG_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_CLUE_GIVER.txt")
+    USER_TEMP_CG_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_CLUE_GIVER.txt")
+    SYSTEM_TEMP_GG_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_GUESSER.txt")
+    USER_TEMP_GG_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_GUESSER.txt")
+    ONE_SHOT_USER_CG_PATH = str(PROMPT_TEMPLATES_DIR / "ONE_SHOT_USER_CLUE_GIVER.txt")
+    ONE_SHOT_ASSISTANT_CG_PATH = str(PROMPT_TEMPLATES_DIR / "ONE_SHOT_ASSISTANT_CLUE_GIVER.txt")
+    ONE_SHOT_USER_GG_PATH = str(PROMPT_TEMPLATES_DIR / "ONE_SHOT_USER_GUESSER.txt")
+    ONE_SHOT_ASSISTANT_GG_PATH = str(PROMPT_TEMPLATES_DIR / "ONE_SHOT_ASSISTANT_GUESSER.txt")
+    SYSTEM_TEMP_SD_GG_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_SUDDEN_DEATH_GUESSER.txt")
+    USER_TEMP_SD_GG_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_SUDDEN_DEATH_GUESSER.txt")
+    SYSTEM_TEMP_MEAS_GG_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_MEASUREMENT_GUESSER.txt")
+    USER_TEMP_MEAS_GG_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_MEASUREMENT_GUESSER.txt")
+    SYSTEM_TEMP_MEAS_SD_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_MEASUREMENT_SD.txt")
+    USER_TEMP_MEAS_SD_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_MEASUREMENT_SD.txt")
 
     def __init__(self, temperature: float = 0.7, max_tokens: int = config.LLM_MAX_OUTPUT_TOKENS,
                  timeout_s: int = 30):

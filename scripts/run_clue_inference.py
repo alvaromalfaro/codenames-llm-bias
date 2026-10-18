@@ -27,7 +27,7 @@ TAI themselves) have no meaningful reference point, so no exclusion flag is prin
 
 Strictly read-only: one session, compute, print, no writes.
 
-Environment: DATABASE_URL must be in the process environment. Run from the REPO ROOT.
+Environment: DATABASE_URL must be in the process environment.
 
 Examples:
     set -a; source .env; set +a

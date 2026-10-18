@@ -27,7 +27,7 @@ prompt templates, models and the weights served - or nothing plays; another code
 errors stay so, unless --retry-errors plays them again.
 
 Environment: export the vars yourself (no dotenv). DATABASE_URL, OLLAMA_HOST and/or
-OPENROUTER_API_KEY must be in the process environment. Run from the REPO ROOT.
+OPENROUTER_API_KEY must be in the process environment.
 
 Examples:
     # real batch (default 4 models from config), enforcing digests:
@@ -58,10 +58,10 @@ from backend.app.core.batch_runner import (
 from backend.app.core.batch_schedule import ScheduleError
 from backend.app.core.game_runner import ModelDigestMismatchError, SeatSpec
 from backend.app.core.loader import BoardLoader
+from backend.app.paths import BOARDS_DIR
 
 logger = logging.getLogger("run_batch")
 
-_BOARD_DATA_PATH = "data/boards"
 _KNOWN_PROVIDERS = ("ollama", "openrouter")
 
 
@@ -126,11 +126,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _load_bank() -> list:
     """Load the on-disk board bank once, flattened (BoardLoader keys by category)."""
-    loader = BoardLoader(_BOARD_DATA_PATH)
+    loader = BoardLoader(BOARDS_DIR)
     boards = [b for group in loader.boards.values() for b in group]
     if not boards:
         raise SystemExit(
-            f"No boards found under {_BOARD_DATA_PATH!r}. Run from the repo root.")
+            f"No boards found under {str(BOARDS_DIR)!r}.")
     return boards
 
 
@@ -220,7 +220,7 @@ def main(argv: list[str] | None = None) -> int:
             temperature=args.temperature,
             persist=not dry, enforce_digests=not dry,
             make_client_factory=(dry_run_client_factory if dry else None),
-            bank_dir=_BOARD_DATA_PATH, resume_run_id=args.resume,
+            bank_dir=BOARDS_DIR, resume_run_id=args.resume,
             retry_errors=args.retry_errors, **wait,
         ))
     except (ScheduleError, BatchPreconditionError, ModelDigestMismatchError) as e:

@@ -6,9 +6,10 @@ from pydantic import ValidationError
 
 from backend.app.core.loader import BoardLoader
 from backend.app.models.game_schemas import Board
+from backend.app.paths import BOARDS_DIR, REPO_ROOT
 
-DATA_PATH = "data/boards"
-FIXTURES_PATH = "tests/fixtures"
+DATA_PATH = BOARDS_DIR
+FIXTURES_PATH = REPO_ROOT / "tests" / "fixtures"
 PROBE_FILE = "gender_probe-gender-career-000.json"
 CONTROL_FILE = "neutral_control-000.json"
 EXAMPLE_FILE = "example_board.json"

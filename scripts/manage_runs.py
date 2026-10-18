@@ -7,7 +7,7 @@ status, ``show`` one run in full, and ``delete`` removes a run with all its game
 delete cannot be undone. Deleting a run is how a master seed is played again from scratch; a batch
 that stopped is continued with ``run_batch.py --resume`` instead.
 
-DATABASE_URL must be in the process environment. Run from the REPO ROOT.
+DATABASE_URL must be in the process environment.
 
 Examples:
     set -a; source .env; set +a

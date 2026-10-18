@@ -10,7 +10,7 @@ The workbook is read with the standard library (an .xlsx is a zip of XML files),
 needs no dependency. The data is licensed CC BY-NC-SA 4.0, and so is the output: see
 data/morpholex/README.md.
 
-Run from the REPO ROOT:
+Usage:
     python scripts/build_morpholex.py path/to/MorphoLEX_en.xlsx
 """
 
@@ -23,9 +23,11 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from backend.app.paths import MORPHOLEX_PATH
+
 _NS = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 _WORD = re.compile(r"[a-z][a-z'-]*")
-_DEFAULT_OUT = Path("data/morpholex/morpholex_en.tsv")
+_DEFAULT_OUT = MORPHOLEX_PATH
 
 
 def read_segmentations(xlsx: Path) -> tuple[dict[str, str], int]:

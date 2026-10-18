@@ -4,12 +4,13 @@ import re
 from pathlib import Path
 from typing import List
 from backend.app.models.game_schemas import Board
+from backend.app.paths import BOARDS_DIR
 
 logger = logging.getLogger(__name__)
 
 
 class BoardLoader:
-    def __init__(self, data_path: str = "data/boards"):
+    def __init__(self, data_path: str | Path = BOARDS_DIR):
         # Initialize the loader with the path to the data directory
         self.data_path = Path(data_path)
         # Construct a dictionary to hold the available boards, keyed by their category

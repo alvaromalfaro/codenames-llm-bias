@@ -7,8 +7,7 @@ from typing import NamedTuple
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import wordnet
 from backend.app.models.game_schemas import WordCard, ClueEntry
-
-MORPHOLEX_PATH = Path(__file__).resolve().parents[3] / "data" / "morpholex" / "morpholex_en.tsv"
+from backend.app.paths import MORPHOLEX_PATH
 
 # Prefixes in MorphoLex that are words of their own, so the words they start are compounds for the
 # rules: "outside" is out + side, and "upset" is up + set.

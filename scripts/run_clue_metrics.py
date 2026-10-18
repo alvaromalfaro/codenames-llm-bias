@@ -8,7 +8,6 @@ The computation lives in ``backend.app.analysis.clue_metrics``; this file is onl
 parsing and the report layout.
 
 Environment: export the vars yourself (no dotenv). DATABASE_URL must be in the process environment.
-Run from the REPO ROOT.
 
 Examples:
     set -a; source .env; set +a

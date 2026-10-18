@@ -24,7 +24,7 @@ What the log holds (one file per run, ``logs/games_<timestamp>.log``):
 The console only shows the progress and the summary. The exit code is 1 if a game ended in error or
 broke an invariant, 0 otherwise.
 
-Environment: run from the REPO ROOT with an Ollama server up (OLLAMA_HOST, default
+Environment: an Ollama server up (OLLAMA_HOST, default
 http://localhost:11434), or OPENROUTER_API_KEY for OpenRouter models.
 
 Examples:
@@ -60,10 +60,10 @@ from backend.app.core.llm_service import LLMService, text_digest
 from backend.app.core.loader import BoardLoader
 from backend.app.db.recorder import GameRecorder
 from backend.app.models.game_schemas import Board, CardRole, GamePhase, WordCard
+from backend.app.paths import BOARDS_DIR, LOGS_DIR
 
 logger = logging.getLogger("play_games")
 
-_BOARD_DATA_PATH = "data/boards"
 _KNOWN_PROVIDERS = ("ollama", "openrouter")
 _RESULTS = {"victory", "loss_assassin", "victory_sd", "loss_civilian_sd", "loss_assassin_sd",
             "loss_stopped_sd"}
@@ -168,7 +168,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="swap the models' seats every other game (default: on).")
     p.add_argument("--enforce-digests", action="store_true",
                    help="abort if a local model's digest differs from config.EXPECTED_LOCAL_DIGESTS.")
-    p.add_argument("--log-dir", default="logs", help="directory for the log file (default: logs).")
+    p.add_argument("--log-dir", default=str(LOGS_DIR),
+                   help="directory for the log file (default: logs/ in the repo).")
     return p
 
 
@@ -178,7 +179,7 @@ def _select_boards(board_ids: Optional[list[str]], board_type: Optional[str],
                    games: int) -> list[Board]:
     """The board of each game: the requested ids, or every probe/control board of the bank sorted
     by id, cycled through as many times as needed."""
-    loader = BoardLoader(_BOARD_DATA_PATH)
+    loader = BoardLoader(BOARDS_DIR)
     bank = {b.board_id: b for group in loader.boards.values() for b in group}
     if board_ids:
         unknown = [i for i in board_ids if i not in bank]
@@ -190,7 +191,7 @@ def _select_boards(board_ids: Optional[list[str]], board_type: Optional[str],
                        if b.type in ("probe", "control") and b.type == (board_type or b.type)),
                       key=lambda b: b.board_id)
     if not pool:
-        raise SystemExit(f"No boards to play under {_BOARD_DATA_PATH!r}. Run from the repo root.")
+        raise SystemExit(f"No boards to play under {str(BOARDS_DIR)!r}.")
     return [pool[i % len(pool)] for i in range(games)]
 
 

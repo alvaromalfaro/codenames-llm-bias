@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import BoardModel, WordCardModel
+from backend.app.paths import BOARDS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ def board_artifact_to_orm(
 
 
 def ingest_boards_if_absent(
-    session: Session, data_path: str | Path = "data/boards"
+    session: Session, data_path: str | Path = BOARDS_DIR
 ) -> int:
     """Ingest every ``*.json`` board under ``data_path`` that is not already stored."""
     directory = Path(data_path)

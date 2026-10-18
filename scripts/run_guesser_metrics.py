@@ -10,7 +10,6 @@ ones, below means the reverse. Control boards are the negative control and shoul
 The computation lives in ``backend.app.analysis.guesser_metrics``; this file is only the CLI.
 
 Environment: export the vars yourself (no dotenv). DATABASE_URL must be in the process environment.
-Run from the REPO ROOT.
 
 Examples:
     set -a; source .env; set +a

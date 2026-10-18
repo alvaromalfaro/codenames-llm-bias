@@ -27,10 +27,11 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import MeasurementFrameModel
+from backend.app.paths import MEASUREMENT_FRAME_PATH
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FRAME_PATH = "data/boards/measurement_frame.json"
+DEFAULT_FRAME_PATH = MEASUREMENT_FRAME_PATH
 
 
 class StaleFrameError(RuntimeError):

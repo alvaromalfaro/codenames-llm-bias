@@ -79,6 +79,7 @@ from backend.app.core.game_runner import (
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm_service import LLMService
 from backend.app.models.game_schemas import Board, CardRole
+from backend.app.paths import ALEMBIC_INI, BOARDS_DIR
 from backend.app.models.llm_schemas import (
     ClueJSONFormat, ConfidenceRankingJSONFormat, GuessJSONFormat, LLMRequest, LLMResponse,
 )
@@ -97,10 +98,6 @@ _PROVIDER_WAIT_S = 30 * 60
 # 5 min apart.
 _PROVIDER_PROBE_BASE_S = 15
 _PROVIDER_PROBE_MAX_S = 5 * 60
-
-# The Alembic configuration (backend/alembic.ini), whose migrations define the schema this code
-# writes.
-_ALEMBIC_INI = Path(__file__).resolve().parents[2] / "alembic.ini"
 
 # A nonsense, non-English clue for the dry-run mock: in neither MorphoLex nor WordNet, so it can never
 # be a board word, a morphological or derived form of one, or a compound component - it passes
@@ -241,7 +238,8 @@ def _migration_heads() -> set[str]:
     """The head revision(s) of the Alembic migrations shipped with this code."""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
-    return set(ScriptDirectory.from_config(Config(str(_ALEMBIC_INI))).get_heads())
+    # The Alembic configuration whose migrations define the schema this code writes.
+    return set(ScriptDirectory.from_config(Config(str(ALEMBIC_INI))).get_heads())
 
 
 def _database_revisions() -> set[str]:
@@ -497,7 +495,7 @@ async def run_batch(
     consecutive_failure_threshold: int = _CONSECUTIVE_FAILURE_THRESHOLD,
     provider_wait_s: float = _PROVIDER_WAIT_S,
     provider_replays: int = _PROVIDER_REPLAYS,
-    bank_dir: str | Path = "data/boards",
+    bank_dir: str | Path = BOARDS_DIR,
     resume_run_id: Optional[str] = None,
     retry_errors: bool = False,
 ) -> BatchReport:
