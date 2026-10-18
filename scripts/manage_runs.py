@@ -76,6 +76,8 @@ def _print_run(run: RunSummary) -> None:
         ("temperature", f"{run.temperature:g}"),
         ("code_version", _dash(run.code_version)),
         ("prompt templates", _dash(run.prompt_template_version)),
+        ("boards", f"{len(run.stimulus_manifest)} in its stimulus manifest"
+                   if run.stimulus_manifest else "-"),
         ("games", f"{run.games} ({_games(run)})" if run.games else "none"),
     ]
     for label, value in rows:

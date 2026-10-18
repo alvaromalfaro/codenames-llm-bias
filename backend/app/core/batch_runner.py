@@ -15,7 +15,9 @@ Level 1 - BATCH PRECONDITIONS (fail loud, abort the whole batch before any game 
   d. bank ingestion: the measurement frame and then the boards under ``bank_dir`` are stored if
      absent (idempotent: what is stored is skipped), and every scheduled board must then be in the
      DB, since the games' rows point at it. A stored frame that contradicts the sidecar
-     (``StaleFrameError``) aborts. Runs after the collision check and before minting.
+     (``StaleFrameError``), a file that is not a valid board or a stored board whose file changed
+     abort. The scheduled boards' content hashes become the run's ``stimulus_manifest``. Runs after
+     the collision check and before minting.
   e. schema: the database must be at the head of the Alembic migrations, or every game would be
      played and then fail to be stored. Runs first of the database checks.
 
@@ -25,8 +27,9 @@ games still to play are the same games the run would have played. Steps c and b 
   c. instead of the collision check, the run must exist and be the run this batch would mint: the
      same master seed, temperature, prompt-template fingerprint and models, and every game it
      recorded on the board the schedule puts there. Any difference aborts, listing them all;
-  b. instead of minting, the digest gate runs, and the models served now must be the ones the run
-     was minted on (``model_registry_snapshot``). A different ``code_version`` only warns, since
+  b. instead of minting, the digest gate runs, the models served now must be the ones the run was
+     minted on (``model_registry_snapshot``), and the boards scheduled now, with their content, the
+     ones it was minted with (``stimulus_manifest``). A different ``code_version`` only warns, since
      resuming after a fix is the usual case; the resume is appended to the run's ``notes`` either
      way, so its provenance says from where on other code played.
 The games the run recorded are not played again: the completed ones, and the errors unless
@@ -309,6 +312,7 @@ class StoredRun:
     prompt_template_version: Optional[str]
     code_version: Optional[str]
     model_registry_snapshot: Optional[dict]
+    stimulus_manifest: Optional[dict] = None
 
 
 def load_run(run_id: str) -> Optional[StoredRun]:
@@ -323,7 +327,8 @@ def load_run(run_id: str) -> Optional[StoredRun]:
     return StoredRun(
         run_id=run.run_id, master_seed=run.master_seed, temperature=run.temperature,
         prompt_template_version=run.prompt_template_version, code_version=run.code_version,
-        model_registry_snapshot=run.model_registry_snapshot)
+        model_registry_snapshot=run.model_registry_snapshot,
+        stimulus_manifest=run.stimulus_manifest)
 
 
 def _snapshot_models(snapshot: Optional[dict]) -> dict[str, Optional[str]]:
@@ -377,6 +382,20 @@ def _served_model_problems(run: StoredRun, served: dict) -> list[str]:
             for model in sorted(minted) if now.get(model) != minted[model]]
 
 
+def _manifest_problems(run: StoredRun, manifest: dict[str, str]) -> list[str]:
+    """Why the boards scheduled now, with their content hashes (``manifest``), are not those ``run``
+    was minted with; empty when they are, or when the run recorded no manifest."""
+    minted = run.stimulus_manifest or {}
+    if not minted:
+        return []
+    changed = sorted(board_id for board_id in set(minted) | set(manifest)
+                     if minted.get(board_id) != manifest.get(board_id))
+    if not changed:
+        return []
+    return [f"boards: {len(changed)} of the boards scheduled now, or their content, are not those "
+            f"the run was minted with (first 3: {changed[:3]})"]
+
+
 def _code_change_warning(run: StoredRun, current: Optional[str]) -> Optional[str]:
     """What a resume at ``current`` code_version cannot vouch for, or None when the code is the
     run's own."""
@@ -402,9 +421,10 @@ def _precondition_failure(what: str, problems: Sequence[str]) -> BatchPreconditi
     return BatchPreconditionError(what + "\n  - " + "\n  - ".join(problems))
 
 
-def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> None:
+def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> dict[str, str]:
     """Level-1d: store the measurement frame, then the boards, and check every scheduled board is
-    stored. The frame goes first: a sealed board's ``measurement_frame_id`` is a foreign key to it.
+    stored; return the stimulus manifest, each of ``board_ids`` with its stored content hash. The
+    frame goes first: a sealed board's ``measurement_frame_id`` is a foreign key to it.
 
     Both ingestions skip what is already stored, so a second batch on the same database adds
     nothing. A file of the bank that is not a valid board, and a stored board whose file now holds
@@ -430,9 +450,10 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> None:
     try:
         with session_scope() as session:
             boards_inserted = ingest_boards_if_absent(session, bank_dir)
-            stored = set(session.execute(
-                select(BoardModel.board_id).where(BoardModel.board_id.in_(list(board_ids)))
-            ).scalars().all())
+            stored = dict(session.execute(
+                select(BoardModel.board_id, BoardModel.content_sha256)
+                .where(BoardModel.board_id.in_(list(board_ids)))
+            ).all())
     except InvalidBoardFileError as exc:
         raise BatchPreconditionError(f"the board bank cannot be read whole: {exc}") from exc
     except StaleBoardError as exc:
@@ -444,6 +465,7 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> None:
     if missing:
         raise BatchPreconditionError(
             f"scheduled boards missing from the database after ingesting {bank_dir}: {missing}")
+    return stored
 
 
 async def _wait_for_provider(probe: Callable[[], Awaitable[bool]], *, max_wait_s: float,
@@ -549,6 +571,7 @@ async def run_batch(
     svc = LLMService(temperature=temperature)
     run: Optional[StoredRun] = None
     recorded: dict[str, RecordedGame] = {}
+    manifest: Optional[dict[str, str]] = None
     if persist:
         if not os.environ.get("DATABASE_URL"):
             raise BatchPreconditionError(
@@ -575,7 +598,7 @@ async def run_batch(
                 raise _precondition_failure(
                     f"run {resume_run_id} cannot be resumed by this batch:", problems)
         # Level 1d: the frame and the boards into the database, before any row points at them.
-        _ingest_bank(Path(bank_dir), sorted({c.board_id for c in schedule}))
+        manifest = _ingest_bank(Path(bank_dir), sorted({c.board_id for c in schedule}))
 
     if run is None:
         # Level 1b: mint the run + run the digest gate once (create_run raises on a bad/unavailable
@@ -583,17 +606,19 @@ async def run_batch(
         run_id, _snapshot = create_run(
             seat_specs=list(models), master_seed=master_seed, temperature=temperature,
             template_fingerprint=svc.template_fingerprint(), persist=persist,
-            enforce_digests=enforce_digests)
+            enforce_digests=enforce_digests, stimulus_manifest=manifest)
     else:
-        # Level 1b, resuming: the digest gate, and the models served now must be the ones the run
-        # was minted on.
+        # Level 1b, resuming: the digest gate, and the models served now and the boards scheduled
+        # now must be the ones the run was minted with.
         run_id = run.run_id
         problems = _served_model_problems(
             run, served_registry_snapshot(list(models), enforce_digests=enforce_digests))
+        problems += _manifest_problems(run, manifest or {})
         if problems:
-            raise _precondition_failure(
-                f"run {run_id} cannot be resumed: the models served now are not the ones it was "
-                f"minted on:", problems)
+            raise _precondition_failure(f"run {run_id} cannot be resumed:", problems)
+        if not run.stimulus_manifest:
+            logger.warning("resuming run %s: it was minted without a stimulus manifest, so only "
+                           "the boards of its recorded games could be checked", run_id)
         code_version = provenance.git_code_version()
         warning = _code_change_warning(run, code_version)
         if warning:

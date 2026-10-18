@@ -68,6 +68,17 @@ def test_reading_the_run_without_a_database_is_a_precondition_failure(batch, mon
     assert "DATABASE_URL" in capsys.readouterr().err and batch == []
 
 
+def test_a_bank_with_a_file_that_is_not_a_board_is_a_precondition_failure(batch, monkeypatch,
+                                                                          capsys) -> None:
+    from backend.app.core.loader import InvalidBoardFileError
+
+    def invalid_bank():
+        raise InvalidBoardFileError("data/boards/bad.json is not a valid board")
+    monkeypatch.setattr(cli, "_load_bank", invalid_bank)
+    assert cli.main(["--master-seed", "1", "--temperature", "0.7"]) == 2
+    assert "bad.json" in capsys.readouterr().err and batch == []
+
+
 @pytest.mark.parametrize("argv, message", [
     (["--resume", _RUN_ID, "--dry-run"], "--dry-run"),
     (["--master-seed", "1", "--temperature", "0.7", "--retry-errors"], "goes with --resume"),

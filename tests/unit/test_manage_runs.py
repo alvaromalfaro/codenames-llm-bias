@@ -29,6 +29,7 @@ def _run(run_id=_RUN_ID, **changes):
                   "identity_kind": "ollama_digest", "identity": "b" * 64},
             "0": {"provider": "ollama", "model_name": "llama3.1:8b",
                   "identity_kind": "ollama_digest", "identity": "a" * 64}},
+        stimulus_manifest={f"board-{i:02d}": f"{i:064x}" for i in range(16)},
         notes="2026-10-13T08:00:00+00:00 resumed at code_version 26a115a",
         games_by_status={"completed": 189, "error": 3})
     return RunSummary(**{**run, **changes})
@@ -80,6 +81,7 @@ def test_show_prints_the_provenance_the_models_and_the_notes(db, capsys) -> None
     assert cli.main(["show", _RUN_ID]) == 0
     out = capsys.readouterr().out
     for text in ("master_seed       2026", "temperature       0.8", "templates@3f9a",
+                 "16 in its stimulus manifest",
                  "192 (189 completed, 3 error)", "resumed at code_version 26a115a",
                  f"--resume {_RUN_ID} --retry-errors"):
         assert text in out

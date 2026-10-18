@@ -31,6 +31,7 @@ class RunSummary:
     code_version: Optional[str]
     prompt_template_version: Optional[str]
     model_registry_snapshot: Optional[dict]
+    stimulus_manifest: Optional[dict]
     notes: Optional[str]
     games_by_status: dict[str, int]
 
@@ -55,7 +56,8 @@ def _summaries(session: Session, runs: Sequence[RunModel]) -> list[RunSummary]:
         master_seed=None if run.master_seed is None else int(run.master_seed),
         temperature=run.temperature, code_version=run.code_version,
         prompt_template_version=run.prompt_template_version,
-        model_registry_snapshot=run.model_registry_snapshot, notes=run.notes,
+        model_registry_snapshot=run.model_registry_snapshot,
+        stimulus_manifest=run.stimulus_manifest, notes=run.notes,
         games_by_status=dict(sorted(counts[run.id].items())),
     ) for run in runs]
 

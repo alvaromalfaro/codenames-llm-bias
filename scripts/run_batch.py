@@ -12,6 +12,8 @@ Preconditions (all fail loud before any provider call - see batch_runner.run_bat
   * the loaded bank has >= 4 career + 4 science + 8 control boards;
   * DATABASE_URL is set (real path), the database schema is at the head of the migrations, and
     none of the 192 deterministic game ids already exist;
+  * every file under data/boards is a valid board, and a board already stored still holds what its
+    file holds;
   * the measurement frame and the boards under data/boards are stored in the database (the batch
     stores whatever is missing; the database needs only the migrated schema);
   * the digest gate passes once at run-mint (enforce_digests=True on the real path).
@@ -57,7 +59,7 @@ from backend.app.core.batch_runner import (
 )
 from backend.app.core.batch_schedule import ScheduleError
 from backend.app.core.game_runner import ModelDigestMismatchError, SeatSpec
-from backend.app.core.loader import BoardLoader
+from backend.app.core.loader import BoardLoader, InvalidBoardFileError
 from backend.app.paths import BOARDS_DIR
 
 logger = logging.getLogger("run_batch")
@@ -125,8 +127,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _load_bank() -> list:
-    """Load the on-disk board bank once, flattened (BoardLoader keys by category)."""
-    loader = BoardLoader(BOARDS_DIR)
+    """Load the on-disk board bank once, flattened (BoardLoader keys by category). Strictly: a file
+    that is not a valid board stops the batch, since the schedule would put the next board in its
+    place under the same game ids."""
+    loader = BoardLoader(BOARDS_DIR, strict=True)
     boards = [b for group in loader.boards.values() for b in group]
     if not boards:
         raise SystemExit(
@@ -204,7 +208,11 @@ def main(argv: list[str] | None = None) -> int:
     else:
         models = _models_from_config()
 
-    boards = _load_bank()
+    try:
+        boards = _load_bank()
+    except InvalidBoardFileError as e:
+        print(f"\n[batch ABORTED - precondition] {e}", file=sys.stderr)
+        return 2
     dry = args.dry_run
     print(f"[batch] models={[f'{m.provider}:{m.model_name}' for m in models]}")
     print(f"[batch] master_seed={args.master_seed} temperature={args.temperature} "

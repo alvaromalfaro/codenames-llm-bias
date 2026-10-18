@@ -220,8 +220,12 @@ def served_registry_snapshot(seat_specs, *, enforce_digests: bool) -> dict:
 
 def create_run(*, seat_specs, master_seed: int, temperature: float,
                template_fingerprint: str, persist: bool = True,
-               enforce_digests: bool = False) -> tuple[str, Optional[dict]]:
+               enforce_digests: bool = False,
+               stimulus_manifest: Optional[dict] = None) -> tuple[str, Optional[dict]]:
     """Mint one run: run the digest gate (once), build provenance, create the run row.
+
+    ``stimulus_manifest`` (``board_id`` -> content hash of every board the batch schedules) is
+    stored on the run as it is; a single game passes none.
 
     Returns ``(run_id, model_registry_snapshot)``. Takes ``template_fingerprint`` as a plain string
     (the caller builds the ``LLMService`` and passes ``svc.template_fingerprint()``) so this stays
@@ -248,6 +252,7 @@ def create_run(*, seat_specs, master_seed: int, temperature: float,
                 model_registry_snapshot=snapshot,
                 prompt_template_version=template_fingerprint,
                 code_version=provenance.git_code_version(),
+                stimulus_manifest=stimulus_manifest,
             )
             session.add(run)
             session.flush()

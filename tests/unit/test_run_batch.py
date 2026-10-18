@@ -95,11 +95,16 @@ async def test_persisted_batch_ingests_the_bank_after_the_collision_check_and_be
     monkeypatch.setattr(batch_runner, "_check_schema_at_head", lambda: steps.append("schema"))
     monkeypatch.setattr(batch_runner, "_check_no_collisions",
                         lambda game_ids, master_seed: steps.append("collisions"))
-    monkeypatch.setattr(batch_runner, "_ingest_bank",
-                        lambda bank_dir, board_ids: steps.append(("ingest", bank_dir, board_ids)))
+    manifest = {"control-00": "a" * 64}
+
+    def fake_ingest(bank_dir, board_ids):
+        steps.append(("ingest", bank_dir, board_ids))
+        return manifest
+    monkeypatch.setattr(batch_runner, "_ingest_bank", fake_ingest)
 
     def fake_create_run(**kwargs):
         steps.append("mint")
+        assert kwargs["stimulus_manifest"] is manifest  # the run records what was ingested
         return "run-1", None
     monkeypatch.setattr(batch_runner, "create_run", fake_create_run)
     monkeypatch.setattr(batch_runner, "run_single_game",
@@ -230,8 +235,10 @@ def test_ingest_bank_stores_the_frame_and_the_boards_once() -> None:
                        for b in group)
     frame_id = json.loads((_BOARDS_DIR / "measurement_frame.json").read_text("utf-8"))["frame_id"]
 
-    batch_runner._ingest_bank(_BOARDS_DIR, board_ids)
-    batch_runner._ingest_bank(_BOARDS_DIR, board_ids)  # a second batch adds nothing, and passes
+    manifest = batch_runner._ingest_bank(_BOARDS_DIR, board_ids)
+    # a second batch adds nothing, passes, and finds the same content
+    assert batch_runner._ingest_bank(_BOARDS_DIR, board_ids) == manifest
+    assert set(manifest) == set(board_ids) and all(len(h) == 64 for h in manifest.values())
 
     with session_scope() as session:
         assert session.get(MeasurementFrameModel, frame_id) is not None
@@ -635,12 +642,19 @@ def _snapshot(models, identity=lambda spec: f"digest-{spec.model_name}"):
             for i, spec in enumerate(models)}
 
 
+def _manifest():
+    """The stimulus manifest of the test schedule: each scheduled board with a made-up hash."""
+    boards = sorted({c.board_id for c in build_schedule(_models(), _bank(), _MASTER_SEED)})
+    return {board_id: f"{i:064x}" for i, board_id in enumerate(boards)}
+
+
 def _stored_run(**changes):
     """The run this test batch would mint, with ``changes``."""
     from backend.app.core.llm_service import LLMService
     run = dict(run_id=_RUN_ID, master_seed=_MASTER_SEED, temperature=0.4,
                prompt_template_version=LLMService(temperature=0.4).template_fingerprint(),
-               code_version="abc1234", model_registry_snapshot=_snapshot(_models()))
+               code_version="abc1234", model_registry_snapshot=_snapshot(_models()),
+               stimulus_manifest=_manifest())
     return batch_runner.StoredRun(**{**run, **changes})
 
 
@@ -662,7 +676,8 @@ def _never(name):
     return spy
 
 
-def _resume_env(monkeypatch, *, run=None, recorded=None, served=None, code_version="abc1234"):
+def _resume_env(monkeypatch, *, run=None, recorded=None, served=None, code_version="abc1234",
+                manifest=None):
     """Stub the database and the daemon around a resume of ``run`` (by default the run this batch
     would mint) whose games ``recorded`` are in the database. Returns what the batch did to them:
     the notes it appended to the run, the error rows it deleted, and the gate runs."""
@@ -670,7 +685,8 @@ def _resume_env(monkeypatch, *, run=None, recorded=None, served=None, code_versi
     seen = {"notes": [], "forgotten": [], "gate": []}
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
     monkeypatch.setattr(batch_runner, "_check_schema_at_head", lambda: None)
-    monkeypatch.setattr(batch_runner, "_ingest_bank", lambda bank_dir, board_ids: None)
+    monkeypatch.setattr(batch_runner, "_ingest_bank",
+                        lambda bank_dir, board_ids: manifest if manifest is not None else _manifest())
     monkeypatch.setattr(batch_runner, "_check_no_collisions", _never("the collision check"))
     monkeypatch.setattr(batch_runner, "create_run", _never("create_run"))
     monkeypatch.setattr(batch_runner, "load_run",
@@ -851,6 +867,40 @@ async def test_a_resume_needs_the_weights_its_run_was_minted_on(monkeypatch) -> 
     assert seen["notes"] == []
 
 
+async def test_a_resume_needs_the_boards_its_run_was_minted_with(monkeypatch) -> None:
+    """A board added to the bank shifts the schedule onto other boards under the same game ids."""
+    manifest = _manifest()
+    first = min(manifest)
+    manifest[first] = "f" * 64
+    seen = _resume_env(monkeypatch, manifest=manifest)
+    monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
+
+    with pytest.raises(BatchPreconditionError, match=f"boards: 1 of the boards.*{first}"):
+        await _resume()
+    assert seen["notes"] == []
+
+
+async def test_a_run_minted_without_a_manifest_resumes_with_a_warning(monkeypatch, caplog) -> None:
+    _resume_env(monkeypatch, run=_stored_run(stimulus_manifest=None))
+    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner({}, []))
+
+    with caplog.at_level("WARNING", logger="run_batch"):
+        report = await _resume()
+
+    assert report.completed == 192 and "without a stimulus manifest" in caplog.text
+
+
+@pytest.mark.parametrize("minted, now, problem", [
+    ({"a": "1", "b": "2"}, {"a": "1", "b": "2"}, False),
+    ({"a": "1", "b": "2"}, {"a": "1", "b": "3"}, True),   # a board's content changed
+    ({"a": "1", "b": "2"}, {"a": "1", "c": "2"}, True),   # another board is scheduled
+    (None, {"a": "1"}, False),                             # nothing to compare with
+])
+def test_the_manifest_comparison(minted, now, problem) -> None:
+    problems = batch_runner._manifest_problems(_stored_run(stimulus_manifest=minted), now)
+    assert bool(problems) == problem
+
+
 async def test_the_digest_gate_runs_on_a_resume(monkeypatch) -> None:
     seen = _resume_env(monkeypatch)
     monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner({}, []))
@@ -935,7 +985,7 @@ def test_a_run_is_read_back_and_its_resumes_are_noted() -> None:
         s.add(BoardModel(board_id=board_id))
         s.add(RunModel(id=run_id, master_seed=Decimal(987), temperature=0.4,
                        prompt_template_version="tpl", code_version="abc1234",
-                       model_registry_snapshot=snapshot))
+                       model_registry_snapshot=snapshot, stimulus_manifest={"b": "h"}))
         s.flush()
         s.add(GameModel(id=game_ids[0], run_id=run_id, board_id=board_id,
                         game_status="completed"))
@@ -943,7 +993,8 @@ def test_a_run_is_read_back_and_its_resumes_are_noted() -> None:
     try:
         assert batch_runner.load_run(run_id) == batch_runner.StoredRun(
             run_id=run_id, master_seed=987, temperature=0.4, prompt_template_version="tpl",
-            code_version="abc1234", model_registry_snapshot=snapshot)
+            code_version="abc1234", model_registry_snapshot=snapshot,
+            stimulus_manifest={"b": "h"})
         assert batch_runner.load_run(str(uuid.uuid4())) is None
         assert batch_runner._recorded_games([*game_ids, str(uuid.uuid4())]) == {
             game_ids[0]: batch_runner.RecordedGame(run_id, board_id, "completed"),

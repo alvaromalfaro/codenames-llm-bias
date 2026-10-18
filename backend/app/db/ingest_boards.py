@@ -24,20 +24,18 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from backend.app.core.loader import BANK_SIDECARS, InvalidBoardFileError
 from backend.app.db.models import BoardModel, WordCardModel
 from backend.app.models.game_schemas import Board
 from backend.app.paths import BOARDS_DIR
 
 logger = logging.getLogger(__name__)
 
-# The bank's files that are not boards.
-_SIDECARS = frozenset({"balance_report.json", "measurement_frame.json"})
 # The columns a stored row has that ingestion does not take from the file.
 _NOT_FROM_FILE = frozenset({"id", "created_at", "content_sha256"})
 
-
-class InvalidBoardFileError(ValueError):
-    """A file of the board bank that is not a valid board artifact."""
+__all__ = ["InvalidBoardFileError", "StaleBoardError", "board_artifact_to_orm",
+           "board_content_sha256", "ingest_boards_if_absent"]
 
 
 class StaleBoardError(RuntimeError):
@@ -148,7 +146,7 @@ def ingest_boards_if_absent(
 
     inserted = 0
     for file_path in sorted(directory.glob("*.json")):
-        if file_path.name in _SIDECARS:
+        if file_path.name in BANK_SIDECARS:
             continue
         data = _read_board_file(file_path)
         board_id, digest = data["board_id"], board_content_sha256(data)

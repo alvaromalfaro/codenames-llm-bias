@@ -67,7 +67,7 @@ def test_persist_true_creates_one_run_with_provenance(monkeypatch) -> None:
     monkeypatch.setattr(provenance, "git_code_version", lambda: "code@abcdef")
     rid, snap = create_run(seat_specs=_SPECS, master_seed=555, temperature=0.4,
                            template_fingerprint="tpl@fingerprint", persist=True,
-                           enforce_digests=False)
+                           enforce_digests=False, stimulus_manifest={"board-a": "a" * 64})
     assert snap is not None  # persist path builds and stores the snapshot
 
     from backend.app.db.models import RunModel
@@ -81,3 +81,4 @@ def test_persist_true_creates_one_run_with_provenance(monkeypatch) -> None:
         assert run.prompt_template_version == "tpl@fingerprint"
         assert run.code_version == "code@abcdef"
         assert run.model_registry_snapshot == snap
+        assert run.stimulus_manifest == {"board-a": "a" * 64}

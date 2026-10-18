@@ -32,6 +32,39 @@ def test_load_board_success(tmp_path, valid_board_data):
         assert card.human_perspective_role == valid_board_data["cards"][i]["human_perspective_role"]
 
 
+def _bank_with(tmp_path, valid_board_data, bad_content):
+    import json
+    (tmp_path / "good.json").write_text(json.dumps(valid_board_data), encoding="utf-8")
+    (tmp_path / "bad.json").write_text(bad_content, encoding="utf-8")
+    for sidecar in ("balance_report.json", "measurement_frame.json"):
+        (tmp_path / sidecar).write_text("{}", encoding="utf-8")
+    return tmp_path
+
+
+def test_a_lenient_loader_leaves_out_a_file_that_is_not_a_board(tmp_path, valid_board_data):
+    loader = BoardLoader(_bank_with(tmp_path, valid_board_data, "not json"))
+    assert sum(len(group) for group in loader.boards.values()) == 1
+
+
+@pytest.mark.parametrize("bad_content", ["not json", '{"board_id": "half-a-board"}'])
+def test_a_strict_loader_stops_at_a_file_that_is_not_a_board(tmp_path, valid_board_data,
+                                                            bad_content):
+    """The batch loads strictly: a board left out would be replaced by the next one in the
+    schedule, under the same game ids."""
+    from backend.app.core.loader import InvalidBoardFileError
+    with pytest.raises(InvalidBoardFileError, match="bad.json"):
+        BoardLoader(_bank_with(tmp_path, valid_board_data, bad_content), strict=True)
+
+
+def test_a_strict_loader_skips_the_sidecars(tmp_path, valid_board_data):
+    import json
+    (tmp_path / "good.json").write_text(json.dumps(valid_board_data), encoding="utf-8")
+    for sidecar in ("balance_report.json", "measurement_frame.json"):
+        (tmp_path / sidecar).write_text("{}", encoding="utf-8")
+    loader = BoardLoader(tmp_path, strict=True)
+    assert sum(len(group) for group in loader.boards.values()) == 1
+
+
 def test_load_board_file_not_found(tmp_path):
     """
     Validates that the BoardLoader raises a FileNotFoundError when attempting to load a non-existent board configuration file.
