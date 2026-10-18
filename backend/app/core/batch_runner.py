@@ -63,7 +63,6 @@ import logging
 import os
 from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -299,8 +298,8 @@ def _check_no_collisions(game_ids: Sequence[str], *, master_seed: int) -> None:
             f"recorded, under run(s) {runs} - this seed's experiment is in the database "
             f"(deterministic game.id collision). Continue that run with "
             f"`python scripts/run_batch.py --resume <RUN_ID>`, or delete it first "
-            f"(backend.app.db.writer.delete_run(<RUN_ID>), see 'Re-running a seed' in the README) "
-            f"and run this master_seed again. Colliding ids (first 3): {sorted(existing)[:3]}")
+            f"(`python scripts/manage_runs.py delete <RUN_ID>`) and run this master_seed again. "
+            f"Colliding ids (first 3): {sorted(existing)[:3]}")
 
 
 @dataclass(frozen=True)
@@ -319,21 +318,14 @@ def load_run(run_id: str) -> Optional[StoredRun]:
     a run id at all)."""
     if not os.environ.get("DATABASE_URL"):
         raise BatchPreconditionError(f"reading run {run_id} requires DATABASE_URL.")
-    try:
-        uuid.UUID(run_id)
-    except ValueError:
+    from backend.app.db.runs import get_run
+    run = get_run(run_id)
+    if run is None:
         return None
-    from backend.app.db.models import RunModel
-    from backend.app.db.session import session_scope
-    with session_scope() as session:
-        run = session.get(RunModel, run_id)
-        if run is None:
-            return None
-        return StoredRun(
-            run_id=run.id,
-            master_seed=None if run.master_seed is None else int(run.master_seed),
-            temperature=run.temperature, prompt_template_version=run.prompt_template_version,
-            code_version=run.code_version, model_registry_snapshot=run.model_registry_snapshot)
+    return StoredRun(
+        run_id=run.run_id, master_seed=run.master_seed, temperature=run.temperature,
+        prompt_template_version=run.prompt_template_version, code_version=run.code_version,
+        model_registry_snapshot=run.model_registry_snapshot)
 
 
 def _snapshot_models(snapshot: Optional[dict]) -> dict[str, Optional[str]]:

@@ -65,8 +65,9 @@ core (engine, LLM service, recorder), and the analysis scripts score what it sto
 | Clients | `backend/app/core/llm/client{,_local,_openrouter}.py` | Provider adapters (Ollama / OpenRouter) with a bounded retry of retriable errors (a bad draw is drawn again with a new seed, a network failure is re-sent as it was), structured-output enforcement and degenerate-response detection. |
 | Recorder | `backend/app/db/recorder.py` | Pure in-memory accumulator for one game. No DB imports. |
 | Writer | `backend/app/db/writer.py` | Atomic terminal flush of a whole game in one transaction; `delete_run` tears a run down via cascade. |
+| Runs | `backend/app/db/runs.py` | Runs read back with their games counted by status, for `scripts/manage_runs.py` and a resumed batch. |
 | Game runner | `backend/app/core/game_runner.py` | Headless single-game driver: deterministic identity + seed derivation, run minting, provenance, the model-digest gate. |
-| Batch | `backend/app/core/batch_schedule.py`, `batch_runner.py` | The deterministic 192-game calendar, the bank ingestion into the database, and the orchestration loop with two-level fault handling. |
+| Batch | `backend/app/core/batch_schedule.py`, `batch_runner.py` | The deterministic 192-game calendar, the bank ingestion into the database, and the orchestration loop with two-level fault handling and resume. |
 | Analysis | `backend/app/analysis/` | Read-only metric estimators (IAE, TAC/TAI, CIT, conc-SD, TV/PA/EP) over shared geometry and a generic cluster bootstrap. |
 
 > Earlier versions also had a browser UI (FastAPI + Jinja + HTMX) for a person to play against a
@@ -101,8 +102,8 @@ codenames-llm-bias/
 │   ├── boards/                the board bank + measurement_frame.json + balance_report.json
 │   ├── morpholex/             MorphoLex-en word segmentations for the clue validator (CC BY-NC-SA)
 │   └── prompt_templates/      system / user / one-shot templates, incl. the measurement prompts
-├── scripts/                   batch orchestrator CLI, test games with a full log, analysis CLIs,
-│                              embedding backfill, MorphoLex TSV build
+├── scripts/                   batch orchestrator CLI, run management, test games with a full log,
+│                              analysis CLIs, embedding backfill, MorphoLex TSV build
 ├── tests/unit/                platform test suite (DB-backed tests gated on DATABASE_URL)
 ├── docker-compose.yml         db (pgvector) + ollama + app (the Python environment)
 ├── docker-compose.gpu.yml     optional override: reserves an NVIDIA GPU for ollama
@@ -463,12 +464,12 @@ configured four.
 tail -f logs/batch_2026.log                       # per-dispatch INFO lines: game_id, turn, seat
 grep -c "dispatch clue" logs/batch_2026.log       # rough progress
 
-# games actually persisted so far
-psql "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}" \
-  -c "select game_status, count(*) from game where run_id = '<run_id>' group by game_status;"
+# games actually persisted so far, with the run's provenance
+python scripts/manage_runs.py show <run_id>
 ```
 
-The run id is printed at mint time and again in the final report.
+The run id is printed at mint time and again in the final report; `python scripts/manage_runs.py
+list` shows every run in the database.
 
 ### 4. Failure semantics
 
@@ -532,17 +533,20 @@ recorded on the board the schedule puts there now. The error lists every differe
 to the run's `notes` with its time and `code_version`, so the run's provenance shows where other
 code took over.
 
-### 7. Re-running a seed
+### 7. Managing runs, and re-running a seed
 
-```python
-# python, with DATABASE_URL exported
-from backend.app.db.writer import delete_run
-print(delete_run("<run_id>"))    # DeleteRunResult(found=True, games_deleted=192)
+```sh
+python scripts/manage_runs.py list                 # every run, oldest first, games by status
+python scripts/manage_runs.py show <run_id>        # provenance, models and weights, notes, games
+python scripts/manage_runs.py delete <run_id>      # shows the run, then asks
 ```
 
-`delete_run` cascades through every game, seat, turn, clue, target, LLM call, proposal, item and
+A master seed is played again from scratch by deleting its run first (otherwise its games collide,
+see Level 1). `delete` shows the run and deletes it only on a `y`; `--yes` skips the question.
+The delete cascades through every game, seat, turn, clue, target, LLM call, proposal, item and
 reveal beneath the run. Shared ingest data (`board`, `word_card`, `measurement_frame`) is not
-run-owned and is never touched. It is idempotent — deleting an absent run is a no-op.
+run-owned and is never touched. A delete cannot be undone: a batch that stopped is continued with
+`--resume` (§6), not deleted.
 
 ---
 
