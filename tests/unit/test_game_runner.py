@@ -221,6 +221,32 @@ async def test_persist_false_plays_without_touching_db(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_game_plays_with_the_service_it_is_handed(monkeypatch):
+    """A batch hands every game one service; the game must not read the templates again."""
+    from backend.app.core.llm_service import LLMService
+    service = LLMService(temperature=0.4)
+    monkeypatch.setattr(game_runner, "LLMService", MagicMock(
+        side_effect=AssertionError("a game handed a service must not build another")))
+    clients = {0: _make_client("m0", lambda: ["LEMONADE"]),
+               1: _make_client("m1", lambda: ["LEMONADE"])}
+    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=777,
+                                temperature=0.4, persist=False, service=service,
+                                client_factory=lambda i, spec: clients[i])
+    assert res.status == "completed"
+
+
+@pytest.mark.asyncio
+async def test_a_service_at_another_temperature_is_refused():
+    from backend.app.core.llm_service import LLMService
+    factory = MagicMock()  # would blow up if called
+    with pytest.raises(ValueError, match="temperature 0.7"):
+        await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=1, temperature=0.4,
+                              persist=False, service=LLMService(temperature=0.7),
+                              client_factory=factory)
+    factory.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_on_dispatch_sees_the_state_before_and_after_every_dispatch(monkeypatch):
     """The observer gets the engine before the first dispatch and after each one. This game is a
     clue and then a guess of LEMONADE (an assassin for both seats), so it is called three times, the

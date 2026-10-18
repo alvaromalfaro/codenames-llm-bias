@@ -118,6 +118,32 @@ async def test_persisted_batch_ingests_the_bank_after_the_collision_check_and_be
     assert report.completed == 192
 
 
+# one service for the whole batch
+async def test_every_game_plays_with_the_one_service_whose_fingerprint_the_run_records(
+        monkeypatch) -> None:
+    """The templates are read once: editing a file while the batch runs cannot change what the
+    games send, nor make it differ from the fingerprint on the run."""
+    minted, services = [], []
+
+    def fake_create_run(**kwargs):
+        minted.append(kwargs["template_fingerprint"])
+        return "run-1", None
+    monkeypatch.setattr(batch_runner, "create_run", fake_create_run)
+
+    async def fake(**kwargs):
+        services.append(kwargs["service"])
+        return GameRunResult(game_id="g", run_id=kwargs["run_id"], seed_game=0,
+                             status="completed", result=None)
+    monkeypatch.setattr(batch_runner, "run_single_game", fake)
+
+    await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
+                    temperature=0.4, persist=False, enforce_digests=False)
+
+    assert len(services) == 192 and len({id(s) for s in services}) == 1
+    assert services[0].temperature == 0.4
+    assert minted == [services[0].template_fingerprint()]
+
+
 # Level 1e: the schema the games are written to
 @pytest.mark.parametrize("stamped", [set(), {"0005_run_delete_cascade"}])
 async def test_a_schema_behind_the_migrations_aborts_before_any_game(monkeypatch, stamped) -> None:

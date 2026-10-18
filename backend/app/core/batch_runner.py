@@ -509,6 +509,10 @@ async def run_batch(
     that does not answer within ``provider_wait_s`` seconds stops the batch, and the report's
     ``aborted_reason`` says so.
 
+    One ``LLMService`` plays every game: the prompt templates are read once, when the batch starts,
+    so the fingerprint the run records is that of what every game sent, even if a template file is
+    edited while the batch runs.
+
     ``resume_run_id`` continues that run instead of minting one (see RESUME in the module
     docstring); it needs ``persist``. With it, ``retry_errors`` plays again the games the run
     recorded as errors.
@@ -647,10 +651,12 @@ async def run_batch(
         replays = 0
         while True:
             # The gate already ran once at mint; do not re-run it per game (enforce_digests=False).
+            # Every game plays with the one service whose fingerprint the run records.
             result = await run_single_game(
                 board=board, seat_specs=[cell.seat0_spec, cell.seat1_spec],
                 master_seed=master_seed, temperature=temperature, run_id=run_id,
-                game_index=cell.game_index, persist=persist, enforce_digests=False, **extra)
+                game_index=cell.game_index, persist=persist, enforce_digests=False,
+                service=svc, **extra)
             if (result.status != "error" or result.error_code not in _TRANSIENT_PROVIDER_CODES
                     or replays >= provider_replays):
                 break

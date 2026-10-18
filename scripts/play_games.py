@@ -243,7 +243,9 @@ def _check_ollama(specs: list[SeatSpec]) -> None:
 
 
 def _log_run_header(args: argparse.Namespace, specs: list[SeatSpec], boards: list[Board],
-                    master_seed: int) -> None:
+                    master_seed: int) -> LLMService:
+    """Log what the run is made of, and return the service every game plays with: the templates
+    it logs are the ones the games send."""
     logger.info("command: %s", " ".join(shlex.quote(a) for a in sys.argv))
     logger.info("git commit %s on %s", _git("rev-parse", "HEAD"), _git("rev-parse", "--abbrev-ref", "HEAD"))
     changes = _git("status", "--porcelain")
@@ -264,6 +266,7 @@ def _log_run_header(args: argparse.Namespace, specs: list[SeatSpec], boards: lis
     for name, text in service._loaded_template_texts().items():
         logger.debug("template %s id=%s\n--- template ---\n%s\n--- end of template ---",
                      name, text_digest(text), text)
+    return service
 
 
 # the game, as it unfolds
@@ -437,7 +440,8 @@ def _log_game_end(watch: _GameWatch) -> None:
 
 
 async def _play(args: argparse.Namespace, specs: list[SeatSpec], boards: list[Board],
-                master_seed: int, context: _GameContext) -> list[_GameOutcome]:
+                master_seed: int, context: _GameContext,
+                service: LLMService) -> list[_GameOutcome]:
     outcomes = []
     for index, board in enumerate(boards):
         seats = list(reversed(specs)) if args.alternate_seats and index % 2 else list(specs)
@@ -458,7 +462,7 @@ async def _play(args: argparse.Namespace, specs: list[SeatSpec], boards: list[Bo
         result = await run_single_game(
             board=board, seat_specs=seats, master_seed=master_seed, temperature=args.temperature,
             game_index=index, persist=False, enforce_digests=args.enforce_digests,
-            on_dispatch=watch)
+            on_dispatch=watch, service=service)
         seconds = time.monotonic() - started
         _log_game_end(watch)
         if result.status != "completed":
@@ -510,9 +514,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     context, collector = _configure_logging(log_path)
     logger.info("logging to %s", log_path)
 
-    _log_run_header(args, specs, boards, master_seed)
+    service = _log_run_header(args, specs, boards, master_seed)
     _check_ollama(specs)
-    outcomes = asyncio.run(_play(args, specs, boards, master_seed, context))
+    outcomes = asyncio.run(_play(args, specs, boards, master_seed, context, service))
     return _log_summary(outcomes, collector, log_path)
 
 

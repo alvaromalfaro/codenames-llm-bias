@@ -306,7 +306,8 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
                           run_id: Optional[str] = None, game_index: int = 0, persist: bool = True,
                           client_factory: ClientFactory = default_client_factory,
                           enforce_digests: bool = False,
-                          on_dispatch: Optional[DispatchHook] = None) -> GameRunResult:
+                          on_dispatch: Optional[DispatchHook] = None,
+                          service: Optional[LLMService] = None) -> GameRunResult:
     """Play ONE complete LLM-vs-LLM Codenames Duet game and persist it.
 
     Game identity is deterministic in ``master_seed + game_index`` only (see ``_game_identity``);
@@ -336,6 +337,10 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
             dispatch and after every dispatch, so a caller can log the state or check it. It must
             not change them, and it must not raise: an exception it raises ends the game as an
             error.
+        service: the ``LLMService`` to play with, holding the prompt templates. A batch builds one
+            and hands it to every game, so its templates are read once and the run's
+            ``prompt_template_version`` is the fingerprint of what every game sent; when None, the
+            game builds its own. Its temperature must be ``temperature``.
     """
     # temperature must be explicit; do not fall back to any default.
     if temperature is None:
@@ -358,7 +363,14 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     # The service carries the explicit temperature into every request (overriding its 0.7 default).
     # Built here (before the run row) so its template fingerprint can seed the run's provenance
     # without loading the templates twice.
-    svc = LLMService(temperature=temperature)
+    if service is None:
+        svc = LLMService(temperature=temperature)
+    elif service.temperature != temperature:
+        raise ValueError(
+            f"the service samples at temperature {service.temperature}, but this game is played "
+            f"at {temperature}.")
+    else:
+        svc = service
 
     # minimal run row, committed first in its own short-lived session (FK: run before game). When a
     # run row is created here we also fill its provenance (which models served, which prompt texts
