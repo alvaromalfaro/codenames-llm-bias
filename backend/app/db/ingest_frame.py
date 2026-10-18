@@ -82,7 +82,8 @@ def ingest_frame_if_absent(
     """Insert the measurement frame if its ``frame_id`` is not already stored. Returns True if inserted.
 
     A missing sidecar is a logged no-op (returns False). An existing row with the same frame_id is a
-    no-op; an existing row with a DIFFERENT encoder identity raises :class:`StaleFrameError`.
+    no-op; an existing row with a DIFFERENT encoder identity raises :class:`StaleFrameError`. The
+    caller owns the transaction: nothing here commits.
     """
     path = Path(frame_path)
     if not path.exists():
@@ -112,5 +113,5 @@ def ingest_frame_if_absent(
         return False
 
     session.add(frame_artifact_to_orm(data))
-    session.commit()
+    session.flush()
     return True

@@ -183,6 +183,30 @@ async def test_dry_run_never_ingests(monkeypatch) -> None:
     assert report.completed == 192
 
 
+@pytest.mark.parametrize("error, message", [
+    ("InvalidBoardFileError", "cannot be read whole"),
+    ("StaleBoardError", "Restore the file"),
+])
+def test_a_bank_the_ingestion_refuses_stops_the_batch(monkeypatch, tmp_path, error,
+                                                      message) -> None:
+    """A file that is not a board, or a stored board whose file changed: the batch must not play
+    what the database does not hold. The database is stubbed."""
+    import contextlib
+
+    from backend.app.db import ingest_boards, ingest_frame, session
+
+    (tmp_path / "measurement_frame.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(session, "session_scope", contextlib.nullcontext)
+    monkeypatch.setattr(ingest_frame, "ingest_frame_if_absent", lambda s, path: False)
+
+    def refuse(s, bank_dir):
+        raise getattr(ingest_boards, error)("board-x: refused")
+    monkeypatch.setattr(ingest_boards, "ingest_boards_if_absent", refuse)
+
+    with pytest.raises(BatchPreconditionError, match=message):
+        batch_runner._ingest_bank(tmp_path, ["board-x"])
+
+
 def test_ingest_bank_needs_the_measurement_frame(tmp_path) -> None:
     """The sealed boards point at the frame: without its sidecar the batch stops before storing any
     board, and before opening a database session."""

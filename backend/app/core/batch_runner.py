@@ -407,9 +407,11 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> None:
     stored. The frame goes first: a sealed board's ``measurement_frame_id`` is a foreign key to it.
 
     Both ingestions skip what is already stored, so a second batch on the same database adds
-    nothing. A board file that cannot be read or mapped is skipped with a warning by the ingestion
-    itself; if it is a scheduled board, the check after it aborts the batch."""
-    from backend.app.db.ingest_boards import ingest_boards_if_absent
+    nothing. A file of the bank that is not a valid board, and a stored board whose file now holds
+    other content, abort the batch: the games would play what the database does not hold."""
+    from backend.app.db.ingest_boards import (
+        InvalidBoardFileError, StaleBoardError, ingest_boards_if_absent,
+    )
     from backend.app.db.ingest_frame import StaleFrameError, ingest_frame_if_absent
     from backend.app.db.models import BoardModel
     from backend.app.db.session import session_scope
@@ -425,11 +427,17 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> None:
         raise BatchPreconditionError(
             f"the measurement frame under {bank_dir} contradicts the one already stored: {exc}"
         ) from exc
-    with session_scope() as session:
-        boards_inserted = ingest_boards_if_absent(session, bank_dir)
-        stored = set(session.execute(
-            select(BoardModel.board_id).where(BoardModel.board_id.in_(list(board_ids)))
-        ).scalars().all())
+    try:
+        with session_scope() as session:
+            boards_inserted = ingest_boards_if_absent(session, bank_dir)
+            stored = set(session.execute(
+                select(BoardModel.board_id).where(BoardModel.board_id.in_(list(board_ids)))
+            ).scalars().all())
+    except InvalidBoardFileError as exc:
+        raise BatchPreconditionError(f"the board bank cannot be read whole: {exc}") from exc
+    except StaleBoardError as exc:
+        raise BatchPreconditionError(
+            f"{exc} Restore the file, or delete the board and the runs that played it.") from exc
     logger.info("bank ingestion: measurement frame %s, %s new board(s) from %s",
                 "stored" if frame_inserted else "already stored", boards_inserted, bank_dir)
     missing = sorted(set(board_ids) - stored)

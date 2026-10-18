@@ -483,9 +483,12 @@ Two levels, kept deliberately separate:
   the bank comes after the `game_id` check and before the run is minted: the measurement frame,
   then every board under `data/boards/`, skipping what is already stored. It fails if the frame's
   sidecar is missing, if it contradicts the frame already stored (the frame is immutable:
-  `StaleFrameError`), or if a scheduled board is still not in the database afterwards (an
-  unreadable board file is skipped with a warning). On a resume, the `game_id` check and the
-  minting give way to the checks of the run being resumed (§6).
+  `StaleFrameError`), if a file of the bank is not a valid board, or if a stored board is not the
+  one its file holds now: each board is stored with the SHA-256 of its canonical JSON
+  (`board.content_sha256`), and a file whose hash differs stops the batch (`StaleBoardError`)
+  instead of being played while the database keeps the old board. A board stored before the hash
+  was recorded is compared with its file field by field, and gets the hash when they agree. On a
+  resume, the `game_id` check and the minting give way to the checks of the run being resumed (§6).
 * **Level 2 — per-game fault isolation.** A game that errors is recorded, classified
   (`provider` / `model` / `collision` / `other`) and the loop continues. **Five consecutive failures
   abort that pairing only** — its remaining cells are skipped and the batch moves to the next
