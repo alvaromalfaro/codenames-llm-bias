@@ -22,6 +22,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "hypothesis>=6.170.5",
     "mypy>=2.4.0",
     "pytest",
     "pytest-asyncio",
