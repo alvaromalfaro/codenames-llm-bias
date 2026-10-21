@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 from sqlalchemy import delete, func, select
 
@@ -298,7 +299,11 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
             game_status=status,
             result=recorder.result,
             timer_tokens_final=recorder.timer_tokens_final,
-            completed_at=func.now(),
+            # Both ends from the game process's clock, so completed_at - started_at is how long the
+            # game took. The database's now() reads the database server's clock, which can drift
+            # from it (under Docker Desktop, it is a VM's).
+            started_at=recorder.started_at,
+            completed_at=datetime.now(timezone.utc),
         )
         session.add(game)
         session.flush()

@@ -2,6 +2,8 @@
 
 These run without a database: the recorder is pure in-memory and imports no DB modules.
 """
+from datetime import datetime, timezone
+
 import pytest
 
 from backend.app.db.recorder import GameRecorder, SeatRecord, result_role_of
@@ -57,6 +59,14 @@ def test_creation_captures_seats_and_start_player():
     seat0, seat1 = rec.seats
     assert seat0.seat_index == 0 and seat0.provider == "openrouter" and seat0.model_ref == "or-model"
     assert seat1.seat_index == 1 and seat1.provider == "ollama" and seat1.model_ref == "local-model"
+
+
+def test_creation_takes_the_start_of_the_game_in_utc():
+    before = datetime.now(timezone.utc)
+    rec = _recorder()
+    after = datetime.now(timezone.utc)
+    assert rec.started_at.tzinfo is not None
+    assert before <= rec.started_at <= after
 
 
 # result-role mapping

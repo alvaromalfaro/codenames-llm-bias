@@ -5,6 +5,7 @@ Each test inserts its own board (unique id) so runs are independent and need no 
 """
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -465,6 +466,27 @@ def test_persist_two_seat_sd_backfill_is_per_seat():
         seat1_reveal_ids = {
             seat1_items[0].reveal_event_id, seat1_items[1].reveal_event_id}
         assert seat0_reveal_ids.isdisjoint(seat1_reveal_ids)
+
+
+def test_persist_writes_when_the_game_started_and_ended():
+    from backend.app.db import writer
+    from backend.app.db.models import GameModel
+    from backend.app.db.session import session_scope
+
+    with session_scope() as session:
+        board_id, _ = _insert_board(session)
+
+    rec = _recorder(board_id)
+    # The row is only inserted at the end: the start must be the recorder's, not the insert's.
+    rec.started_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+    rec.set_outcome("victory", 5)
+    writer.persist_game(rec, status="completed")
+    written = datetime.now(timezone.utc)
+
+    with session_scope() as session:
+        game = session.get(GameModel, rec.game_id)
+        assert game.started_at == rec.started_at
+        assert rec.started_at + timedelta(minutes=5) <= game.completed_at <= written
 
 
 def test_persist_raises_on_missing_board():

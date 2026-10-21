@@ -12,6 +12,7 @@ markers (``time_marker_by``) - the latter is derivable downstream from ``reveal_
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Optional
 
 from backend.app.models.game_schemas import ClueEntry, ConfidenceRanking, ResolvedTarget
@@ -97,6 +98,10 @@ class GameRecorder:
                  seats: list[SeatRecord]):
         self.game_id = game_id
         self.board_id = board_id
+        # When the game started (UTC): the runner builds the recorder just before the first
+        # dispatch. The game row is only inserted at the end, so the writer stores this one as
+        # game.started_at.
+        self.started_at = datetime.now(timezone.utc)
         # Set by the runner.
         self.run_id: Optional[str] = None
         self.derived_seed: Optional[int] = None
