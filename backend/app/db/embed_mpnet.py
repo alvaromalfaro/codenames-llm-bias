@@ -142,8 +142,9 @@ def _assert_contract(model: object, spec: EncoderSpec) -> None:
         )
 
     # Renamed in sentence-transformers 5.x; accept either so the pin can move without a silent skip.
-    get_dim = (getattr(model, "get_embedding_dimension", None)
-               or model.get_sentence_embedding_dimension)  # type: ignore[attr-defined]
+    get_dim = getattr(model, "get_embedding_dimension", None)
+    if get_dim is None:
+        get_dim = model.get_sentence_embedding_dimension  # type: ignore[attr-defined]
     dim = get_dim()
     if dim != EXPECTED_DIM:
         raise EncoderContractError(
