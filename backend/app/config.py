@@ -54,7 +54,7 @@ llm_models = {
 # it loads the pulled model, it converts it - the text weights and the vision projector in two
 # files - and rewrites the tag's manifest as a list of both variants, in the model store itself.
 # The digest below is that converted variant's, as Ollama 0.40.2 serves it. Before the conversion,
-# the model as pulled had this one, which is the one exp_data.sql records:
+# the model as pulled had this one, which is the one exp_data.dump records:
 #   sha256:5a408ab55df5c1b5cf46533c368813b30bf9e4d8fc39263bf2a3338cfa3b895b
 # The Ollama release the digests above were validated with, and that docker-compose.yml pins. Another
 # release may serve another digest, or the same weights another way: the batch refuses to start on a
@@ -82,7 +82,7 @@ OLLAMA_NUM_CTX = 8192
 # which is retried after a backoff (see LLMTimeoutError). Without a limit, a hung daemon would stop
 # the batch for good. The answer is not streamed, so the wait covers the whole call: loading the
 # model, reading the prompt and writing the answer, which LLM_MAX_OUTPUT_TOKENS bounds. In
-# exp_data.sql the slowest model, mistral-small3.2:24b, writes 24 tokens/s at its slowest and loads
+# exp_data.dump the slowest model, mistral-small3.2:24b, writes 24 tokens/s at its slowest and loads
 # in up to 9 s, so a full 2048-token answer takes about 95 s. A call cut here is sent again with the
 # same seed, and would take as long again, so the limit must stay well above any legitimate call.
 OLLAMA_TIMEOUT_S = 300

@@ -110,7 +110,6 @@ codenames-llm-bias/
 ├── ollama_entrypoint.sh       pulls every Ollama model in backend/app/config.py
 ├── .gitattributes             forces LF on *.sh / Dockerfile (Windows checkouts)
 ├── .dockerignore              keeps docker_volumes/ and .env out of the app image
-├── exp_data.sql               pg_dump of the completed experiment (see Reproducing)
 ├── pyproject.toml             runtime deps + `dev` and `embeddings` extras
 └── .env.example               environment template
 ```
@@ -290,10 +289,13 @@ asked:
 docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB `
   -c "select count(*) as boards from board; select count(*) as frames from measurement_frame;"
 
-# restoring exp_data.sql (see "Reproducing the shipped results")
+# restoring exp_data.dump (see "Reproducing the shipped results")
+curl.exe -LO https://github.com/alvaromalfaro/codenames-llm-bias/releases/download/exp-data-v1/exp_data.dump
+(Get-FileHash exp_data.dump -Algorithm SHA256).Hash   # the SHA-256 given there, in capitals
 docker compose exec db createdb -U $env:POSTGRES_USER codenames_exp
-docker compose cp exp_data.sql db:/tmp/exp_data.sql
-docker compose exec db psql -U $env:POSTGRES_USER -d codenames_exp -v ON_ERROR_STOP=1 -f /tmp/exp_data.sql
+docker compose cp exp_data.dump db:/tmp/exp_data.dump
+docker compose exec db pg_restore -U $env:POSTGRES_USER -d codenames_exp --no-owner --no-privileges `
+  --exit-on-error --single-transaction /tmp/exp_data.dump
 ```
 
 ---
@@ -730,20 +732,31 @@ stderr. Bootstrap defaults are `B = 2000` replicates, seed `2026`, percentile CI
 
 ## Reproducing the shipped results
 
-`exp_data.sql` is a `pg_dump` of the completed experiment — schema **and** data, stamped
+The completed experiment is published as a release asset, not in the tree: `exp_data.dump`, a
+`pg_dump` in custom format of its database — schema **and** data, stamped
 `alembic_version = 0005_run_delete_cascade`. It contains the real run (`master_seed = 2026`,
 `temperature = 0.8`, `code_version = 26a115a`, four local Ollama seats: `llama3.1:8b`, `gemma4:12b`,
 `qwen2.5:14b`, `mistral-small3.2:24b`), the boards and frame, and the populated `embedding_mpnet`
 table. Restoring it is the fast path: every analysis script then runs against its defaults, with no
 GPU and without replaying 192 LLM games.
 
+* **Release:** [`exp-data-v1`](https://github.com/alvaromalfaro/codenames-llm-bias/releases/tag/exp-data-v1),
+  tagged at `26a115a`, the code that recorded the run.
+* **SHA-256** of `exp_data.dump`: `a2c34e889fd53e81af446b769a6289841f90d3fc7ad5f959c81ad9107b3a0c6c`
+
 ```sh
 set -a; source .env; set +a
 
-# Restore into an EMPTY database. The dump creates its own tables and the pgvector extension;
-# it contains no CREATE DATABASE, so create the target first.
+curl -LO https://github.com/alvaromalfaro/codenames-llm-bias/releases/download/exp-data-v1/exp_data.dump
+echo "a2c34e889fd53e81af446b769a6289841f90d3fc7ad5f959c81ad9107b3a0c6c  exp_data.dump" | sha256sum -c
+
+# Restore into an EMPTY database. The dump creates its own tables and the pgvector extension
+# (which takes a superuser, as the Compose db's POSTGRES_USER is); it contains no CREATE DATABASE,
+# so create the target first. --no-owner gives every object to the user restoring it, whatever
+# role recorded the run. Use pg_restore 15 or newer (the db container's is).
 createdb -h localhost -U "$POSTGRES_USER" codenames_exp
-psql -h localhost -U "$POSTGRES_USER" -d codenames_exp -v ON_ERROR_STOP=1 -f exp_data.sql
+pg_restore -h localhost -U "$POSTGRES_USER" -d codenames_exp --no-owner --no-privileges \
+  --exit-on-error --single-transaction exp_data.dump
 
 export DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/codenames_exp"
 
@@ -756,12 +769,18 @@ python scripts/run_skill_metrics.py
 python scripts/diagnose_skill_by_board_type.py
 ```
 
-> Restore into a **fresh** database. The dump issues bare `CREATE TABLE`s, so replaying it over a
-> database that already has the schema fails partway and leaves a half-loaded mess. Do not restore
-> over a database holding a run you care about.
+> Restore into a **fresh** database. The dump issues bare `CREATE TABLE`s, so restoring it over a
+> database that already has the schema fails (in one transaction, the database is left as it was).
+> Do not restore over a database holding a run you care about.
 
-The analysis scripts read the dump as it is. To record new games into it, upgrade it to the current
-schema first (`alembic -c backend/alembic.ini upgrade head`).
+The analysis scripts read the dump as it is, and give the same results once it is upgraded to the
+current schema (`alembic -c backend/alembic.ini upgrade head`), which recording new games into it
+needs.
+
+The dump was made from a fresh restore of the `exp_data.sql` the repository shipped until it moved
+to the release (still in the history, at `52f954f`), with `pg_dump -Fc --no-owner --no-privileges`:
+its tables hold the same rows. That file's `ALTER ... OWNER TO alvaro` statements stopped its
+documented restore for anyone whose role was not `alvaro`.
 
 Add `--json` to any script to capture machine-readable output for downstream aggregation.
 

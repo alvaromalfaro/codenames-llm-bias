@@ -309,7 +309,7 @@ def load_guesser_turns(session: Session, *, master_seed: int) -> list[TurnRecord
             GameModel.game_status == COMPLETED,
             TurnModel.phase == NORMAL_PHASE,
             # Restricted to the two designed populations. board.type is nullable, and a database
-            # can hold an untyped board: exp_data.sql has 'neutral_test_001', the example board
+            # can hold an untyped board: exp_data.dump has 'neutral_test_001', the example board
             # the batch ingested while it lived in data/boards. Without this an untyped board
             # would form a phantom third group with its own tercile cuts.
             BoardModel.type.in_(BOARD_TYPES),

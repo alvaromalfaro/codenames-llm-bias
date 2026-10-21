@@ -225,7 +225,7 @@ class GameModel(Base):
     error's type and text, cut to writer.ERROR_MESSAGE_MAX_CHARS.
 
     started_at is when play began and completed_at when the game was written, both taken by the
-    process that played it. In games recorded before the start was kept (the run of exp_data.sql
+    process that played it. In games recorded before the start was kept (the run of exp_data.dump
     among them), started_at is the time of the insert, like completed_at.
     """
     __tablename__ = "game"

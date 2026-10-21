@@ -5,3 +5,5 @@ docker_volumes/
 .venv/
 venv/
 **/__pycache__/
+# a downloaded database dump (exp_data.dump is 6 MB)
+*.dump
