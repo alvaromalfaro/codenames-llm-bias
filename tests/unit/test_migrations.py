@@ -1,6 +1,7 @@
-"""Tests for the Alembic migrations as shipped: what can be checked without a database.
+"""Tests for the Alembic migrations as shipped.
 
-Applying them needs Postgres (the database tests do that); these read the scripts only."""
+Most read the scripts only. The last, marked ``db``, compares the models with the test session's
+database, which tests/conftest.py migrates to head."""
 from pathlib import Path
 
 import pytest
@@ -32,3 +33,18 @@ def test_the_migrations_are_one_line() -> None:
     assert len(_SCRIPTS.get_heads()) == 1 and len(_SCRIPTS.get_bases()) == 1
     numbers = [int(script.revision.split("_", 1)[0]) for script in reversed(_REVISIONS)]
     assert numbers == list(range(1, len(numbers) + 1))
+
+
+@pytest.mark.db
+def test_the_models_and_the_migrated_schema_agree() -> None:
+    """What `alembic check` does: autogenerate finds nothing to migrate between db/models.py and a
+    database at head, so no change to the models is missing its migration."""
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    from backend.app.db.models import Base
+    from backend.app.db.session import get_engine
+
+    with get_engine().connect() as connection:
+        differences = compare_metadata(MigrationContext.configure(connection), Base.metadata)
+    assert differences == []

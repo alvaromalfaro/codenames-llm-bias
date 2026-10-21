@@ -1,5 +1,4 @@
 """Tests for create_run (game_runner.create_run) called directly."""
-import os
 import uuid
 
 import pytest
@@ -60,8 +59,7 @@ def test_gate_aborts_before_any_persistence(monkeypatch) -> None:
 
 
 # DB-gated: persist=True creates exactly one run row with the right provenance
-@pytest.mark.skipif(not os.environ.get("DATABASE_URL"),
-                    reason="requires a live Postgres database")
+@pytest.mark.db
 def test_persist_true_creates_one_run_with_provenance(monkeypatch) -> None:
     monkeypatch.setattr(provenance, "resolve_ollama_digest",
                         lambda model_name, host=None: _SERVED_OK)

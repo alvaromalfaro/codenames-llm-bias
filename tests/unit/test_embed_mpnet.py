@@ -1,16 +1,16 @@
 """Tests for the phi* embedding backfill.
 
 Two gates, for two different costs:
-  * the insert-path tests need Postgres (pgvector) and are skipped when DATABASE_URL is unset. They 
-    drive a deterministic StubEncoder so they never load torch.
+  * the insert-path tests need Postgres (pgvector), marked ``db``: they run on the test session's
+    (tests/conftest.py). They drive a deterministic StubEncoder so they never load torch.
   * the encoder-contract tests need the real ~420MB checkpoint and are skipped when it is not in
     the local HuggingFace cache. Nothing downloads.
 
 Each DB test writes under its own throwaway frame_id, so runs are independent and need no cleanup.
 """
 import hashlib
-import os
 import uuid
+from contextlib import contextmanager
 
 import numpy as np
 import pytest
@@ -19,9 +19,7 @@ _REAL_FRAME_ID = "8a404797b3e656dd00683910aa829bbbc584c6b23c37e9f0de1173d11a9d0c
 _REAL_ENCODER = "sentence-transformers/all-mpnet-base-v2"
 _REAL_REVISION = "e8c3b32edf5434bc2275fc9bab85f82640a19130"
 
-requires_db = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+requires_db = pytest.mark.db
 
 
 class StubEncoder:
@@ -204,34 +202,72 @@ def test_load_encoder_spec_rejects_unknown_frame():
             load_encoder_spec(session, "no-such-frame")
 
 
-# the phase queries, against the real batch
+# the phase queries, on boards and clues of a throwaway frame
+@contextmanager
+def _rolled_back_session():
+    """A session whose writes are rolled back at the end: the boards these tests seal to their
+    throwaway frame would otherwise break the tests that every sealed board resolves to the real
+    frame (test_frame_consistency, test_ingest_frame)."""
+    from backend.app.db.session import get_sessionmaker
+
+    session = get_sessionmaker()()
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+
+
+def _sealed_board(session, frame_id, words) -> str:
+    """Insert a board sealed to ``frame_id`` with ``words`` as its cards, uppercased as the bank
+    stores them; return its id."""
+    from backend.app.db.models import BoardModel, WordCardModel
+
+    board_id = f"test-embed-board-{uuid.uuid4()}"
+    session.add(BoardModel(board_id=board_id, type="control", measurement_frame_id=frame_id))
+    session.flush()
+    for card_id, word in enumerate(words):
+        session.add(WordCardModel(board_id=board_id, card_id=card_id, text=word.upper(),
+                                  llm_perspective_role="civilian",
+                                  human_perspective_role="civilian"))
+    session.flush()
+    return board_id
+
+
 @requires_db
 def test_board_word_texts_are_lowercased_and_distinct():
-    """Fails if lower() is dropped from the query: the bank stores its words uppercased."""
+    """Fails if lower() is dropped from the query (the bank stores its words uppercased), or the
+    DISTINCT (a word is on more than one board)."""
     from backend.app.db.embed_mpnet import board_word_texts
-    from backend.app.db.session import session_scope
 
-    with session_scope() as session:
-        texts = board_word_texts(session, _REAL_FRAME_ID)
-        if not texts:
-            pytest.skip("no boards for the real frame in this database")
+    with _rolled_back_session() as session:
+        frame_id = _make_frame(session)
+        _sealed_board(session, frame_id, ["bucket", "brick"])
+        _sealed_board(session, frame_id, ["bucket", "ant"])
 
-        assert all(t == t.lower() for t in texts)
-        assert len(texts) == len(set(texts))
+        assert board_word_texts(session, frame_id) == ["ant", "brick", "bucket"]
 
 
 @requires_db
 def test_clue_texts_are_lowercased_and_distinct():
+    """The clues of the games played on the frame's boards, each once, lowercased."""
     from backend.app.db.embed_mpnet import clue_texts
-    from backend.app.db.session import session_scope
+    from backend.app.db.models import ClueModel, GameModel, TurnModel
 
-    with session_scope() as session:
-        texts = clue_texts(session, _REAL_FRAME_ID)
-        if not texts:
-            pytest.skip("no clues for the real frame in this database")
+    with _rolled_back_session() as session:
+        frame_id = _make_frame(session)
+        game = GameModel(id=str(uuid.uuid4()), board_id=_sealed_board(session, frame_id, ["ant"]),
+                         game_status="completed")
+        session.add(game)
+        session.flush()
+        for turn_number, clue in enumerate(["Battle", "BATTLE", "ocean"]):
+            turn = TurnModel(game_id=game.id, turn_number=turn_number, clue_giver_seat=0)
+            session.add(turn)
+            session.flush()
+            session.add(ClueModel(turn_id=turn.id, clue_word=clue, count=1))
+        session.flush()
 
-        assert all(t == t.lower() for t in texts)
-        assert len(texts) == len(set(texts))
+        assert clue_texts(session, frame_id) == ["battle", "ocean"]
 
 
 # the real phi* contract

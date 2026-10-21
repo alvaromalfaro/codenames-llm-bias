@@ -1,9 +1,8 @@
 """Tests for the atomic terminal flush (writer.persist_game).
 
-These require a live Postgres and are skipped when DATABASE_URL is unset, matching test_db_ingest.
-Each test inserts its own board (unique id) so runs are independent and need no cleanup.
+Marked ``db``: they run on the test session's Postgres (tests/conftest.py). Each test inserts its
+own board (unique id) so runs are independent and need no cleanup.
 """
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -15,9 +14,7 @@ from backend.app.models.game_schemas import (
 )
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMCallRecord, LLMMessage
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+pytestmark = pytest.mark.db
 
 
 def _call(role, retry_index=0, temperature=0.5, seed=7):

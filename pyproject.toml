@@ -41,3 +41,7 @@ asyncio_mode = "auto"
 # board_generator/ is a separate project with its own venv and test suite (it needs scipy, which
 # this one does not install), so a bare `pytest` here must not walk into it.
 testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "db: needs a Postgres migrated to head; tests/conftest.py provides one",
+]

@@ -1,11 +1,10 @@
 """Tests for the headless single-game driver (game_runner.run_single_game).
 
 Seed-derivation, reproducibility, the temperature assertion and the error boundary run without a
-database. The dispatch + sudden-death end-to-end tests require a live Postgres and are skipped when 
-DATABASE_URL is unset."""
+database. The dispatch + sudden-death end-to-end tests need Postgres, marked ``db``: they run on
+the test session's (tests/conftest.py)."""
 import json
 import logging
-import os
 import random
 import re
 import uuid
@@ -587,8 +586,7 @@ async def test_sudden_death_without_a_playable_proposal_concedes_without_redispa
 
 
 # DB-gated end-to-end
-_db_required = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database")
+_db_required = pytest.mark.db
 
 
 def _insert_board(session, board_id):

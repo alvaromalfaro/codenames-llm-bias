@@ -1,12 +1,11 @@
 """Tests for writer.delete_run: run deletion + DB cascade (migration 0005).
 
-Require a live Postgres and are skipped when DATABASE_URL is unset, matching test_writer.py. Each
-test inserts its own board / run / game (unique ids) so runs are independent and need no cleanup.
-The full game graph is built through the real writer (writer.persist_game) so the cascade is
-exercised against a realistic tree - a normal turn AND a two-seat sudden-death turn, with non-null
-reveal_event_id backfill on both.
+Marked ``db``: they run on the test session's Postgres (tests/conftest.py). Each test inserts its
+own board / run / game (unique ids) so runs are independent and need no cleanup. The full game
+graph is built through the real writer (writer.persist_game) so the cascade is exercised against a
+realistic tree - a normal turn AND a two-seat sudden-death turn, with non-null reveal_event_id
+backfill on both.
 """
-import os
 import uuid
 
 import pytest
@@ -18,9 +17,7 @@ from backend.app.models.game_schemas import (
 )
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMCallRecord, LLMMessage
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+pytestmark = pytest.mark.db
 
 
 def _call(role, retry_index=0, temperature=0.5, seed=7):

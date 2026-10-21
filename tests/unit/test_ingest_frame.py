@@ -1,13 +1,12 @@
 """DB-gated tests for measurement-frame ingestion and the frame→boards FK link (A.5).
 
-These require a live Postgres (the disposable migrated pgvector) and are skipped when DATABASE_URL is
-unset. They are order-independent: every ingest is idempotent, so they neither require nor perform
+Marked ``db``: they run on the test session's Postgres (tests/conftest.py). They are
+order-independent: every ingest is idempotent, so they neither require nor perform
 table cleanup.
 """
 
 import json
 import math
-import os
 from pathlib import Path
 
 import pytest
@@ -22,9 +21,7 @@ from backend.app.db.ingest_frame import (
 )
 from backend.app.db.models import BoardModel, MeasurementFrameModel
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+pytestmark = pytest.mark.db
 
 _BOARDS_DIR = Path(__file__).resolve().parents[2] / "data" / "boards"
 _FRAME_FILE = _BOARDS_DIR / "measurement_frame.json"

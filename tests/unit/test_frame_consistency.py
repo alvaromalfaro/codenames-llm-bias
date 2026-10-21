@@ -21,7 +21,6 @@ that would need embeddings are marked ``# 6′:`` and deferred, never implemente
 """
 
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -31,9 +30,7 @@ from backend.app.db.ingest_boards import ingest_boards_if_absent
 from backend.app.db.ingest_frame import ingest_frame_if_absent
 from backend.app.db.models import BoardModel, MeasurementFrameModel
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+pytestmark = pytest.mark.db
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _BOARDS_DIR = _REPO_ROOT / "data" / "boards"

@@ -104,7 +104,8 @@ codenames-llm-bias/
 │   └── prompt_templates/      system / user / one-shot templates, incl. the measurement prompts
 ├── scripts/                   batch orchestrator CLI, run management, test games with a full log,
 │                              analysis CLIs, embedding backfill, MorphoLex TSV build
-├── tests/unit/                platform test suite (DB-backed tests gated on DATABASE_URL)
+├── tests/                     platform test suite; conftest.py gives the `db` tests a
+│                              throwaway Postgres
 ├── docker-compose.yml         db (pgvector) + ollama + app (the Python environment)
 ├── docker-compose.gpu.yml     optional override: reserves an NVIDIA GPU for ollama
 ├── ollama_entrypoint.sh       pulls every Ollama model in backend/app/config.py
@@ -822,18 +823,22 @@ pytest                       # from the repo root; asyncio_mode = auto
 pytest tests/unit/test_engine.py -q
 ```
 
-Nine test modules are gated on `DATABASE_URL` (`pytest.mark.skipif`) and are skipped without it. When
-you do enable them, point them at a **throwaway database** — they create, write and delete rows:
+The tests that need Postgres are marked `db`. A bare `pytest` gives them a database of their own
+(`tests/conftest.py`): a throwaway container of the `pgvector` image `docker-compose.yml` pins, on a
+free loopback port, with its data in memory, migrated to head and removed when the session ends. It
+takes Docker and about three seconds. It never uses the `DATABASE_URL` of your shell or of `.env`,
+so the tests cannot write into the development database.
 
 ```sh
-createdb -h localhost -U "$POSTGRES_USER" codenames_test
-DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/codenames_test" \
-  alembic -c backend/alembic.ini upgrade head
-DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/codenames_test" \
-  pytest
+pytest -m "not db"           # without the database tests: starts nothing
+TEST_DATABASE_URL="postgresql+psycopg2://user:password@localhost:5432/codenames_test" \
+  pytest                     # on a database of yours instead (migrated to head first)
 ```
 
-Never point them at the experiment database.
+Without Docker and without `TEST_DATABASE_URL` (in the devcontainer, say), the database tests are
+skipped, saying why. Point `TEST_DATABASE_URL` only at a database the tests may fill — they insert
+rows and never delete them — and never at the experiment database. A test session that is killed
+leaves its container running: `docker ps --filter name=codenames-test-db` finds it.
 
 **Dependencies** are pinned by `uv.lock`, which is versioned: the local venv and the `app` image
 (`uv export --frozen` in its Dockerfile) install the same versions. Change one with

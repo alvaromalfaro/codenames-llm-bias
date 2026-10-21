@@ -9,7 +9,6 @@ The threshold reset test is the discriminating one: 4 errors + 1 completion + 4 
 abort, proving the counter is consecutive, not cumulative.
 """
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -57,8 +56,7 @@ async def test_bank_shortfall_aborts_before_any_game(monkeypatch) -> None:
                         temperature=0.4, persist=False, enforce_digests=False)
 
 
-@pytest.mark.skipif(not os.environ.get("DATABASE_URL"),
-                    reason="requires a live Postgres database")
+@pytest.mark.db
 async def test_collision_check_aborts_before_any_game(monkeypatch) -> None:
     from backend.app.db.models import BoardModel, GameModel
     from backend.app.db.session import session_scope
@@ -170,8 +168,7 @@ def test_the_migrations_have_a_single_head_and_it_is_their_newest_file() -> None
     assert batch_runner._migration_heads() == {newest}
 
 
-@pytest.mark.skipif(not os.environ.get("DATABASE_URL"),
-                    reason="requires a live Postgres database")
+@pytest.mark.db
 def test_a_database_at_head_passes_the_schema_check() -> None:
     batch_runner._check_schema_at_head()
 
@@ -219,8 +216,7 @@ def test_ingest_bank_needs_the_measurement_frame(tmp_path) -> None:
         batch_runner._ingest_bank(tmp_path, ["control-000"])
 
 
-_needs_db = pytest.mark.skipif(not os.environ.get("DATABASE_URL"),
-                               reason="requires a live Postgres database")
+_needs_db = pytest.mark.db
 
 
 @_needs_db

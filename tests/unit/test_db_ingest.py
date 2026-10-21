@@ -1,11 +1,10 @@
 """Tests for board-artifact ingestion.
 
-The pure-mapping tests run without any database. The idempotency test requires a live
-Postgres and is skipped when DATABASE_URL is unset.
+The pure-mapping tests run without any database. The tests marked ``db`` run on the test
+session's Postgres (tests/conftest.py).
 """
 
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -132,9 +131,7 @@ def test_measurement_frame_id_present_is_carried():
     assert board.measurement_frame_id == "test-frame-abc"
 
 
-@pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+@pytest.mark.db
 def test_ingest_is_idempotent():
     from backend.app.db.ingest_frame import ingest_frame_if_absent
     from backend.app.db.session import session_scope
@@ -266,9 +263,7 @@ def test_the_sidecars_are_not_boards(tmp_path):
     assert ingest_boards_if_absent(_FakeSession(), tmp_path) == 0
 
 
-@pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+@pytest.mark.db
 def test_a_board_stored_before_the_hash_is_checked_against_its_file(tmp_path):
     """Against the real schema: a board stored with a NULL hash gets the hash of a file that agrees
     with it, and a changed file is refused."""

@@ -1,8 +1,7 @@
 """Tests for backend.app.db.runs: runs read back with their games counted by status.
 
-The database tests are skipped when DATABASE_URL is unset, matching test_writer.py. Each inserts
-its own board, runs and games (unique ids) and deletes them afterwards."""
-import os
+The database tests (marked ``db``) run on the test session's Postgres (tests/conftest.py). Each
+inserts its own board, runs and games (unique ids) and deletes them afterwards."""
 import uuid
 from decimal import Decimal
 
@@ -10,8 +9,7 @@ import pytest
 
 from backend.app.db.runs import get_run, list_runs
 
-_needs_db = pytest.mark.skipif(not os.environ.get("DATABASE_URL"),
-                               reason="requires a live Postgres database")
+_needs_db = pytest.mark.db
 
 
 def test_an_id_that_is_not_a_run_id_finds_no_run(monkeypatch) -> None:
