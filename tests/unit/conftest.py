@@ -9,6 +9,7 @@ from backend.app.models.game_schemas import (
     GamePhase,
     ClueEntry,
 )
+from backend.app.paths import PROMPT_TEMPLATES_DIR
 from backend.app.models.llm_schemas import LLMRequest, LLMMessage, LLMResponse, TokenUsage
 
 
@@ -36,11 +37,12 @@ def llm_request_cg() -> LLMRequest:
     Provides a valid LLM request for testing the LLM client when generating a response for a clue
     generation task.
     """
-    with open("data/prompt_templates/SYSTEM_TEMPLATE_CLUE_GIVER.txt", "r") as f:
-        system_prompt = f.read()
-
-    with open("data/prompt_templates/USER_TEMPLATE_CLUE_GIVER.txt", "r") as f:
-        user_prompt = f.read()
+    system_prompt = (PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_CLUE_GIVER.txt").read_text(
+        encoding="utf-8"
+    )
+    user_prompt = (PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_CLUE_GIVER.txt").read_text(
+        encoding="utf-8"
+    )
 
     turn_number = 1
     cards = _get_cards()

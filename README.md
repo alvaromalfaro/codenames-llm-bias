@@ -879,8 +879,8 @@ comparable only to runs sharing its fingerprint. The response schemas sent with 
 (`RESPONSE_FORMATS` in `llm_service.py`: `ClueJSONFormat`, `GuessJSONFormat` and
 `ConfidenceRankingJSONFormat` in `models/llm_schemas.py`) are part of the same fingerprint,
 docstrings included, since pydantic sends each format's docstring as its description.
-`llm_service.py` keeps a verbatim `_default_*` copy of each template, used when the file is missing,
-so edit both together: `tests/unit/test_llm_service.py` fails if they drift apart.
+Every prompt comes from its file: the service reads them all when it is built
+(`TEMPLATE_FILES` in `llm_service.py`), and refuses to start, naming the file, when one is missing.
 
 **Model roster** lives in `backend/app/config.py`: `llm_models` (what the batch defaults to, and
 what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the

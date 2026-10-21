@@ -58,32 +58,19 @@ def test_template_fingerprint_covers_the_response_schemas(monkeypatch):
     assert LLMService().template_fingerprint() != before
 
 
-def test_template_fingerprint_reflects_default_fallback(monkeypatch):
-    """The whole point of hashing loaded texts: the fingerprint follows the text a ``_default_*``
-    fallback really loaded. The defaults are verbatim copies of the files, so falling back alone
-    keeps the fingerprint; a default that drifted from its file changes it."""
+def test_template_fingerprint_is_the_same_on_a_crlf_checkout(tmp_path, monkeypatch):
+    """A Windows checkout writes the templates with CRLF; they are read as text, so the texts, and
+    the fingerprint, are the ones of the LF files."""
+    from backend.app.core import llm_service
+    from backend.app.paths import PROMPT_TEMPLATES_DIR
+
+    for name in llm_service.TEMPLATE_FILES.values():
+        text = (PROMPT_TEMPLATES_DIR / name).read_text(encoding="utf-8")
+        (tmp_path / name).write_bytes(text.replace("\n", "\r\n").encode("utf-8"))
     real = LLMService().template_fingerprint()
+    monkeypatch.setattr(llm_service, "PROMPT_TEMPLATES_DIR", tmp_path)
 
-    # Simulate the CLUE_GIVER system template file being absent, forcing the _default_* fallback.
-    real_open = open
-
-    def fake_open(path, *args, **kwargs):
-        if path == LLMService.SYSTEM_TEMP_CG_PATH:
-            raise FileNotFoundError(path)
-        return real_open(path, *args, **kwargs)
-
-    monkeypatch.setattr("builtins.open", fake_open)
-    fallback = LLMService()
-    # The loaded text really is the hardcoded default now, not the file.
-    assert fallback._system_prompt_cg == fallback._default_system_prompt_cg()
-    assert fallback.template_fingerprint() == real
-
-    monkeypatch.setattr(
-        LLMService, "_default_system_prompt_cg", lambda self: "a default that drifted from its file"
-    )
-    drifted = LLMService()
-    assert drifted._system_prompt_cg == "a default that drifted from its file"
-    assert drifted.template_fingerprint() != real
+    assert LLMService().template_fingerprint() == real
 
 
 # model_registry_snapshot shape + asymmetry

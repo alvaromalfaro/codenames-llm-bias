@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel
@@ -39,6 +40,43 @@ def text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
+# The prompt templates and one-shot examples the service sends, by the key the fingerprint knows
+# each by, as files of data/prompt_templates. All of them must be there: the service refuses to
+# start without one, rather than send a prompt that is not the versioned file.
+TEMPLATE_FILES = {
+    "system_prompt_cg": "SYSTEM_TEMPLATE_CLUE_GIVER.txt",
+    "user_prompt_cg": "USER_TEMPLATE_CLUE_GIVER.txt",
+    "system_prompt_gg": "SYSTEM_TEMPLATE_GUESSER.txt",
+    "user_prompt_gg": "USER_TEMPLATE_GUESSER.txt",
+    "system_prompt_sd_gg": "SYSTEM_TEMPLATE_SUDDEN_DEATH_GUESSER.txt",
+    "user_prompt_sd_gg": "USER_TEMPLATE_SUDDEN_DEATH_GUESSER.txt",
+    "system_prompt_meas_gg": "SYSTEM_TEMPLATE_MEASUREMENT_GUESSER.txt",
+    "user_prompt_meas_gg": "USER_TEMPLATE_MEASUREMENT_GUESSER.txt",
+    "system_prompt_meas_sd": "SYSTEM_TEMPLATE_MEASUREMENT_SD.txt",
+    "user_prompt_meas_sd": "USER_TEMPLATE_MEASUREMENT_SD.txt",
+    "one_shot_user_cg": "ONE_SHOT_USER_CLUE_GIVER.txt",
+    "one_shot_assistant_cg": "ONE_SHOT_ASSISTANT_CLUE_GIVER.txt",
+    "one_shot_user_gg": "ONE_SHOT_USER_GUESSER.txt",
+    "one_shot_assistant_gg": "ONE_SHOT_ASSISTANT_GUESSER.txt",
+}
+
+
+def load_templates(directory: Path | None = None) -> dict[str, str]:
+    """Every file of ``TEMPLATE_FILES`` under ``directory`` (data/prompt_templates by default), by
+    its key. Read as text, so a CRLF checkout reads as LF and the fingerprint is the same on every
+    system.
+
+    :raises FileNotFoundError: naming every file that is missing.
+    """
+    directory = directory or PROMPT_TEMPLATES_DIR
+    missing = [name for name in TEMPLATE_FILES.values() if not (directory / name).is_file()]
+    if missing:
+        raise FileNotFoundError(f"prompt templates missing from {directory}: {', '.join(missing)}")
+    return {
+        key: (directory / name).read_text(encoding="utf-8") for key, name in TEMPLATE_FILES.items()
+    }
+
+
 # The response schema each kind of call sends with its request: the provider holds the answer to it
 # (Ollama constrains the decoding with it, OpenRouter passes it on), so it is part of what the model
 # is asked, and the template fingerprint covers it. pydantic puts each format's docstring in the
@@ -65,21 +103,6 @@ def _require_sd_seat_phase(game_state: GameState, player_id: int, action: str) -
 
 
 class LLMService:
-    SYSTEM_TEMP_CG_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_CLUE_GIVER.txt")
-    USER_TEMP_CG_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_CLUE_GIVER.txt")
-    SYSTEM_TEMP_GG_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_GUESSER.txt")
-    USER_TEMP_GG_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_GUESSER.txt")
-    ONE_SHOT_USER_CG_PATH = str(PROMPT_TEMPLATES_DIR / "ONE_SHOT_USER_CLUE_GIVER.txt")
-    ONE_SHOT_ASSISTANT_CG_PATH = str(PROMPT_TEMPLATES_DIR / "ONE_SHOT_ASSISTANT_CLUE_GIVER.txt")
-    ONE_SHOT_USER_GG_PATH = str(PROMPT_TEMPLATES_DIR / "ONE_SHOT_USER_GUESSER.txt")
-    ONE_SHOT_ASSISTANT_GG_PATH = str(PROMPT_TEMPLATES_DIR / "ONE_SHOT_ASSISTANT_GUESSER.txt")
-    SYSTEM_TEMP_SD_GG_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_SUDDEN_DEATH_GUESSER.txt")
-    USER_TEMP_SD_GG_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_SUDDEN_DEATH_GUESSER.txt")
-    SYSTEM_TEMP_MEAS_GG_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_MEASUREMENT_GUESSER.txt")
-    USER_TEMP_MEAS_GG_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_MEASUREMENT_GUESSER.txt")
-    SYSTEM_TEMP_MEAS_SD_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_MEASUREMENT_SD.txt")
-    USER_TEMP_MEAS_SD_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_MEASUREMENT_SD.txt")
-
     def __init__(
         self,
         temperature: float = 0.7,
@@ -89,27 +112,29 @@ class LLMService:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_s = timeout_s
-        self._system_prompt_cg = self._load_prompt_template(self.SYSTEM_TEMP_CG_PATH, 0)
-        self._user_prompt_cg = self._load_prompt_template(self.USER_TEMP_CG_PATH, 1)
-        self._system_prompt_gg = self._load_prompt_template(self.SYSTEM_TEMP_GG_PATH, 2)
-        self._user_prompt_gg = self._load_prompt_template(self.USER_TEMP_GG_PATH, 3)
-        self._system_prompt_sd_gg = self._load_prompt_template(self.SYSTEM_TEMP_SD_GG_PATH, 4)
-        self._user_prompt_sd_gg = self._load_prompt_template(self.USER_TEMP_SD_GG_PATH, 5)
-        self._system_prompt_meas_gg = self._load_prompt_template(self.SYSTEM_TEMP_MEAS_GG_PATH, 6)
-        self._user_prompt_meas_gg = self._load_prompt_template(self.USER_TEMP_MEAS_GG_PATH, 7)
-        self._system_prompt_meas_sd = self._load_prompt_template(self.SYSTEM_TEMP_MEAS_SD_PATH, 8)
-        self._user_prompt_meas_sd = self._load_prompt_template(self.USER_TEMP_MEAS_SD_PATH, 9)
-        self._one_shot_user_cg = self._load_one_shot(self.ONE_SHOT_USER_CG_PATH, 0)
-        self._one_shot_assistant_cg = self._load_one_shot(self.ONE_SHOT_ASSISTANT_CG_PATH, 1)
-        self._one_shot_user_gg = self._load_one_shot(self.ONE_SHOT_USER_GG_PATH, 2)
-        self._one_shot_assistant_gg = self._load_one_shot(self.ONE_SHOT_ASSISTANT_GG_PATH, 3)
+        # Read once, here: every game of a batch is played with the texts the run's fingerprint
+        # records (see template_fingerprint).
+        texts = load_templates()
+        self._system_prompt_cg = texts["system_prompt_cg"]
+        self._user_prompt_cg = texts["user_prompt_cg"]
+        self._system_prompt_gg = texts["system_prompt_gg"]
+        self._user_prompt_gg = texts["user_prompt_gg"]
+        self._system_prompt_sd_gg = texts["system_prompt_sd_gg"]
+        self._user_prompt_sd_gg = texts["user_prompt_sd_gg"]
+        self._system_prompt_meas_gg = texts["system_prompt_meas_gg"]
+        self._user_prompt_meas_gg = texts["user_prompt_meas_gg"]
+        self._system_prompt_meas_sd = texts["system_prompt_meas_sd"]
+        self._user_prompt_meas_sd = texts["user_prompt_meas_sd"]
+        self._one_shot_user_cg = texts["one_shot_user_cg"]
+        self._one_shot_assistant_cg = texts["one_shot_assistant_cg"]
+        self._one_shot_user_gg = texts["one_shot_user_gg"]
+        self._one_shot_assistant_gg = texts["one_shot_assistant_gg"]
 
     def _loaded_template_texts(self) -> dict[str, str]:
         """Read-only accessor: stable template key -> the text the service actually holds in memory.
 
         Covers every template text the service loads and sends - the 10 prompt templates AND the 4
-        one-shot example texts - so the fingerprint reflects the real payloads, including any
-        ``_default_*`` fallback that was active because a file was missing.
+        one-shot example texts - so the fingerprint reflects the real payloads.
         """
         return {
             "system_prompt_cg": self._system_prompt_cg,
@@ -144,23 +169,17 @@ class LLMService:
         and of the response schemas the requests carry.
 
         Hashing the loaded texts - rather than the files on disk - is the whole point: the run row
-        records exactly which prompt texts were sent, whether they came from a file or from a
-        ``_default_*`` fallback. The defaults are verbatim copies of the files, so a fallback alone
-        leaves the fingerprint unchanged; a default that drifted from its file would change it. The
-        response schemas are hashed as they are sent, so a limit added to a format, or a change to
-        its docstring, changes the fingerprint as a changed prompt would. Stable across processes:
-        the texts are sorted by key and each contributes ``key\\0text\\0`` to the digest.
+        records exactly which prompt texts were sent, even if a file changes after the service read
+        it. The response schemas are hashed as they are sent, so a limit added to a format, or a
+        change to its docstring, changes the fingerprint as a changed prompt would. Stable across
+        processes: the texts are sorted by key and each contributes ``key\\0text\\0`` to the digest.
         """
         h = hashlib.sha256()
         texts = {**self._loaded_template_texts(), **self._response_schema_texts()}
         for key, text in sorted(texts.items()):
             h.update(key.encode("utf-8"))
             h.update(b"\0")
-            # ``str(text)`` defensively: a loaded text is normally a str, but a malformed hardcoded
-            # ``_default_*`` fallback can hold a non-str. Coercing keeps the fingerprint
-            # deterministic and content-sensitive without ever raising - provenance must never abort
-            # a run.
-            h.update(str(text).encode("utf-8"))
+            h.update(text.encode("utf-8"))
             h.update(b"\0")
         return h.hexdigest()
 
@@ -966,499 +985,3 @@ class LLMService:
             else:
                 board["civilians"].append(line)
         return board
-
-    def _load_prompt_template(self, template_path: str, prompt_type: int) -> str:
-        """
-        Loads a prompt template from the specified file path. If the file is not found, it returns
-        a default prompt based on the type of prompt requested (system or user). Every
-        ``_default_*`` text is a verbatim copy of its file (``tests/unit/test_llm_service.py``
-        checks it), so editing a template file means editing its default too.
-
-        :param template_path: The file path to the prompt template.
-        :param prompt_type: An integer indicating the type of prompt (0 for system, 1 for user).
-
-        :return: The loaded prompt template or a default prompt.
-        """
-        try:
-            with open(template_path, "r", encoding="utf-8") as f:
-                return f.read()
-        except FileNotFoundError as e:
-            match prompt_type:
-                case 0:
-                    return self._default_system_prompt_cg()
-                case 1:
-                    return self._default_user_prompt_cg()
-                case 2:
-                    return self._default_system_prompt_gg()
-                case 3:
-                    return self._default_user_prompt_gg()
-                case 4:
-                    return self._default_system_prompt_sd_gg()
-                case 5:
-                    return self._default_user_prompt_sd_gg()
-                case 6:
-                    return self._default_system_prompt_meas_gg()
-                case 7:
-                    return self._default_user_prompt_meas_gg()
-                case 8:
-                    return self._default_system_prompt_meas_sd()
-                case 9:
-                    return self._default_user_prompt_meas_sd()
-                case _:
-                    raise ValueError(
-                        "Invalid prompt type specified. Must be 0 (system clue giver), "
-                        "1 (user clue giver), 2 (system guesser), 3 (user guesser), "
-                        "4 (system sudden death guesser), 5 (user sudden death guesser), "
-                        "6 (system measurement guesser), 7 (user measurement guesser), "
-                        "8 (system measurement sudden death), or 9 (user measurement sudden "
-                        "death)."
-                    ) from e
-
-    def _load_one_shot(self, path: str, prompt_type: int) -> str:
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return f.read()
-        except FileNotFoundError as e:
-            match prompt_type:
-                case 0:
-                    return self._default_os_user_cg()
-                case 1:
-                    return self._default_os_assistant_cg()
-                case 2:
-                    return self._default_os_user_gg()
-                case 3:
-                    return self._default_os_assistant_gg()
-                case _:
-                    raise ValueError(
-                        "Invalid prompt type specified. Must be 0 (one-shot user clue "
-                        "giver), 1 (one-shot assistant clue giver), 2 (one-shot user "
-                        "guesser), or 3 (one-shot assistant guesser)."
-                    ) from e
-
-    def _default_system_prompt_cg(self) -> str:
-        """
-        Provides a default system prompt for the clue giver role in case the prompt template file is
-        not found.
-
-        :return: A default system prompt for the clue giver role.
-        """
-        return (
-            "You are a strategic master clue giver in a game of Codenames Duet. Your goal is to "
-            "connect as many 'Agent' words as possible with a single clue, while maintaining zero "
-            "semantic similarity to the 'Assassin' words and very low similarity to the 'Civilian' "
-            "words. \n\n"
-            "### RULES ###\n"
-            "1. The clue must be exactly ONE valid English word.\n"
-            "2. The clue must not be any word on the board: none of the words in the AGENTS, "
-            "ASSASSINS, CIVILIANS or OTHER WORDS STILL ON THE BOARD lists. This includes your own "
-            "AGENTS: the clue must point to them, never be one of them.\n"
-            "3. The clue must not be a derivative or spelling variation of a word on the board.\n"
-            "4. The clue must not be a part of a compound word on the board, or a compound that "
-            'contains a word on the board (e.g., "earth", "quake" and "earthy" are invalid '
-            'if "earthquake" is on the board, and "rawhide" is invalid if "hide" is; "ear" '
-            'and "hearth" are valid).\n'
-            "5. The count must be a positive integer indicating exactly how many Agent words your "
-            "clue targets.\n"
-            "6. SAFETY FIRST: In Codenames Duet, hitting an Assassin word instantly loses the game."
-            " Do not risk a clue that has even a tangential connection to an Assassin word.\n"
-            "7. An invalid clue costs your team one timer token, and your partner still guesses "
-            "with it.\n\n"
-            "### INPUT FORMAT ###\n"
-            "You will receive the board state as lists of words categorized as:\n"
-            "- AGENTS: The words you want your partner to guess.\n"
-            "- ASSASSINS: The deadly words you must absolutely avoid.\n"
-            "- CIVILIANS: Neutral words you should try to avoid.\n"
-            "- OTHER WORDS STILL ON THE BOARD: Words your partner already touched and cannot touch "
-            "again. They carry no risk, but they are still on the board, so rules 2, 3 and 4 apply "
-            "to them.\n"
-            "- REVEALED WORDS: Your agents that are already found. They are covered, so they are "
-            "no longer on the board.\n"
-            "The words in the first four lists are the words currently visible on the board.\n\n"
-            "### OUTPUT FORMAT ###\n"
-            "You must respond ONLY with a valid JSON object. DO NOT INCLUDE markdown formatting, "
-            "conversational text, or any characters outside the JSON structure.\n\n"
-            "{\n"
-            '    "reasoning": "Briefly state the semantic link for your target words and confirm '
-            "that safety checks against Assassins/Civilians passed, and that the clue is not a "
-            'listed word or a form of one. Strictly maximum 100 words.",\n'
-            '    "clue": "your_single_word_clue",\n'
-            '    "count": x,\n'
-            '    "targets": ["exact_board_word", "..."]\n'
-            "}\n\n"
-            'The "targets" field lists the exact board words your clue is meant for.'
-        )
-
-    def _default_user_prompt_cg(self) -> str:
-        """
-        Provides a default user prompt for the clue giver role in case the prompt template file is
-        not found.
-
-        :return: A default user prompt for the clue giver role.
-        """
-        return (
-            "### YOUR TASK ###\n"
-            "Propose a clue and a count for the guessing player, and list the exact board words "
-            "your clue is for. Remember: your clue cannot be any word listed below, nor a form of "
-            "one.\n\n"
-            "Turn: {turn_number}\n\n"
-            "### BOARD STATUS ###\n"
-            "AGENTS (Words to connect):\n"
-            "{agent_words}\n\n"
-            "ASSASSINS (Terminal state - strictly avoid):\n"
-            "{assassin_words}\n\n"
-            "CIVILIANS (Neutral - try to avoid):\n"
-            "{civilian_words}\n\n"
-            "OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one "
-            "of them or a form of one):\n"
-            "{other_words}\n\n"
-            "REVEALED WORDS (Already guessed, no longer valid targets):\n"
-            "{revealed_words}"
-        )
-
-    def _default_system_prompt_gg(self) -> str:
-        """
-        Provides a default system prompt for the guessing role in case the prompt template file is
-        not found.
-
-        :return: A default system prompt for the guessing role.
-        """
-        return (
-            "You are the guessing player in Codenames Duet. Your task is to analyze a given clue "
-            "and number (count), and select the words from the board that best match the clue.\n\n"
-            "### OBJECTIVE ###\n"
-            "- Propose the optimal sequence of guesses for the current turn.\n"
-            "- Maximize correct Agent guesses while strictly managing the risk of hitting an "
-            "Assassin or Civilian.\n\n"
-            "### GAME RULES & CONSTRAINTS ###\n"
-            "1. What each word is for you (Agent, Civilian or Assassin) is decided ONLY by your "
-            "partner's side of the key card, which you cannot see. An Agent for you is a word that "
-            "is green on your partner's side.\n"
-            "2. UNLIMITED GUESSES: In Codenames Duet, there is no limit to the number of guesses "
-            "you can make in a single turn. \n"
-            '3. The "count" provided with the clue is a hint about how many words the clue-giver '
-            "intended to connect. It is a target, not a hard limit.\n"
-            "4. You may stop guessing early (proposing fewer than count) if the semantic ambiguity "
-            "of the remaining options is too high.\n"
-            "5. You must always propose at least one word: in Codenames Duet every turn needs at "
-            "least one guess, so an empty list is not allowed. If no word seems safe, propose the "
-            "one you are most confident in.\n"
-            "6. You may guess MORE than the count if you have high confidence in words from "
-            "previous turns' clues.\n"
-            "7. DO NOT invent words; you must select exactly from the provided board words.\n\n"
-            "### YOUR SIDE OF THE KEY CARD ###\n"
-            "You can see your own side of the key card. It colors the 25 words: 9 green, 3 black "
-            "and 13 beige. It does NOT show your Agents: your green words are the ones YOUR "
-            "PARTNER must find. It does tell you how risky each word is, because every key card "
-            "follows the same pattern:\n"
-            "- Your 3 BLACK words: 1 is an Agent for you, 1 is an Assassin, 1 is a Civilian.\n"
-            "- Your 9 GREEN words: 3 are Agents for you, 1 is an Assassin, 5 are Civilians.\n"
-            "- Your 13 BEIGE words: 5 are Agents for you, 1 is an Assassin, 7 are Civilians.\n"
-            "If you have already found the black word that was an Agent for you, do not guess your "
-            "other black words.\n\n"
-            "### DECISION POLICY (OPTIMAL STOPPING) ###\n"
-            "- Step 1: Compute the semantic relation between the current clue and EVERY word on "
-            "the board.\n"
-            "- Step 2: Rank the candidate words by confidence.\n"
-            "- Step 3: Establish a strict confidence threshold. If the probability of a word being "
-            "an Agent drops below this safety threshold, STOP immediately, but never before your "
-            "first word. In Codenames Duet, precision is infinitely more valuable than coverage. \n"
-            "- Step 4: Evaluate previous unsolved clues. If a board word strongly matches a past "
-            "clue and meets your confidence threshold, include it in your proposal sequence.\n"
-            "- Step 5: Choose words because the clues point to them, never because of their color. "
-            "Then check each proposal against your side of the key card: its color tells you how "
-            "risky the word is.\n\n"
-            "### OUTPUT FORMAT ###\n"
-            "You must respond ONLY with a valid JSON object. Do not include formatting wrappers "
-            "like ```json. Start your response immediately with the { character.\n\n"
-            "{\n"
-            '    "reasoning": "Briefly state why you chose the proposed words and define your '
-            'safety threshold. Strictly maximum 100 words.",\n'
-            '    "stop_reason": "Explain the exact logic used to terminate the guess sequence '
-            '(e.g., reached the target count, semantic distance too high, etc.).",\n'
-            '    "proposals": [\n'
-            '        {"word": "exact_board_word", "confidence": 0.95},\n'
-            '        {"word": "another_word", "confidence": 0.88}\n'
-            "    ]\n"
-            "}"
-        )
-
-    def _default_user_prompt_gg(self) -> str:
-        """
-        Provides a default user prompt for the guessing role in case the prompt template file is
-        not found.
-
-        :return: A default user prompt for the guessing role.
-        """
-        return (
-            "### YOUR TASK ###\n"
-            "Propose your optimal sequence of guesses. \n"
-            "Remember: You must propose at least one word. You may stop early if the risk is high, "
-            "or guess MORE than the target count if you find strong matches for previous clues.\n"
-            "Follow the required JSON format exactly.\n\n"
-            "Turn: {turn_number}\n\n"
-            "### CURRENT CLUE ###\n"
-            "- Clue: {clue}\n"
-            "- Target Count: {count}\n\n"
-            "### PREVIOUS CLUES (Optional context for backtracking) ###\n"
-            "{previous_clues_history}\n\n"
-            "### YOUR SIDE OF THE KEY CARD ###\n"
-            "{own_key}\n\n"
-            "### UNREVEALED BOARD WORDS ###\n"
-            "{words_remaining}"
-        )
-
-    def _default_os_user_cg(self) -> str:
-        """
-        Provides a default one-shot example for the user in the clue giver role in case the one-shot
-        example file is not found.
-        """
-        return (
-            "### YOUR TASK ###\n"
-            "Propose a clue and a count for the guessing player, and list the exact board words "
-            "your clue is for. Remember: your clue cannot be any word listed below, nor a form of "
-            "one.\n\n"
-            "Turn: 1\n\n"
-            "### BOARD STATUS ###\n"
-            "AGENTS (Words to connect):\n"
-            "- CROWN\n"
-            "- THRONE\n"
-            "- CASTLE\n\n"
-            "ASSASSINS (Terminal state - strictly avoid):\n"
-            "- BRIDGE\n\n"
-            "CIVILIANS (Neutral - try to avoid):\n"
-            "- TOWER\n"
-            "- KNIGHT\n\n"
-            "OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one "
-            "of them or a form of one):\n"
-            "None.\n\n"
-            "REVEALED WORDS (Already guessed, no longer valid targets):\n"
-            "No words revealed yet."
-        )
-
-    def _default_os_assistant_cg(self) -> str:
-        """
-        Provides a default one-shot example for the assistant in the clue giver role in case the
-        one-shot example file is not found.
-
-        This example should demonstrate the reasoning process and the final clue and count output in
-        the correct JSON format.
-        """
-        return (
-            '{"reasoning": "Step 1: CROWN, THRONE, CASTLE all relate to monarchy and royalty. '
-            "TOWER and KNIGHT are civilians with medieval connotations — a clue like 'medieval' or "
-            "'fortress' risks pulling them in. Step 2: Best candidate cluster is CROWN + THRONE + "
-            "CASTLE → clue 'royal'. Step 3: ASSASSIN CHECK — BRIDGE has no meaningful semantic "
-            "link to 'royal'. Safe to proceed. Step 4: TOWER could weakly associate with 'royal' "
-            "(Tower of London), so I reduce count to 2 targeting CROWN and THRONE, the strongest "
-            "matches, to avoid the civilian TOWER. Step 5: 'royal' is not a board word, not a "
-            'derivative of any board word, and not part of a compound board word. Valid.", '
-            '"clue": "royal", "count": 2, "targets": ["CROWN", "THRONE"]}'
-        )
-
-    def _default_os_user_gg(self) -> str:
-        """
-        Provides a default one-shot example for the user in the guessing role in case the one-shot
-        example file is not found.
-        """
-        return (
-            "### YOUR TASK ###\n"
-            "Propose your optimal sequence of guesses.\n"
-            "Remember: You must propose at least one word. You may stop early if the risk is high, "
-            "or guess MORE than the target count if you find strong matches for previous clues.\n"
-            "Follow the required JSON format exactly.\n\n"
-            "Turn: 3\n\n"
-            "### CURRENT CLUE ###\n"
-            "- Clue: cold\n"
-            "- Target Count: 2\n\n"
-            "### PREVIOUS CLUES (Optional context for backtracking) ###\n"
-            "- Turn: 1, Clue: ocean, Count: 2\n\n"
-            "### YOUR SIDE OF THE KEY CARD ###\n"
-            "Black on your side (all 3):\n"
-            "- CORAL (covered by an agent card: you guessed it, and it was an Agent for you)\n"
-            "- WAVE\n"
-            "- SHIP\n\n"
-            "Green on your side (only the words you can still guess):\n"
-            "- ICE\n"
-            "- FIRE\n\n"
-            "Beige on your side (only the words you can still guess):\n"
-            "- WIND\n"
-            "- DESERT\n"
-            "- FROST\n\n"
-            "### UNREVEALED BOARD WORDS ###\n"
-            "- ICE\n"
-            "- FIRE\n"
-            "- WIND\n"
-            "- WAVE\n"
-            "- DESERT\n"
-            "- FROST\n"
-            "- SHIP"
-        )
-
-    def _default_os_assistant_gg(self) -> str:
-        """
-        Provides a default one-shot example for the assistant in the guessing role in case the
-        one-shot example file is not found.
-
-        This example should demonstrate the reasoning process for selecting guesses based on the
-        current clue and previous clues, the confidence scores for each proposed guess, and the stop
-        reason, all formatted in the correct JSON structure.
-        """
-        return (
-            '{"reasoning": "Current clue is \'cold\' (count 2). ICE (0.97) is a direct synonym and '
-            "FROST (0.93) a near-synonym: both are above my 0.80 threshold. I pick them for the "
-            "clue, not for their colors. WIND (0.55) is ambiguous, DESERT (0.10) is mostly about "
-            "heat, and FIRE (0.02) is an antonym. Previous clue 'ocean' (count 2): WAVE (0.91) and "
-            "SHIP (0.72) match it, but both are black on my side, and I already found my black "
-            'Agent, CORAL. So WAVE and SHIP are an Assassin and a Civilian for me.", '
-            '"stop_reason": "Proposed ICE and FROST for \'cold\', both above the 0.80 threshold. '
-            "Did not add WAVE or SHIP for 'ocean': they are my other black words, and my black "
-            'Agent is already found.", "proposals": [{"word": "ICE", "confidence": 0.97}, '
-            '{"word": "FROST", "confidence": 0.93}]}'
-        )
-
-    def _default_system_prompt_sd_gg(self) -> str:
-        return (
-            "You are the guessing player in Codenames Duet. The game has entered SUDDEN DEATH: the "
-            "timer tokens have run out. There are no more clues - you must now find all your "
-            "remaining Agents directly from the board.\n\n"
-            "### RULES ###\n"
-            "1. You must identify every remaining word on the board that is an Agent for you. What "
-            "each word is for you (Agent, Civilian or Assassin) is decided ONLY by your partner's "
-            "side of the key card, which you cannot see. An Agent for you is a word that is green "
-            "on your partner's side.\n"
-            "2. Your guesses are played one by one, in the order you list them. If one is a "
-            "Civilian or an Assassin for you, you both lose at once. If your list ends while you "
-            "still have Agents to find, you both lose too: no turn comes after this one.\n"
-            "3. So list every word you think may be one of your Agents, best first. Stopping early "
-            "never helps: it loses just as a wrong guess does.\n"
-            "4. Use the full clue history to recall which words your partner was hinting at.\n"
-            "5. Choose words because the clues point to them, never because of their color. Then "
-            "check each proposal against your side of the key card: its color tells you how risky "
-            "the word is.\n"
-            "6. DO NOT invent words; select only from the provided unrevealed board words.\n\n"
-            "### YOUR SIDE OF THE KEY CARD ###\n"
-            "You can see your own side of the key card. It colors the 25 words: 9 green, 3 black "
-            "and 13 beige. It does NOT show your Agents: your green words are the ones YOUR "
-            "PARTNER must find. It does tell you how risky each word is, because every key card "
-            "follows the same pattern:\n"
-            "- Your 3 BLACK words: 1 is an Agent for you, 1 is an Assassin, 1 is a Civilian.\n"
-            "- Your 9 GREEN words: 3 are Agents for you, 1 is an Assassin, 5 are Civilians.\n"
-            "- Your 13 BEIGE words: 5 are Agents for you, 1 is an Assassin, 7 are Civilians.\n"
-            "If you have already found the black word that was an Agent for you, do not guess your "
-            "other black words.\n\n"
-            "### OUTPUT FORMAT ###\n"
-            "Respond ONLY with a valid JSON object. No markdown wrappers.\n\n"
-            "{\n"
-            '    "reasoning": "Briefly state which past clues led you to your proposed agents. '
-            'Strictly maximum 100 words.",\n'
-            '    "stop_reason": "Explain why your list ends where it does.",\n'
-            '    "proposals": [\n'
-            '        {"word": "exact_board_word", "confidence": 0.95}\n'
-            "    ]\n"
-            "}"
-        )
-
-    def _default_user_prompt_sd_gg(self) -> str:
-        return (
-            "### YOUR TASK ###\n"
-            "List every word that may be one of your remaining Agents, best first, using the clue "
-            "history as your guide.\n"
-            "Follow the required JSON format exactly.\n\n"
-            "### CLUE HISTORY (all clues given to you during the game) ###\n"
-            "{clue_history}\n\n"
-            "### YOUR SIDE OF THE KEY CARD ###\n"
-            "{own_key}\n\n"
-            "### UNREVEALED BOARD WORDS ###\n"
-            "{words_remaining}"
-        )
-
-    def _default_system_prompt_meas_gg(self) -> str:
-        """
-        Default system prompt for the standard confidence-ranking measurement call, used when the
-        template file is missing. Purely mechanical: it instructs the model to score every
-        unrevealed card and never mentions gender, associations, stereotypes, or bias (construct
-        non-reactivity).
-        """
-        return (
-            "You are scoring a clue against a board in Codenames Duet. You are given a single clue "
-            "(a word and a count) and the full list of unrevealed board words. Your task is purely "
-            "mechanical.\n\n"
-            "### TASK ###\n"
-            "For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that the "
-            "word is one of the words the clue points to. 0.0 means the clue clearly does not "
-            "point to it; 1.0 means the clue clearly points to it.\n\n"
-            "### RULES ###\n"
-            "1. Score EVERY unrevealed word. Do not omit any word, and do not invent words that "
-            "are not listed.\n"
-            "2. Confidence must be a number in the range [0.0, 1.0].\n"
-            "3. Score each word independently on its own merits; the count is only context.\n\n"
-            "### OUTPUT FORMAT ###\n"
-            "Respond ONLY with a valid JSON object. Do not include markdown wrappers like ```json. "
-            "Start your response immediately with the { character.\n\n"
-            "{\n"
-            '    "reasoning": "Briefly summarize the semantic link. Strictly maximum 250 words.",\n'
-            '    "rankings": [\n'
-            '        {"word": "exact_board_word", "confidence": 0.95},\n'
-            '        {"word": "another_word", "confidence": 0.10}\n'
-            "    ]\n"
-            "}\n"
-        )
-
-    def _default_user_prompt_meas_gg(self) -> str:
-        """Default user prompt for the standard confidence-ranking measurement call."""
-        return (
-            "### YOUR TASK ###\n"
-            "For every unrevealed board word listed below, assign a confidence in [0.0, 1.0] that "
-            "the current clue points to it. Score every word. Follow the required JSON format "
-            "exactly.\n\n"
-            "### CURRENT CLUE ###\n"
-            "- Clue: {clue}\n"
-            "- Target Count: {count}\n\n"
-            "### PREVIOUS CLUES (context only) ###\n"
-            "{previous_clues_history}\n\n"
-            "### UNREVEALED BOARD WORDS ###\n"
-            "{words_remaining}"
-        )
-
-    def _default_system_prompt_meas_sd(self) -> str:
-        """
-        Default system prompt for the sudden-death confidence-ranking measurement call. Purely
-        mechanical; never mentions gender, associations, stereotypes, or bias.
-        """
-        return (
-            "You are scoring a board in Codenames Duet during SUDDEN DEATH. There are no more "
-            "clues; you are given the full clue history and the list of unrevealed board words. "
-            "Your task is purely mechanical.\n\n"
-            "### TASK ###\n"
-            "For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that the "
-            "word is one of YOUR remaining agent cards. 0.0 means it clearly is not one of your "
-            "agents; 1.0 means it clearly is.\n\n"
-            "### RULES ###\n"
-            "1. Score EVERY unrevealed word. Do not omit any word, and do not invent words that "
-            "are not listed.\n"
-            "2. Confidence must be a number in the range [0.0, 1.0].\n"
-            "3. Use the clue history to recall which words your partner was pointing at.\n\n"
-            "### OUTPUT FORMAT ###\n"
-            "Respond ONLY with a valid JSON object. Do not include markdown wrappers like ```json. "
-            "Start your response immediately with the { character.\n\n"
-            "{\n"
-            '    "reasoning": "Briefly summarize the semantic link. Strictly maximum 250 words.",\n'
-            '    "rankings": [\n'
-            '        {"word": "exact_board_word", "confidence": 0.95},\n'
-            '        {"word": "another_word", "confidence": 0.10}\n'
-            "    ]\n"
-            "}\n"
-        )
-
-    def _default_user_prompt_meas_sd(self) -> str:
-        """Default user prompt for the sudden-death confidence-ranking measurement call."""
-        return (
-            "### YOUR TASK ###\n"
-            "For every unrevealed board word listed below, assign a confidence in [0.0, 1.0] that "
-            "it is one of your remaining agent cards. Score every word. Follow the required JSON "
-            "format exactly.\n\n"
-            "### CLUE HISTORY (all clues given to you during the game) ###\n"
-            "{clue_history}\n\n"
-            "### UNREVEALED BOARD WORDS ###\n"
-            "{words_remaining}"
-        )
