@@ -832,6 +832,25 @@ batch's `--dry-run`. The commits that only reformatted are listed in `.git-blame
 GitHub's blame skips; `git config blame.ignoreRevsFile .git-blame-ignore-revs` makes yours skip them
 too.
 
+Two kinds of test guard the game itself:
+
+* **Property tests** (`tests/unit/test_engine_properties.py`): Hypothesis plays the engine with
+  random legal actions, and some it must refuse, on every board of the bank; every state must keep
+  the invariants of `backend/app/core/invariants.py`, a refused action must change nothing, and
+  every game must end.
+* **Golden games** (`tests/fixtures/golden/`, `tests/unit/test_golden_games.py`): games real models
+  played against Ollama, recorded at the daemon (`backend/app/core/golden.py`), are played again
+  through the real local client with the recorded answers. Every request must be the one recorded,
+  and the game must come out the same, clue for clue and reveal for reveal. A refactor must keep
+  them passing. A change to what the models are sent (a template, a response schema, a seed) fails
+  at the first request that differs, by design: record the games again, with the same arguments
+  (each fixture keeps them), once the change is meant.
+
+```sh
+python scripts/record_golden_game.py --model-a ollama:llama3.1:8b --board-id probe-gender-career-001 \
+  --master-seed 11 --out tests/fixtures/golden/llama_probe.json --description "..."
+```
+
 The tests that need Postgres are marked `db`. A bare `pytest` gives them a database of their own
 (`tests/conftest.py`): a throwaway container of the `pgvector` image `docker-compose.yml` pins, on a
 free loopback port, with its data in memory, migrated to head and removed when the session ends. It
