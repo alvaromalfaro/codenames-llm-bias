@@ -12,8 +12,9 @@ from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMError, LLMModelNotProvidedError, LLMParseError, LLMEmptyResponseError,
-    LLMDegenerateResponseError, LLMTruncatedResponseError, LLMTimeoutError, LLMAuthError,
-    LLMRateLimitError, LLMProviderUnavailableError, LLMModelNotFoundError, LLMInvalidRequestError,
+    LLMDegenerateResponseError, LLMTruncatedResponseError, LLMMalformedResponseError,
+    LLMTimeoutError, LLMAuthError, LLMRateLimitError, LLMProviderUnavailableError,
+    LLMModelNotFoundError, LLMInvalidRequestError,
 )
 from ollama import AsyncClient, RequestError, ResponseError
 
@@ -216,11 +217,13 @@ class LLMClientLocal(LLMClient):
                 try:
                     parsed = expected_format.model_validate_json(content)
                 except Exception as e:
-                    # A parse error is not drawn again, so this answer is all there is to audit: it
-                    # is logged whole (num_predict bounds it), at a level the batch's log keeps.
-                    logger.warning("ollama %s response does not match %s (%s); the answer:\n%s",
+                    # A bad draw, drawn again within the caller's budget. Only its count reaches the
+                    # database, and the schema the answer was constrained by should have kept it
+                    # from being written, so it is logged whole (num_predict bounds it), at a level
+                    # the batch's log keeps.
+                    logger.warning("ollama %s response does not match %s (%s); discarded draw:\n%s",
                                    self.model_name, expected_format.__name__, e, content)
-                    raise LLMParseError(
+                    raise LLMMalformedResponseError(
                         provider="ollama", raw_payload=response_json, cause=e,
                         execution_mode="local"
                     )

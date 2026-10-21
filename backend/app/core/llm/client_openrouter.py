@@ -6,8 +6,8 @@ from openai import AsyncOpenAI, AuthenticationError, RateLimitError, APITimeoutE
 from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
-    LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMProviderUnavailableError, LLMParseError,
-    LLMTruncatedResponseError,
+    LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMProviderUnavailableError,
+    LLMTruncatedResponseError, LLMMalformedResponseError,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,8 +29,8 @@ class LLMClientOpenRouter(LLMClient):
     async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
         """Generate a response, retrying retriable errors per ``self.max_retries``.
 
-        A cut answer is drawn again with a new seed, and a transient failure re-sends the same
-        request; see ``generate_with_retries``."""
+        A cut or malformed answer is drawn again with a new seed, and a transient failure re-sends
+        the same request; see ``generate_with_retries``."""
         return await generate_with_retries(
             lambda req: self._generate_once(req, expected_format), request,
             max_retries=self.max_retries, provider="openrouter", model=self.model_name)
@@ -83,11 +83,13 @@ class LLMClientOpenRouter(LLMClient):
                 try:
                     expected_format.model_validate_json(content)
                 except Exception as e:
-                    # A parse error is not drawn again, so this answer is all there is to audit: it
-                    # is logged whole (max_tokens bounds it), at a level the batch's log keeps.
-                    logger.warning("openrouter %s response does not match %s (%s); the answer:\n%s",
-                                   self.model_name, expected_format.__name__, e, content)
-                    raise LLMParseError(
+                    # A bad draw, drawn again within the caller's budget. Only its count reaches the
+                    # database, so it is logged whole (max_tokens bounds it), at a level the batch's
+                    # log keeps.
+                    logger.warning("openrouter %s response does not match %s (%s); discarded "
+                                   "draw:\n%s", self.model_name, expected_format.__name__, e,
+                                   content)
+                    raise LLMMalformedResponseError(
                         provider="openrouter", raw_payload=response.model_dump(), cause=e,
                         execution_mode="api")
 

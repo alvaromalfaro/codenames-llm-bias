@@ -2,11 +2,13 @@ import json
 import logging
 import httpx
 import pytest
-from openai import APITimeoutError
+from openai import APITimeoutError, AuthenticationError
 from unittest.mock import patch, AsyncMock, MagicMock
 from backend.app.core.llm import client as client_module
 from backend.app.core.llm.client_openrouter import LLMClientOpenRouter, _OPENROUTER_BASE_URL
-from backend.app.models.llm_errors import LLMParseError, LLMTimeoutError
+from backend.app.models.llm_errors import (
+    LLMAuthError, LLMMalformedResponseError, LLMTimeoutError,
+)
 from backend.app.models.llm_schemas import LLMResponse, ClueJSONFormat
 
 
@@ -138,25 +140,47 @@ async def test_openrouter_retries_retriable_then_succeeds(llm_request_cg, monkey
 
 @pytest.mark.asyncio
 async def test_openrouter_non_retriable_raises_immediately(llm_request_cg, monkeypatch):
-    """A non-retriable error (parse failure) raises on the first attempt even with a retry budget."""
+    """A non-retriable error (a rejected key) raises on the first attempt even with a retry
+    budget."""
     monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
-    bad = _mock_openai_response()
-    bad.choices[0].message.content = "not valid json for the schema"
+    rejected = AuthenticationError(
+        "invalid key", body=None,
+        response=httpx.Response(401, request=httpx.Request("POST", _OPENROUTER_BASE_URL)))
 
     with patch("backend.app.core.llm.client_openrouter.AsyncOpenAI") as MockOpenAI:
-        mock_create = AsyncMock(return_value=bad)
+        mock_create = AsyncMock(side_effect=rejected)
         MockOpenAI.return_value.chat.completions.create = mock_create
         client = LLMClientOpenRouter("openrouter/some-model", max_retries=3)
 
-        with pytest.raises(LLMParseError):
+        with pytest.raises(LLMAuthError):
             await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
         assert mock_create.call_count == 1
 
 
 @pytest.mark.asyncio
-async def test_openrouter_parse_error_keeps_the_answer(llm_request_cg, caplog):
-    """A parse error carries the provider's payload and logs the whole answer at WARNING: the answer
-    is not drawn again, and the batch logs at INFO."""
+async def test_openrouter_draws_a_malformed_answer_again_and_counts_it(llm_request_cg):
+    """An answer that does not match the schema is a bad draw: drawn again with the next derived
+    seed, and counted on the answer kept."""
+    request = llm_request_cg.model_copy(update={"seed": 321})
+    bad = _mock_openai_response()
+    bad.choices[0].message.content = "not valid json for the schema"
+
+    with patch("backend.app.core.llm.client_openrouter.AsyncOpenAI") as MockOpenAI:
+        mock_create = AsyncMock(side_effect=[bad, _mock_openai_response()])
+        MockOpenAI.return_value.chat.completions.create = mock_create
+        client = LLMClientOpenRouter("openrouter/some-model", max_retries=2)
+
+        result = await client.generate(request, expected_format=ClueJSONFormat)
+
+    assert result.raw_payload[client_module.MALFORMED_RESAMPLE_KEY] == 1
+    seeds = [call.kwargs["seed"] for call in mock_create.call_args_list]
+    assert seeds == [321, client_module.redraw_seed(321, 1) & 0x7FFFFFFF]
+
+
+@pytest.mark.asyncio
+async def test_openrouter_malformed_answer_keeps_the_answer(llm_request_cg, caplog):
+    """A malformed answer carries the provider's payload and logs the whole answer at WARNING: only
+    its count reaches the database, and the batch logs at INFO."""
     bad = _mock_openai_response()
     bad.choices[0].message.content = "not valid json for the schema"
 
@@ -165,7 +189,7 @@ async def test_openrouter_parse_error_keeps_the_answer(llm_request_cg, caplog):
         client = LLMClientOpenRouter("openrouter/some-model")
 
         with caplog.at_level(logging.WARNING, logger="backend.app.core.llm.client_openrouter"):
-            with pytest.raises(LLMParseError) as excinfo:
+            with pytest.raises(LLMMalformedResponseError) as excinfo:
                 await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
 
     assert excinfo.value.raw_payload == {"id": "req-123"}

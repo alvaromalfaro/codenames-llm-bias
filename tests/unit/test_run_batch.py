@@ -307,7 +307,7 @@ def test_every_llm_error_code_has_a_kind(cls) -> None:
 
 @pytest.mark.parametrize("code, kind", [
     ("truncated_response", "model"), ("degenerate_response", "model"), ("empty_response", "model"),
-    ("parse_error", "model"), ("refused", "model"),
+    ("malformed_response", "model"), ("parse_error", "model"), ("refused", "model"),
     ("timeout", "provider"), ("rate_limit", "provider"), ("provider_unavailable", "provider"),
     ("model_not_found", "provider"), ("invalid_request", "provider"),
 ])

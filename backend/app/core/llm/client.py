@@ -7,6 +7,7 @@ from typing import Optional
 from pydantic import BaseModel
 from backend.app.models.llm_errors import (
     LLMError, LLMEmptyResponseError, LLMDegenerateResponseError, LLMTruncatedResponseError,
+    LLMMalformedResponseError,
 )
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse
 
@@ -27,6 +28,17 @@ DEGENERATE_RESAMPLE_KEY = "degenerate_response_resamples"
 
 # Same, for answers cut at the output limit (a model that loops until it is stopped).
 TRUNCATED_RESAMPLE_KEY = "truncated_response_resamples"
+
+# Same, for answers that do not match the response schema (a field missing, a value out of range).
+MALFORMED_RESAMPLE_KEY = "malformed_response_resamples"
+
+# The bad draws, each with the key it is counted under.
+_BAD_DRAWS = (
+    (LLMEmptyResponseError, EMPTY_RESAMPLE_KEY),
+    (LLMDegenerateResponseError, DEGENERATE_RESAMPLE_KEY),
+    (LLMTruncatedResponseError, TRUNCATED_RESAMPLE_KEY),
+    (LLMMalformedResponseError, MALFORMED_RESAMPLE_KEY),
+)
 
 _MASK64 = (1 << 64) - 1
 
@@ -57,10 +69,11 @@ async def generate_with_retries(
     retried in one of two ways:
 
     - **A bad draw** - an empty (``LLMEmptyResponseError``), degenerate
-      (``LLMDegenerateResponseError``) or cut (``LLMTruncatedResponseError``) answer - is drawn
-      again at once, with a new seed: ``redraw_seed(request.seed, k)`` for the k-th new draw. With
-      the same seed a local model gives the same answer again (a model that loops loops again), so
-      re-sending the request would only spend the budget. The answer that is finally kept carries
+      (``LLMDegenerateResponseError``), cut (``LLMTruncatedResponseError``) or malformed
+      (``LLMMalformedResponseError``) answer - is drawn again at once, with a new seed:
+      ``redraw_seed(request.seed, k)`` for the k-th new draw. With the same seed a local model gives
+      the same answer again (a model that loops loops again), so re-sending the request would only
+      spend the budget. The answer that is finally kept carries
       the seed it was drawn with (``LLMResponse.requested_seed``, hence ``llm_call.requested_seed``).
     - **A transient failure** (timeout, rate limit, provider unavailable) re-sends the same request
       after an exponential backoff: the network failed, not the model.
@@ -72,13 +85,11 @@ async def generate_with_retries(
 
     Bad draws are model behavior, so the number of each kind absorbed by this call is stamped onto
     the successful response's ``raw_payload`` (``EMPTY_RESAMPLE_KEY``, ``DEGENERATE_RESAMPLE_KEY``,
-    ``TRUNCATED_RESAMPLE_KEY``) and rides the existing audit path to ``llm_call.raw_payload``. Their
-    sum is the ``k`` of the kept answer's seed.
+    ``TRUNCATED_RESAMPLE_KEY``, ``MALFORMED_RESAMPLE_KEY``) and rides the existing audit path to
+    ``llm_call.raw_payload``. Their sum is the ``k`` of the kept answer's seed.
     """
     n = 0
-    empty_resamples = 0
-    degenerate_resamples = 0
-    truncated_resamples = 0
+    resamples = {key: 0 for _, key in _BAD_DRAWS}
     current = request
     while True:
         try:
@@ -86,23 +97,14 @@ async def generate_with_retries(
         except LLMError as exc:
             if not exc.retriable or n >= max_retries:
                 raise
-            # An empty, degenerate or truncated draw is a bad draw, not a network transient: it is
-            # drawn again at once with a new seed. Only a transient backs off, and re-sends the same
-            # request.
-            is_empty = isinstance(exc, LLMEmptyResponseError)
-            is_degenerate = isinstance(exc, LLMDegenerateResponseError)
-            is_truncated = isinstance(exc, LLMTruncatedResponseError)
+            # A bad draw is not a network transient: it is drawn again at once with a new seed. Only
+            # a transient backs off, and re-sends the same request.
+            bad_draw = next((key for kind, key in _BAD_DRAWS if isinstance(exc, kind)), None)
             n += 1
-            if is_empty:
-                empty_resamples += 1
-            if is_degenerate:
-                degenerate_resamples += 1
-            if is_truncated:
-                truncated_resamples += 1
-            if is_empty or is_degenerate or is_truncated:
-                redraws = empty_resamples + degenerate_resamples + truncated_resamples
+            if bad_draw is not None:
+                resamples[bad_draw] += 1
                 current = request.model_copy(
-                    update={"seed": redraw_seed(request.seed, redraws)})
+                    update={"seed": redraw_seed(request.seed, sum(resamples.values()))})
                 logger.warning(
                     "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; drawing again "
                     "with seed %s", provider, model, n, max_retries + 1, exc, current.seed)
@@ -115,9 +117,7 @@ async def generate_with_retries(
         else:
             # Stamp the re-sample counts onto the response that finally succeeded, so the audit trail
             # records how many bad draws this single call absorbed (0 for the common case).
-            response.raw_payload[EMPTY_RESAMPLE_KEY] = empty_resamples
-            response.raw_payload[DEGENERATE_RESAMPLE_KEY] = degenerate_resamples
-            response.raw_payload[TRUNCATED_RESAMPLE_KEY] = truncated_resamples
+            response.raw_payload.update(resamples)
             return response
 
 

@@ -148,9 +148,10 @@ class LLMAuthError(LLMError):
 class LLMParseError(LLMError):
     """
     A specific error class for LLM parse errors, indicating that the response from the LLM could not
-    be parsed or understood (e.g., invalid JSON, unexpected format, etc.). This error is not 
-    retriable, as the response from the LLM would need to be corrected or the parsing logic would 
-    need to be updated before the request could succeed on a subsequent attempt.
+    be parsed or understood. Raised as such only when the provider's own answer cannot be read; this
+    error is not retriable, as the parsing logic would need to be updated before the request could
+    succeed on a subsequent attempt. A model's answer that cannot be used is one of its retriable
+    subclasses: empty, degenerate, cut, or malformed.
     """
 
     def __init__(self, message: str = "Failed to parse the LLM response.",
@@ -165,12 +166,10 @@ class LLMParseError(LLMError):
 class LLMEmptyResponseError(LLMParseError):
     """
     A specific parse error for when the provider returns empty or whitespace-only content. Unlike its
-    parent, this error is retriable: an empty draw is not malformed model output that re-sending
-    would reproduce, it is a stochastic non-answer (observed intermittently from ollama at
-    temperature > 0), and a new draw, with a new seed, usually succeeds. It stays a subclass of
-    LLMParseError so existing ``except LLMParseError`` handlers keep catching it, while narrowly
-    scoping retriability to the empty case - genuinely malformed NON-empty output remains
-    non-retriable, since re-sending it would only reproduce the same bad parse.
+    parent, this error is retriable: an empty draw is a stochastic non-answer (observed
+    intermittently from ollama at temperature > 0), and a new draw, with a new seed, usually
+    succeeds. It stays a subclass of
+    LLMParseError so existing ``except LLMParseError`` handlers keep catching it.
     """
 
     def __init__(self, message: str = "The LLM returned an empty response.",
@@ -219,11 +218,10 @@ class LLMTruncatedResponseError(LLMParseError):
     (``done_reason``/``finish_reason`` "length"): the model kept writing, usually because it fell
     into a loop, and the JSON is left unfinished.
 
-    Retriable, like an empty or a degenerate response: it is a bad draw, not malformed output that
-    re-sending would reproduce, and a new draw, with a new seed, usually ends normally. Counted
-    apart from those two because it is a different model behaviour. It stays a subclass of
-    ``LLMParseError`` so existing handlers keep catching it; after the retry budget is exhausted the
-    game still errors out.
+    Retriable, like an empty or a degenerate response: it is a bad draw, and a new draw, with a new
+    seed, usually ends normally. Counted apart from those two because it is a different model
+    behaviour. It stays a subclass of ``LLMParseError`` so existing handlers keep catching it; after
+    the retry budget is exhausted the game still errors out.
     """
 
     def __init__(self, message: str = "The LLM response was cut at the output limit.",
@@ -233,6 +231,30 @@ class LLMTruncatedResponseError(LLMParseError):
         # Bypass LLMParseError.__init__ (which hardcodes retriable=False) to set the code and the
         # retriable flag that distinguish this case.
         LLMError.__init__(self, code="truncated_response", message=message, retriable=True,
+                          provider=provider, http_status=http_status, request_id=request_id,
+                          raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+
+
+class LLMMalformedResponseError(LLMParseError):
+    """
+    A specific parse error for an answer that does not match the response schema it was asked for
+    (the request's ``expected_format``): a field missing or of the wrong type, a value out of range,
+    or no JSON at all.
+
+    Retriable, like an empty, degenerate or cut response: it is a bad draw. With the same seed a
+    local model would write the same answer again, but a bad draw is drawn again with a new seed,
+    which usually yields a well-formed one. Counted apart from the other bad draws because it is a
+    different model behaviour. It stays a subclass of ``LLMParseError`` so existing handlers keep
+    catching it; after the retry budget is exhausted the game still errors out.
+    """
+
+    def __init__(self, message: str = "The LLM response does not match the expected format.",
+                 provider: str | None = None, http_status: int | None = None,
+                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
+                 cause: Exception | None = None, execution_mode: str | None = None):
+        # Bypass LLMParseError.__init__ (which hardcodes retriable=False) to set the code and the
+        # retriable flag that distinguish this case.
+        LLMError.__init__(self, code="malformed_response", message=message, retriable=True,
                           provider=provider, http_status=http_status, request_id=request_id,
                           raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
 

@@ -126,7 +126,8 @@ _PROVIDER_ERROR_CODES = frozenset(
     {"timeout", "rate_limit", "provider_unavailable", "auth", "model_not_provided",
      "model_not_found", "invalid_request"})
 _MODEL_ERROR_CODES = frozenset(
-    {"parse_error", "empty_response", "degenerate_response", "truncated_response", "refused"})
+    {"parse_error", "empty_response", "degenerate_response", "truncated_response",
+     "malformed_response", "refused"})
 # The provider errors that say the provider failed, not the setup: the retriable ones. A game lost
 # to one of them is played again once the provider answers (Level 2). The other provider errors (a
 # model not pulled, a bad key, a rejected request) would fail the game the same way again.

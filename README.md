@@ -338,9 +338,10 @@ duplicates it.
 
 **Determinism.** `game_id = uuid5(ns, f"{master_seed}:{game_index}")`, and every per-call seed is
 derived by SHA-256 from it (`seed_game`, `seed_engine`, `seed_play(seat, turn)`,
-`seed_meas(seat, turn)`). A bad draw — an empty, degenerate or cut answer — is drawn again with a
-seed derived the same way from the call's own (`redraw_seed(seed, k)` for the k-th new draw), since
-with the same seed a local model gives the same answer again; `llm_call.requested_seed` holds the
+`seed_meas(seat, turn)`). A bad draw — an empty, degenerate or cut answer, or one that does not
+match the response schema — is drawn again with a seed derived the same way from the call's own
+(`redraw_seed(seed, k)` for the k-th new draw), since with the same seed a local model gives the
+same answer again; `llm_call.requested_seed` holds the
 seed of the answer kept. `run_id` is deliberately *not* an input to identity — it is bookkeeping. A
 consequence worth internalising: re-running the same `(master_seed, game_index)` re-derives the same
 `game_id` and therefore **collides on the primary key**. That is the intended "this experiment is

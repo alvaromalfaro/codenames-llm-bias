@@ -12,7 +12,7 @@ from backend.app.models.llm_errors import (
     LLMModelNotProvidedError, LLMRefusalError, LLMParseError, LLMTimeoutError,
     LLMEmptyResponseError, LLMDegenerateResponseError, LLMTruncatedResponseError,
     LLMModelNotFoundError, LLMInvalidRequestError, LLMAuthError, LLMRateLimitError,
-    LLMProviderUnavailableError,
+    LLMProviderUnavailableError, LLMMalformedResponseError,
 )
 from backend.app.models.llm_schemas import (
     LLMResponse, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat,
@@ -229,10 +229,11 @@ async def test_llm_client_local_generate_think_false(llm_request_cg):
 
 
 @pytest.mark.asyncio
-async def test_llm_client_local_raises_parse_error_on_schema_mismatch(llm_request_cg):
+async def test_llm_client_local_raises_malformed_on_schema_mismatch(llm_request_cg):
     """
-    Tests that the LLMClientLocal raises an LLMParseError when the response is valid JSON
-    but does not match the expected schema (missing required fields).
+    Tests that the LLMClientLocal raises an LLMMalformedResponseError, a retriable LLMParseError,
+    when the response is valid JSON but does not match the expected schema (missing required
+    fields).
     """
     mock_content = json.dumps(
         {"reasoning": "some reasoning", "clue": "battle"})  # missing "count"
@@ -245,15 +246,17 @@ async def test_llm_client_local_raises_parse_error_on_schema_mismatch(llm_reques
         MockClient.return_value.chat.return_value = mock_response
         client = LLMClientLocal('ollama3.2:latest')
 
-        with pytest.raises(LLMParseError):
+        with pytest.raises(LLMMalformedResponseError) as excinfo:
             await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+    assert isinstance(excinfo.value, LLMParseError)
+    assert excinfo.value.code == "malformed_response" and excinfo.value.retriable is True
 
 
 @pytest.mark.asyncio
-async def test_llm_client_local_parse_error_keeps_the_answer(llm_request_cg, caplog):
+async def test_llm_client_local_malformed_answer_keeps_the_answer(llm_request_cg, caplog):
     """
-    Tests that a parse error carries the provider's payload and logs the whole answer at WARNING:
-    the answer is not drawn again, and the batch logs at INFO.
+    Tests that a malformed answer carries the provider's payload and logs the whole answer at
+    WARNING: only its count reaches the database, and the batch logs at INFO.
     """
     mock_content = json.dumps(
         {"reasoning": "some reasoning", "clue": "battle"})  # missing "count"
@@ -267,7 +270,7 @@ async def test_llm_client_local_parse_error_keeps_the_answer(llm_request_cg, cap
         client = LLMClientLocal('ollama3.2:latest')
 
         with caplog.at_level(logging.WARNING, logger="backend.app.core.llm.client_local"):
-            with pytest.raises(LLMParseError) as excinfo:
+            with pytest.raises(LLMMalformedResponseError) as excinfo:
                 await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
 
     assert excinfo.value.raw_payload == {"message": {"content": mock_content}}
@@ -716,22 +719,43 @@ async def test_llm_client_local_empty_response_not_retried_by_default(llm_reques
 
 
 @pytest.mark.asyncio
-async def test_llm_client_local_malformed_nonempty_stays_non_retriable(llm_request_cg):
-    """The retry is scoped to the empty case only. Genuinely malformed non-empty output remains a
-    non-retriable LLMParseError and raises on the first attempt even with a full retry budget -
-    re-sending it would only reproduce the same bad parse."""
+async def test_llm_client_local_malformed_answer_is_drawn_again_and_counted(llm_request_cg):
+    """An answer that does not match the schema is a bad draw: drawn again with a new seed, and
+    counted apart on the answer kept."""
+    request = llm_request_cg.model_copy(update={"seed": 123})
+
     with _patch_ollama() as MockClient:
         mock_chat = MockClient.return_value.chat
         # Well-formed JSON, but missing the fields ClueJSONFormat requires.
-        mock_chat.return_value = _mock_empty_ollama_response(
-            '{"unexpected": "shape"}')
+        mock_chat.side_effect = [
+            _mock_empty_ollama_response('{"unexpected": "shape"}'), _mock_ollama_response()]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        result = await client.generate(request, expected_format=ClueJSONFormat)
+
+    assert result.raw_payload[client_module.MALFORMED_RESAMPLE_KEY] == 1
+    assert result.raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 0
+    seeds = [call.kwargs["options"]["seed"] for call in mock_chat.call_args_list]
+    assert seeds == [123, client_module.redraw_seed(123, 1)]
+
+
+@pytest.mark.asyncio
+async def test_llm_client_local_unreadable_answer_stays_non_retriable(llm_request_cg):
+    """An answer the client cannot read at all (no expected format to hold it to, and not JSON) is
+    the plain LLMParseError, which is not retried even with a full budget."""
+    mock_response = MagicMock()
+    mock_response.message.content = "This is not a valid JSON response"
+    mock_response.model_dump_json.return_value = mock_response.message.content
+
+    with _patch_ollama() as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = mock_response
         client = LLMClientLocal("ollama3.2:latest", max_retries=3)
 
         with pytest.raises(LLMParseError) as excinfo:
-            await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
-        assert not isinstance(excinfo.value, LLMEmptyResponseError)
-        assert excinfo.value.retriable is False
-        assert mock_chat.call_count == 1
+            await client.generate(llm_request_cg)
+    assert type(excinfo.value) is LLMParseError and excinfo.value.retriable is False
+    assert mock_chat.call_count == 1
 
 
 @pytest.mark.asyncio
