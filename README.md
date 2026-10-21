@@ -825,6 +825,9 @@ ruff check .                 # lint, as pyproject.toml configures it (board_gene
 mypy                         # types of backend/ and scripts/
 ```
 
+CI (`.github/workflows/ci.yml`) runs the same on every push and pull request: ruff, mypy, the whole
+suite (the database tests on the throwaway Postgres) and the batch's `--dry-run`.
+
 The tests that need Postgres are marked `db`. A bare `pytest` gives them a database of their own
 (`tests/conftest.py`): a throwaway container of the `pgvector` image `docker-compose.yml` pins, on a
 free loopback port, with its data in memory, migrated to head and removed when the session ends. It
