@@ -247,6 +247,7 @@ class LLMClientLocal(LLMClient):
                 )
 
             # Validate the response against the expected format if provided
+            parsed = None
             if expected_format:
                 try:
                     parsed = expected_format.model_validate_json(content)
@@ -314,6 +315,7 @@ class LLMClientLocal(LLMClient):
                 requested_seed=request.seed,
                 system_fingerprint=None,
                 resolved_model=response_json.get("model") or self.model_name,
+                parsed=parsed,
             )
 
         except _DAEMON_ERRORS as de:

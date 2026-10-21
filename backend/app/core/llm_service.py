@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, TypeVar
 
 from pydantic import BaseModel
 from backend.app import config
@@ -86,6 +86,20 @@ RESPONSE_FORMATS: dict[str, type[BaseModel]] = {
     "guess": GuessJSONFormat,
     "measurement": ConfidenceRankingJSONFormat,
 }
+
+_Format = TypeVar("_Format", bound=BaseModel)
+
+
+def _answer(response: LLMResponse, fmt: type[_Format]) -> _Format:
+    """The answer of ``response`` as ``fmt``: as the client validated it, or, from a client that
+    hands over no parse of its own, validated here, as the client would have.
+
+    :raises pydantic.ValidationError: a ValueError, when the text does not match ``fmt``.
+    """
+    if isinstance(response.parsed, fmt):
+        return response.parsed
+    return fmt.model_validate_json(response.text)
+
 
 # The seat allowed to guess in each sudden-death phase, mirroring the engine's own invariant
 # (resolve_guess raises unless seat 1 acts in SUDDEN_DEATH_HUMAN / seat 0 in SUDDEN_DEATH_LLM).
@@ -559,33 +573,21 @@ class LLMService:
         :return: An instance of ClueProposal containing the proposed clue, count, reasoning, and raw
             payload from the LLM response.
         """
-        response_content = response.text.strip()
-        try:
-            response_json = json.loads(response_content)
-            clue = response_json.get("clue")
-            count = response_json.get("count")
-            reasoning = response_json.get("reasoning", "")
-            # The intended target set S. Captured verbatim for measurement only; a missing,
-            # empty, or malformed list is recorded as-is and never triggers a retry.
-            targets = response_json.get("targets", [])
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                "LLM response is not valid JSON. Response content: " + response_content
-            ) from e
-
+        answer = _answer(response, ClueJSONFormat)
         logger.info(
             "clue proposal: clue=%r count=%s targets=%s reasoning=%r",
-            clue,
-            count,
-            targets,
-            reasoning,
+            answer.clue,
+            answer.count,
+            answer.targets,
+            answer.reasoning,
         )
-
+        # The intended target set S is captured as it came, for measurement only: an empty list is
+        # recorded, never a reason to draw again.
         return ClueProposal(
-            clue=clue.strip(),
-            count=count,
-            reasoning=reasoning.strip(),
-            targets=targets,
+            clue=answer.clue.strip(),
+            count=answer.count,
+            reasoning=answer.reasoning.strip(),
+            targets=answer.targets,
             raw_payload=response.raw_payload,
         )
 
@@ -706,33 +708,20 @@ class LLMService:
         :return: An instance of GuessProposal containing the proposed guesses, confidence scores,
             reasoning, stop reason, and raw payload from the LLM response.
         """
-        response_content = response.text.strip()
-
-        try:
-            response_json = json.loads(response_content)
-            proposals = response_json.get("proposals", [])
-            reasoning = response_json.get("reasoning", "")
-            stop_reason = response_json.get("stop_reason", "")
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                "LLM response is not valid JSON. Response content: " + response_content
-            ) from e
-
-        confidence = [proposal.get("confidence", 0) for proposal in proposals]
-        proposals = [proposal.get("word", "").strip() for proposal in proposals]
-
+        answer = _answer(response, GuessJSONFormat)
+        words = [proposal.word.strip() for proposal in answer.proposals]
+        confidence = [proposal.confidence for proposal in answer.proposals]
         logger.info(
             "guess proposal: [%s] reasoning=%r stop_reason=%r",
-            ", ".join(f"{word} ({conf})" for word, conf in zip(proposals, confidence, strict=True)),
-            reasoning,
-            stop_reason,
+            ", ".join(f"{word} ({conf})" for word, conf in zip(words, confidence, strict=True)),
+            answer.reasoning,
+            answer.stop_reason,
         )
-
         return GuessProposal(
-            proposals=proposals,
+            proposals=words,
             confidence=confidence,
-            reasoning=reasoning.strip(),
-            stop_reason=stop_reason.strip(),
+            reasoning=answer.reasoning.strip(),
+            stop_reason=answer.stop_reason.strip(),
             raw_payload=response.raw_payload,
         )
 
@@ -840,42 +829,28 @@ class LLMService:
 
     def _build_confidence_ranking(self, response: LLMResponse) -> ConfidenceRanking:
         """
-        Parses an LLMResponse into a ConfidenceRanking. Permissive and record-only: entries with an
-        empty word are skipped, and a response that omits some cards simply yields fewer entries
-        (the missing-card malformation is derivable, so no flag fields). A confidence outside [0, 1]
-        does not reach here from a client, which draws such an answer again (``RankingFormat``); it
-        is clamped only as a guard.
+        Parses an LLMResponse into a ConfidenceRanking. Permissive and record-only: entries with a
+        blank word are skipped, and a response that omits some cards simply yields fewer entries
+        (the missing-card malformation is derivable, so no flag fields). A confidence is in [0, 1]:
+        the format holds it there, and the client draws an answer outside it again.
 
         :param response: The response from the LLM containing the ranking.
 
         :return: The parsed ConfidenceRanking.
         """
-        response_content = response.text.strip()
-        try:
-            response_json = json.loads(response_content)
-            rankings_raw = response_json.get("rankings", [])
-            reasoning = response_json.get("reasoning", "")
-        except json.JSONDecodeError as e:
-            raise ValueError(
-                "LLM response is not valid JSON. Response content: " + response_content
-            ) from e
-
-        ranked: list[RankedCard] = []
-        for item in rankings_raw:
-            word = item.get("word", "").strip()
-            if not word:
-                continue
-            confidence = max(0.0, min(1.0, float(item.get("confidence", 0.0))))
-            ranked.append(RankedCard(word=word, confidence=confidence))
-
+        answer = _answer(response, ConfidenceRankingJSONFormat)
+        ranked = [
+            RankedCard(word=item.word.strip(), confidence=item.confidence)
+            for item in answer.rankings
+            if item.word.strip()
+        ]
         logger.debug(
             "confidence ranking: [%s] reasoning=%r",
             ", ".join(f"{item.word} ({item.confidence})" for item in ranked),
-            reasoning,
+            answer.reasoning,
         )
-
         return ConfidenceRanking(
-            reasoning=reasoning.strip(), rankings=ranked, raw_payload=response.raw_payload
+            reasoning=answer.reasoning.strip(), rankings=ranked, raw_payload=response.raw_payload
         )
 
     def _format_own_key(self, game_state: GameState, player_id: int) -> str:

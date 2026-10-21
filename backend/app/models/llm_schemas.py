@@ -142,6 +142,10 @@ class LLMResponse(BaseModel):
     system_fingerprint: Optional[str] = None
     # The model string the provider actually reports having served.
     resolved_model: Optional[str] = None
+    # The answer as the client validated it against the request's expected format (an instance of
+    # that format), so the service reads typed fields instead of parsing the text again; None when
+    # the request had no format. Kept as it is, and never serialised.
+    parsed: Any = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def validate_response(self) -> "LLMResponse":

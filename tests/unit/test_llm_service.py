@@ -393,9 +393,7 @@ def test_llm_service_build_clue_proposal_json_error(llm_response):
     # Modify the LLMResponse text to be invalid JSON
     llm_response.text = "This is not valid JSON"
 
-    with pytest.raises(
-        ValueError, match="LLM response is not valid JSON. Response content: " + llm_response.text
-    ):
+    with pytest.raises(ValueError, match="Invalid JSON"):
         service._build_clue_proposal(llm_response)
 
 
@@ -409,9 +407,7 @@ def test_llm_service_build_guess_proposal_json_error(llm_response):
     # Modify the LLMResponse text to be invalid JSON
     llm_response.text = "This is not valid JSON"
 
-    with pytest.raises(
-        ValueError, match="LLM response is not valid JSON. Response content: " + llm_response.text
-    ):
+    with pytest.raises(ValueError, match="Invalid JSON"):
         service._build_guess_proposal(llm_response)
 
 

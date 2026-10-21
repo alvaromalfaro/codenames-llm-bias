@@ -109,9 +109,10 @@ class LLMClientOpenRouter(LLMClient):
                     provider="openrouter", raw_payload=response.model_dump(), execution_mode="api"
                 )
 
+            parsed = None
             if expected_format:
                 try:
-                    expected_format.model_validate_json(content)
+                    parsed = expected_format.model_validate_json(content)
                 except Exception as e:
                     # A bad draw, drawn again within the caller's budget. Only its count reaches the
                     # database, so it is logged whole (max_tokens bounds it), at a level the batch's
@@ -152,6 +153,7 @@ class LLMClientOpenRouter(LLMClient):
                 requested_seed=request.seed,
                 system_fingerprint=getattr(response, "system_fingerprint", None),
                 resolved_model=response.model,
+                parsed=parsed,
             )
 
         except AuthenticationError as e:

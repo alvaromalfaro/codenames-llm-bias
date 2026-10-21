@@ -121,12 +121,12 @@ def test_build_confidence_ranking_missing_cards():
     assert ranking.rankings[0] == RankedCard(word="BRICK", confidence=0.9)
 
 
-def test_build_confidence_ranking_clamps_confidence():
-    """Out-of-range confidences are clamped into [0, 1] rather than rejected."""
-    text = _rankings_json([("BRICK", 1.5), ("ANT", -0.3), ("RUSSIA", 0.4)])
-    ranking = LLMService()._build_confidence_ranking(_mock_response(text))
-
-    assert [r.confidence for r in ranking.rankings] == [1.0, 0.0, 0.4]
+def test_build_confidence_ranking_refuses_a_confidence_out_of_range():
+    """A confidence outside [0, 1] fails the format (a client draws such an answer again); it is
+    never clamped into a score the model did not give."""
+    text = _rankings_json([("BRICK", 1.5), ("RUSSIA", 0.4)])
+    with pytest.raises(ValueError, match="less than or equal to 1"):
+        LLMService()._build_confidence_ranking(_mock_response(text))
 
 
 def test_build_confidence_ranking_skips_empty_words():
