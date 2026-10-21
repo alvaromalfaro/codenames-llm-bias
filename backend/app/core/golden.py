@@ -117,7 +117,10 @@ class ReplayOllama:
 
     async def show(self, model: str) -> ShowResponse:
         call = self._next("show")
-        return ShowResponse.model_validate({"capabilities": call["capabilities"]})
+        # Built without validation: the client reads only the capabilities, and a ShowResponse
+        # that failed to validate would make it fall back, in silence, to a model that cannot
+        # think.
+        return ShowResponse.model_construct(capabilities=call["capabilities"])
 
     async def chat(self, **kwargs: Any) -> ChatResponse:
         call = self._next("chat")
