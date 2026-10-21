@@ -461,7 +461,7 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> dict[str, str]:
             f"{exc} Restore the file, or delete the board and the runs that played it.") from exc
     logger.info("bank ingestion: measurement frame %s, %s new board(s) from %s",
                 "stored" if frame_inserted else "already stored", boards_inserted, bank_dir)
-    missing = sorted(set(board_ids) - stored)
+    missing = sorted(set(board_ids) - stored.keys())
     if missing:
         raise BatchPreconditionError(
             f"scheduled boards missing from the database after ingesting {bank_dir}: {missing}")
