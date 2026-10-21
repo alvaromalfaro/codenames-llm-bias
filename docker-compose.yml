@@ -1,7 +1,9 @@
 services:
   # Relational database for games, words, and embeddings
   db:
-    image: ankane/pgvector:latest
+    # Pinned, like every image here: a pull must not change the stack under a batch. Postgres 15 and
+    # Debian bookworm, as the ankane/pgvector image this replaced, so its data directory still works.
+    image: pgvector/pgvector:0.8.7-pg15-bookworm
     container_name: codenames-db
     restart: always
     environment:
@@ -17,7 +19,9 @@ services:
   # Local LLM inference via Ollama. Runs on CPU by default; add docker-compose.gpu.yml
   # to reserve an NVIDIA GPU (see README).
   ollama:
-    image: ollama/ollama:latest
+    # The version config.EXPECTED_LOCAL_DIGESTS was validated with: another Ollama may serve another
+    # digest (it converts mistral-small3.2 on first load), and the digest gate then stops the batch.
+    image: ollama/ollama:0.40.2
     container_name: codenames-ollama
     # Strip any CR before running, so a CRLF checkout on Windows still works
     entrypoint:

@@ -164,9 +164,14 @@ experiment with [the batch](#running-the-batch-unattended).
 
 | Service | Container | Port | Notes |
 |---|---|---|---|
-| `db` | `codenames-db` | 5432 | `ankane/pgvector`. Data in `./docker_volumes/postgres_data` (root-owned, gitignored). |
-| `ollama` | `codenames-ollama` | 11434 | Runs `ollama_entrypoint.sh`, which reads the keys of `llm_models["Ollama"]` from the bind-mounted `backend/app/config.py` and `ollama pull`s each one that is not installed. **The Ollama roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. CPU unless `docker-compose.gpu.yml` is included. |
+| `db` | `codenames-db` | 5432 | `pgvector/pgvector:0.8.7-pg15-bookworm`. Data in `./docker_volumes/postgres_data` (root-owned, gitignored). |
+| `ollama` | `codenames-ollama` | 11434 | `ollama/ollama:0.40.2`, the version the pinned digests were validated with. Runs `ollama_entrypoint.sh`, which reads the keys of `llm_models["Ollama"]` from the bind-mounted `backend/app/config.py` and `ollama pull`s each one that is not installed. **The Ollama roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. CPU unless `docker-compose.gpu.yml` is included. |
 | `app` | `codenames-backend` | — | The Python environment, over the repo bind-mounted at `/workspace`. It serves nothing and stays up so that the migrations, the batch and the scripts can run in it (`docker compose exec app …`). Reads `.env`. |
+
+**Pinned images.** Both images are pinned, so a `docker compose pull` cannot change Ollama or
+Postgres under a batch. A database created by the `ankane/pgvector` image these replaced keeps
+working (the same Postgres 15 on the same Debian); its `vector` extension stays at the version it was
+created with (0.5.1) until `ALTER EXTENSION vector UPDATE;`, which nothing here needs.
 
 **Board ingestion.** The database needs only the migrated schema. The batch stores
 `data/boards/measurement_frame.json` (the board FK target) and then every board under `data/boards/`
@@ -608,7 +613,9 @@ ollama serve
 the shared directory (the text weights and the vision projector, 15 GB more) and rewrites the tag's
 manifest, so the served digest changes. `config.EXPECTED_LOCAL_DIGESTS` pins the converted one, as
 Ollama 0.40.2 serves it. An Ollama of another version may serve another digest, and the digest gate
-then stops the batch.
+then stops the batch: a native Ollama must be 0.40.2 too. The batch runs against the container. A
+native Ollama binds `127.0.0.1:11434` as the container does, so only one of them can run at a time;
+with both up, `localhost` reaches one or the other depending on how it resolves.
 
 ---
 
