@@ -138,6 +138,30 @@ class ModelDigestMismatchError(RuntimeError):
     row is created and before any game is dispatched."""
 
 
+class OllamaVersionMismatchError(ModelDigestMismatchError):
+    """The Ollama daemon is not the release the batch is validated against
+    (``config.EXPECTED_OLLAMA_VERSION``), or its version cannot be read. Another release may serve
+    another digest, or the same weights another way, so it aborts like a digest mismatch: once, at
+    run-row creation, before any game."""
+
+
+def _enforce_ollama_version(seat_specs, *, enforce: bool) -> None:
+    """Reproducibility gate over the Ollama daemon's release, when a seat is local. A no-op unless
+    ``enforce``; checked before the digests, since another release is the likelier reason a digest
+    differs."""
+    if not enforce or not any(spec.provider == "ollama" for spec in seat_specs):
+        return
+    served = provenance.ollama_server_version()
+    expected = config.EXPECTED_OLLAMA_VERSION
+    if served != expected:
+        raise OllamaVersionMismatchError(
+            f"the Ollama daemon at {provenance.ollama_base_url()} is "
+            f"{served if served else 'unreachable or reports no version'}, but the batch is "
+            f"validated against Ollama {expected} (config.EXPECTED_OLLAMA_VERSION, the image "
+            f"docker-compose.yml pins). Point OLLAMA_HOST at that daemon, or run without "
+            f"enforcement.")
+
+
 def _normalize_digest(d: str) -> str:
     """Canonical form for comparing ollama digests: lowercased, with any ``sha256:``/``sha256-``
     algorithm prefix stripped. The daemon's /api/tags reports a bare hex digest (what
@@ -210,9 +234,11 @@ DispatchHook = Callable[[CodenamesDuetEngine, GameRecorder], None]
 # run minting (identity + provenance + gate)
 def served_registry_snapshot(seat_specs, *, enforce_digests: bool) -> dict:
     """Build the ``model_registry_snapshot`` of the models served now and run the digest gate over
-    it (a no-op unless ``enforce_digests``). Minting a run starts here, and a resumed batch compares
-    it with the snapshot its run was minted with. Raises ``ModelDigestMismatchError`` on a served
-    local digest that is not vetted."""
+    it (a no-op unless ``enforce_digests``), after the Ollama release's. Minting a run starts here,
+    and a resumed batch compares it with the snapshot its run was minted with. Raises
+    ``OllamaVersionMismatchError`` on another Ollama release, and ``ModelDigestMismatchError`` on a
+    served local digest that is not vetted."""
+    _enforce_ollama_version(seat_specs, enforce=enforce_digests)
     snapshot = provenance.build_model_registry_snapshot(seat_specs)
     _enforce_local_digests(snapshot, enforce=enforce_digests)
     return snapshot
@@ -225,7 +251,8 @@ def create_run(*, seat_specs, master_seed: int, temperature: float,
     """Mint one run: run the digest gate (once), build provenance, create the run row.
 
     ``stimulus_manifest`` (``board_id`` -> content hash of every board the batch schedules) is
-    stored on the run as it is; a single game passes none.
+    stored on the run as it is; a single game passes none. The run row also records the environment
+    it is minted in (``provenance.build_environment_snapshot``).
 
     Returns ``(run_id, model_registry_snapshot)``. Takes ``template_fingerprint`` as a plain string
     (the caller builds the ``LLMService`` and passes ``svc.template_fingerprint()``) so this stays
@@ -253,6 +280,7 @@ def create_run(*, seat_specs, master_seed: int, temperature: float,
                 prompt_template_version=template_fingerprint,
                 code_version=provenance.git_code_version(),
                 stimulus_manifest=stimulus_manifest,
+                environment_snapshot=provenance.build_environment_snapshot(seat_specs),
             )
             session.add(run)
             session.flush()

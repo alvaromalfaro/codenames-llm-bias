@@ -57,6 +57,16 @@ def _dash(value) -> str:
     return "-" if value is None else str(value)
 
 
+def _environment(snapshot: dict | None) -> str:
+    """``"python 3.12.13, ollama 0.40.2"``, or ``"-"`` for a run minted before it was recorded."""
+    if not snapshot:
+        return "-"
+    parts = [f"python {snapshot.get('python')}"]
+    if snapshot.get("ollama"):
+        parts.append(f"ollama {_dash(snapshot['ollama'].get('version'))}")
+    return ", ".join(parts)
+
+
 def _print_list(runs: list[RunSummary]) -> None:
     if not runs:
         print("no runs in the database")
@@ -78,6 +88,7 @@ def _print_run(run: RunSummary) -> None:
         ("prompt templates", _dash(run.prompt_template_version)),
         ("boards", f"{len(run.stimulus_manifest)} in its stimulus manifest"
                    if run.stimulus_manifest else "-"),
+        ("environment", _environment(run.environment_snapshot)),
         ("games", f"{run.games} ({_games(run)})" if run.games else "none"),
     ]
     for label, value in rows:

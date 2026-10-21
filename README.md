@@ -349,14 +349,23 @@ determinism is what lets a batch that stopped continue under its own run (`--res
 still to play are the games the run would have played.
 
 **The digest gate.** `config.EXPECTED_LOCAL_DIGESTS` pins the exact local weights the batch is
-validated against. On the batch path the served digests are resolved from the Ollama daemon once, at
-run minting, and any mismatch — or an unpinned model, or an unreachable daemon — raises
-`ModelDigestMismatchError` **before a single game is dispatched**. Test games
-(`scripts/play_games.py`) log the served digests, and enforce them only with `--enforce-digests`.
+validated against, and `config.EXPECTED_OLLAMA_VERSION` the Ollama release they were validated with
+(0.40.2, the image `docker-compose.yml` pins): another release may serve another digest, or the same
+weights another way. On the batch path the daemon's release and then the served digests are read
+once, at run minting, and any mismatch — or an unpinned model, or an unreachable daemon — raises
+`ModelDigestMismatchError` (`OllamaVersionMismatchError` for the release) **before a single game is
+dispatched**. Test games (`scripts/play_games.py`) log the release and the served digests, and
+enforce them only with `--enforce-digests`.
 
 **Provenance.** Each `run` row records `code_version` (git short SHA, `-dirty` suffixed),
 `prompt_template_version` (a fingerprint over the loaded templates), `model_registry_snapshot` (the
-served digest per seat), the `master_seed` and the `temperature`.
+served digest per seat), `stimulus_manifest` (each scheduled board with its content hash), the
+`master_seed` and the `temperature`. `environment_snapshot` records the rest of what a game depends
+on: the Python release and the platform, the versions of the key packages, the Ollama daemon (host
+and release), the GPUs `nvidia-smi` sees, the clue validator's data (the SHA-256 of the MorphoLex
+file, the NLTK release, the WordNet version and the SHA-256 of its corpora) and the working tree
+(the full commit, every file that differs from it, untracked ones included, and the SHA-256 of the
+diff). Nothing in it aborts a run: what cannot be read is recorded as null.
 
 ---
 
@@ -485,7 +494,8 @@ Two levels, kept deliberately separate:
   code `2` and zero games run: a board-bank shortfall (`ScheduleError`), a missing `DATABASE_URL`,
   a database schema that is not at the head of the migrations (the games would be played and then
   fail to be stored), any of the 192 deterministic `game_id`s already present, a bank that cannot
-  be stored (`BatchPreconditionError`), or a digest mismatch (`ModelDigestMismatchError`). Storing
+  be stored (`BatchPreconditionError`), or a digest or Ollama-release mismatch
+  (`ModelDigestMismatchError`, `OllamaVersionMismatchError`). Storing
   the bank comes after the `game_id` check and before the run is minted: the measurement frame,
   then every board under `data/boards/`, skipping what is already stored. It fails if the frame's
   sidecar is missing, if it contradicts the frame already stored (the frame is immutable:
@@ -815,7 +825,9 @@ of each template, used when the file is missing, so edit both together:
 **Model roster** lives in `backend/app/config.py`: `llm_models` (what the batch defaults to, and
 what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the
 batch is validated against; for `mistral-small3.2`, the variant Ollama converts it to, see
-[Ollama without Docker](#test-games-with-a-full-log)). Changing a model means updating both. The
+[Ollama without Docker](#test-games-with-a-full-log)). Changing a model means updating both.
+Changing the Ollama release means updating `EXPECTED_OLLAMA_VERSION`, the image in
+`docker-compose.yml`, and the digests it serves. The
 same file sets what every request is sent with:
 * `OLLAMA_NUM_CTX`, the context window of every local request. Without it, ollama picks one from
   the GPU's memory, so the same batch would run differently on another machine.

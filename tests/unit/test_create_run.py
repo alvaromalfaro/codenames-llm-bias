@@ -38,6 +38,7 @@ def test_persist_false_no_enforce_builds_no_snapshot(monkeypatch) -> None:
     spy = MagicMock(side_effect=AssertionError(
         "no snapshot may be built on a pure dry-run"))
     monkeypatch.setattr(provenance, "build_model_registry_snapshot", spy)
+    monkeypatch.setattr(provenance, "build_environment_snapshot", spy)
     rid, snap = create_run(seat_specs=_SPECS, master_seed=9, temperature=0.4,
                            template_fingerprint="t", persist=False, enforce_digests=False)
     assert snap is None
@@ -82,3 +83,4 @@ def test_persist_true_creates_one_run_with_provenance(monkeypatch) -> None:
         assert run.code_version == "code@abcdef"
         assert run.model_registry_snapshot == snap
         assert run.stimulus_manifest == {"board-a": "a" * 64}
+        assert run.environment_snapshot["python"] and run.environment_snapshot["ollama"]

@@ -32,6 +32,7 @@ class RunSummary:
     prompt_template_version: Optional[str]
     model_registry_snapshot: Optional[dict]
     stimulus_manifest: Optional[dict]
+    environment_snapshot: Optional[dict]
     notes: Optional[str]
     games_by_status: dict[str, int]
 
@@ -57,7 +58,8 @@ def _summaries(session: Session, runs: Sequence[RunModel]) -> list[RunSummary]:
         temperature=run.temperature, code_version=run.code_version,
         prompt_template_version=run.prompt_template_version,
         model_registry_snapshot=run.model_registry_snapshot,
-        stimulus_manifest=run.stimulus_manifest, notes=run.notes,
+        stimulus_manifest=run.stimulus_manifest,
+        environment_snapshot=run.environment_snapshot, notes=run.notes,
         games_by_status=dict(sorted(counts[run.id].items())),
     ) for run in runs]
 

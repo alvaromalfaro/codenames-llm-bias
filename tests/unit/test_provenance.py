@@ -12,6 +12,9 @@ from backend.app import config
 from backend.app.core import provenance
 from backend.app.core.game_runner import SeatSpec
 from backend.app.core.llm_service import LLMService
+# The real lookup: conftest stands a fixed release in for it in every test, so no test reaches a
+# daemon; the tests of the lookup itself call it here.
+from backend.app.core.provenance import ollama_server_version as _real_ollama_server_version
 
 
 # template fingerprint
@@ -174,3 +177,93 @@ def test_git_code_version_none_on_called_process_error(monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", failing)
     assert provenance.git_code_version() is None
+
+
+# the Ollama daemon's release
+class _Answer:
+    def __init__(self, body, status=200):
+        self.body, self.status_code = body, status
+
+    def raise_for_status(self):
+        if self.status_code != 200:
+            raise httpx.HTTPStatusError("bad status", request=None, response=None)
+
+    def json(self):
+        return self.body
+
+
+def test_the_server_version_is_read_from_the_daemon(monkeypatch) -> None:
+    asked = []
+
+    def get(url, timeout):
+        asked.append(url)
+        return _Answer({"version": "0.40.2"})
+    monkeypatch.setattr(provenance.httpx, "get", get)
+    assert _real_ollama_server_version("http://ollama:11434/") == "0.40.2"
+    assert asked == ["http://ollama:11434/api/version"]
+
+
+@pytest.mark.parametrize("answer", [
+    httpx.ConnectError("refused"), _Answer({}), _Answer({"version": ""}), _Answer({}, status=500)])
+def test_an_unreadable_server_version_is_null(monkeypatch, answer) -> None:
+    def get(url, timeout):
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+    monkeypatch.setattr(provenance.httpx, "get", get)
+    assert _real_ollama_server_version() is None
+
+
+@pytest.mark.parametrize("host, env, url", [
+    ("ollama:11434", None, "http://ollama:11434"),
+    (None, "http://127.0.0.1:11434/", "http://127.0.0.1:11434"),
+    (None, None, "http://localhost:11434"),
+])
+def test_the_daemon_url(monkeypatch, host, env, url) -> None:
+    if env is None:
+        monkeypatch.delenv("OLLAMA_HOST", raising=False)
+    else:
+        monkeypatch.setenv("OLLAMA_HOST", env)
+    assert provenance.ollama_base_url(host) == url
+
+
+# the environment snapshot
+def test_the_environment_snapshot_records_what_the_run_depends_on() -> None:
+    import hashlib
+    import importlib.metadata
+    import platform
+
+    from backend.app.paths import MORPHOLEX_PATH
+
+    snap = provenance.build_environment_snapshot([SeatSpec("ollama", "llama3.1:8b")])
+
+    assert snap["python"] == platform.python_version()
+    assert snap["packages"]["pydantic"] == importlib.metadata.version("pydantic")
+    assert set(snap["packages"]) >= {"ollama", "openai", "nltk", "numpy", "sqlalchemy"}
+    assert snap["ollama"]["version"] == config.EXPECTED_OLLAMA_VERSION  # conftest's stand-in
+    validator = snap["clue_validator"]
+    assert validator["morpholex_sha256"] == hashlib.sha256(MORPHOLEX_PATH.read_bytes()).hexdigest()
+    assert validator["nltk"] == importlib.metadata.version("nltk")
+    assert validator["wordnet_version"] == "3.0"
+    assert re.fullmatch(r"[0-9a-f]{40}", snap["git"]["commit"])
+    assert isinstance(snap["git"]["status"], list)
+
+
+def test_a_run_without_a_local_seat_does_not_ask_the_daemon(monkeypatch) -> None:
+    def never(host=None):  # pragma: no cover - must never run
+        raise AssertionError("no local seat, no daemon")
+    monkeypatch.setattr(provenance, "ollama_server_version", never)
+    assert provenance.build_environment_snapshot([SeatSpec("openrouter", "m1")])["ollama"] is None
+
+
+def test_the_environment_snapshot_never_raises(monkeypatch) -> None:
+    """Record-only: without git, nvidia-smi or the MorphoLex file, it records nulls."""
+    def no_command(*args, **kwargs):
+        raise FileNotFoundError(args[0][0])
+    monkeypatch.setattr(subprocess, "run", no_command)
+    monkeypatch.setattr(provenance, "MORPHOLEX_PATH", provenance.Path("no/such/file.tsv"))
+
+    snap = provenance.build_environment_snapshot([SeatSpec("ollama", "llama3.1:8b")])
+
+    assert snap["git"] is None and snap["gpus"] is None
+    assert snap["clue_validator"]["morpholex_sha256"] is None

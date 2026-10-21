@@ -1,6 +1,16 @@
 import pytest
+from backend.app import config
+from backend.app.core import provenance
 from backend.app.models.game_schemas import CardRole, GameState, Board, WordCard, GamePhase, ClueEntry
 from backend.app.models.llm_schemas import LLMRequest, LLMMessage, LLMResponse, TokenUsage
+
+
+@pytest.fixture(autouse=True)
+def _ollama_is_the_validated_release(monkeypatch):
+    """No test reaches a real Ollama daemon for its version: by default it is the pinned release, so
+    the version gate passes; the gate's own tests set another."""
+    monkeypatch.setattr(provenance, "ollama_server_version",
+                        lambda host=None: config.EXPECTED_OLLAMA_VERSION)
 
 
 @pytest.fixture

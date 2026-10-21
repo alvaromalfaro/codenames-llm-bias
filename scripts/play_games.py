@@ -40,7 +40,6 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import platform
 import shlex
 import subprocess
@@ -54,6 +53,7 @@ from pathlib import Path
 from typing import Any, Optional, cast
 
 from backend.app import config
+from backend.app.core import provenance
 from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.core.game_runner import GameRunResult, SeatSpec, run_single_game
 from backend.app.core.llm_service import LLMService, text_digest
@@ -206,8 +206,7 @@ def _git(*args: str) -> str:
 
 
 def _ollama_host() -> str:
-    host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-    return host if "://" in host else f"http://{host}"
+    return provenance.ollama_base_url()
 
 
 def _ollama_get(path: str) -> dict:

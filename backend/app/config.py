@@ -56,6 +56,11 @@ llm_models = {
 # The digest below is that converted variant's, as Ollama 0.40.2 serves it. Before the conversion,
 # the model as pulled had this one, which is the one exp_data.sql records:
 #   sha256:5a408ab55df5c1b5cf46533c368813b30bf9e4d8fc39263bf2a3338cfa3b895b
+# The Ollama release the digests above were validated with, and that docker-compose.yml pins. Another
+# release may serve another digest, or the same weights another way: the batch refuses to start on a
+# daemon reporting another version (game_runner._enforce_ollama_version).
+EXPECTED_OLLAMA_VERSION = "0.40.2"
+
 EXPECTED_LOCAL_DIGESTS = {
     "llama3.1:8b":
         "sha256:46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",

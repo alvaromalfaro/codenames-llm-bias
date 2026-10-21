@@ -116,6 +116,35 @@ async def test_run_aborts_on_mismatch_no_game_dispatched(monkeypatch):
     persist_game.assert_not_called()
 
 
+@pytest.mark.parametrize("served", ["0.34.0", "0.40.6", None])
+def test_the_gate_stops_on_another_ollama_release(monkeypatch, served) -> None:
+    """Another release may serve another digest, or the same weights another way."""
+    from backend.app.core.game_runner import OllamaVersionMismatchError, served_registry_snapshot
+    monkeypatch.setattr(provenance, "ollama_server_version", lambda host=None: served)
+    monkeypatch.setattr(provenance, "build_model_registry_snapshot", MagicMock(
+        side_effect=AssertionError("the release is checked before the digests")))
+    with pytest.raises(OllamaVersionMismatchError, match=config.EXPECTED_OLLAMA_VERSION):
+        served_registry_snapshot([SeatSpec("ollama", "llama3.1:8b")], enforce_digests=True)
+
+
+def test_another_ollama_release_is_a_digest_mismatch_for_its_callers() -> None:
+    """The batch CLI and the resume catch ModelDigestMismatchError; the release gate is one."""
+    from backend.app.core.game_runner import OllamaVersionMismatchError
+    assert issubclass(OllamaVersionMismatchError, ModelDigestMismatchError)
+
+
+@pytest.mark.parametrize("specs, enforce", [
+    ([SeatSpec("ollama", "llama3.1:8b")], False),        # test games only record
+    ([SeatSpec("openrouter", "m1")], True),              # no local seat, no daemon
+])
+def test_the_release_is_not_asked_without_enforcement_or_a_local_seat(monkeypatch, specs,
+                                                                       enforce) -> None:
+    from backend.app.core import game_runner
+    monkeypatch.setattr(provenance, "ollama_server_version", MagicMock(
+        side_effect=AssertionError("the daemon must not be asked")))
+    game_runner._enforce_ollama_version(specs, enforce=enforce)
+
+
 @pytest.mark.asyncio
 async def test_run_aborts_on_unavailable_digest_when_enforcing(monkeypatch):
     """enforce_digests=True with an unavailable digest (daemon unreachable) aborts the run."""
