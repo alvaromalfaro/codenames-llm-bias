@@ -41,7 +41,9 @@ Level 2 - PER-GAME FAULT ISOLATION (count-and-continue, inside the loop):
   - :func:`run_single_game` captures its own exceptions and returns a ``GameRunResult`` (status
     'completed'/'error'); it never propagates. So the loop INSPECTS ``result.status`` - it does not
     re-implement the error handling the runner already owns.
-  - an 'error' result is recorded and the loop proceeds (count-and-continue);
+  - an 'error' result is recorded and the loop proceeds (count-and-continue). Every game is played
+    with strict invariants: a state that breaks the game's rules ends it in error, kind
+    'invariant', instead of letting it be stored as completed;
   - a per-pairing CONSECUTIVE-failure threshold (default 5) aborts THAT pairing (skips its remaining
     cells) and continues with the next pairing - a systematic failure is a finding for one pairing,
     not a reason to kill the other five. The counter is per-pairing and resets on any completion.
@@ -128,6 +130,9 @@ _PROVIDER_ERROR_CODES = frozenset(
 _MODEL_ERROR_CODES = frozenset(
     {"parse_error", "empty_response", "degenerate_response", "truncated_response",
      "malformed_response", "refused"})
+# The code of a game that broke the rules of its own state (core/invariants.py): a bug of the
+# engine or of what drives it, neither the provider's nor the model's.
+_INVARIANT_ERROR_CODE = "invariant_broken"
 # The provider errors that say the provider failed, not the setup: the retriable ones. A game lost
 # to one of them is played again once the provider answers (Level 2). The other provider errors (a
 # model not pulled, a bad key, a rejected request) would fail the game the same way again.
@@ -136,8 +141,9 @@ _TRANSIENT_PROVIDER_CODES = frozenset({"timeout", "rate_limit", "provider_unavai
 
 def _classify_error(error: Optional[str], code: Optional[str] = None) -> str:
     """Best-effort classification of a failed game into an error kind, so a partial batch is data,
-    not noise. Distinguishes a provider/transport failure from the model producing no legal play;
-    falls back to 'collision' / 'other'. Deliberately modest - a coarse, honest bucket, not a
+    not noise. Distinguishes a provider/transport failure from the model producing no legal play,
+    and both from a state that broke the game's rules ('invariant'); falls back to 'collision' /
+    'other'. Deliberately modest - a coarse, honest bucket, not a
     taxonomy.
 
     An LLM error is classified by its ``code`` (``GameRunResult.error_code``). Its message cannot be
@@ -147,6 +153,8 @@ def _classify_error(error: Optional[str], code: Optional[str] = None) -> str:
         return "provider"
     if code in _MODEL_ERROR_CODES:
         return "model"
+    if code == _INVARIANT_ERROR_CODE:
+        return "invariant"
     if not error:
         return "other"
     low = error.lower()

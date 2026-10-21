@@ -4,6 +4,7 @@ Seed-derivation, reproducibility, the temperature assertion and the error bounda
 database. The dispatch + sudden-death end-to-end tests require a live Postgres and are skipped when 
 DATABASE_URL is unset."""
 import json
+import logging
 import os
 import random
 import re
@@ -12,13 +13,13 @@ import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from backend.app.core import game_runner, llm_service
+from backend.app.core import game_runner, invariants, llm_service
 from backend.app.core.game_runner import (
     SeatSpec, _derive, _game_identity, _seed_engine, _seed_game,
     _seed_meas, _seed_play, run_single_game,
 )
 from backend.app.core.llm.client import LLMClient
-from backend.app.models.game_schemas import Board, CardRole, WordCard
+from backend.app.models.game_schemas import Board, CardRole, GamePhase, WordCard
 from backend.app.models.llm_errors import LLMRefusalError, LLMTimeoutError
 from backend.app.models.llm_schemas import (
     ClueJSONFormat, ConfidenceRankingJSONFormat, GuessJSONFormat,
@@ -443,6 +444,75 @@ async def test_a_failed_game_is_flushed_with_why_it_failed(monkeypatch, guess, c
     assert message in recorder.error_message
     # The type comes first, so an error whose text says little still says what it was.
     assert recorder.error_message.split(":")[0].endswith("Error")
+
+
+def _break_invariants_when(monkeypatch, broken):
+    """Make the invariant check report a breach in every state for which ``broken(state)``."""
+    monkeypatch.setattr(invariants, "check_invariants",
+                        lambda engine: ["boom"] if broken(engine.state) else [])
+
+
+def _capture_persists(monkeypatch) -> list:
+    monkeypatch.setattr(game_runner, "_db_enabled", lambda: True)
+    persisted = []
+    monkeypatch.setattr(game_runner.writer, "persist_game",
+                        lambda rec, status: persisted.append((status, rec)))
+    return persisted
+
+
+def _lemonade_clients():
+    return {0: _make_client("m0", lambda: ["LEMONADE"]), 1: _make_client("m1", lambda: ["LEMONADE"])}
+
+
+@pytest.mark.asyncio
+async def test_a_strict_game_ends_in_error_at_the_first_broken_invariant(monkeypatch):
+    """Broken after the clue: the game stops there, before the guess is asked for."""
+    persisted = _capture_persists(monkeypatch)
+    _break_invariants_when(monkeypatch, lambda s: s.current_phase == GamePhase.GUESSING)
+    clients = _lemonade_clients()
+
+    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
+                                temperature=0.4, run_id="fixed-run-id",
+                                client_factory=lambda i, spec: clients[i])
+
+    assert res.status == "error" and res.error_code == "invariant_broken"
+    assert res.invariant_violations == ["boom"]
+    [(status, recorder)] = persisted
+    assert status == "error" and recorder.error_code == "invariant_broken"
+    assert recorder.error_message == "GameInvariantError: boom"
+    assert not any(call.kwargs.get("expected_format") is GuessJSONFormat
+                   for c in clients.values() for call in c.generate.call_args_list)
+
+
+@pytest.mark.asyncio
+async def test_a_strict_game_broken_at_its_end_is_stored_as_an_error(monkeypatch):
+    """The final state is checked before the game is stored: never stored as completed."""
+    persisted = _capture_persists(monkeypatch)
+    _break_invariants_when(monkeypatch, lambda s: s.is_game_over)
+    clients = _lemonade_clients()
+
+    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
+                                temperature=0.4, run_id="fixed-run-id",
+                                client_factory=lambda i, spec: clients[i])
+
+    assert res.status == "error" and res.error_code == "invariant_broken"
+    assert [status for status, _ in persisted] == ["error"]
+
+
+@pytest.mark.asyncio
+async def test_a_lenient_game_plays_on_and_returns_what_broke(monkeypatch, caplog):
+    monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
+    _break_invariants_when(monkeypatch, lambda s: s.current_phase == GamePhase.GUESSING)
+    clients = _lemonade_clients()
+
+    with caplog.at_level(logging.ERROR, logger="backend.app.core.invariants"):
+        res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
+                                    temperature=0.4, persist=False, strict_invariants=False,
+                                    client_factory=lambda i, spec: clients[i])
+
+    assert res.status == "completed" and res.result == "loss_assassin"
+    assert res.invariant_violations == ["boom"]
+    assert "invariant broken" in caplog.text
 
 
 @pytest.mark.asyncio

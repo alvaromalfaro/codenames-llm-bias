@@ -335,6 +335,29 @@ async def test_the_report_counts_a_model_that_loops_as_a_model_error(monkeypatch
     assert report.pairings[0].error_kinds == {"model": 1}
 
 
+async def test_the_batch_plays_strict_and_counts_a_broken_invariant_apart(monkeypatch) -> None:
+    from backend.app.core.invariants import GameInvariantError
+    exc = GameInvariantError(["tokens do not add up to 9"])
+    strict = []
+
+    async def fake(**kwargs):
+        strict.append(kwargs.get("strict_invariants", True))
+        gi = kwargs["game_index"]
+        if gi == 0:
+            return GameRunResult(game_id="g0", run_id=kwargs["run_id"], seed_game=0,
+                                 status="error", result=None, error=str(exc), error_code=exc.code,
+                                 invariant_violations=exc.problems)
+        return GameRunResult(game_id=f"g{gi}", run_id=kwargs["run_id"], seed_game=0,
+                             status="completed", result=None)
+    monkeypatch.setattr(batch_runner, "run_single_game", fake)
+
+    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
+                             temperature=0.4, persist=False, enforce_digests=False)
+
+    assert report.pairings[0].error_kinds == {"invariant": 1}
+    assert all(strict)
+
+
 # Level 2: per-pairing consecutive-failure threshold
 async def test_threshold_aborts_pairing_and_next_pairing_still_runs(monkeypatch) -> None:
     # Pairing 0 is game_index 0..31. Error its first 5 games -> abort after the 5th; the remaining 27

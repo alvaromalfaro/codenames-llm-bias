@@ -510,10 +510,13 @@ Two levels, kept deliberately separate:
   `stimulus_manifest`. On a resume, the `game_id` check and the minting give way to the checks of
   the run being resumed (§6).
 * **Level 2 — per-game fault isolation.** A game that errors is recorded, classified
-  (`provider` / `model` / `collision` / `other`) and the loop continues. **Five consecutive failures
-  abort that pairing only** — its remaining cells are skipped and the batch moves to the next
-  pairing, because a systematic failure is a finding about one pairing, not a reason to lose the
-  other five.
+  (`provider` / `model` / `invariant` / `collision` / `other`) and the loop continues. The state of
+  every game is checked against the rules of the game (`backend/app/core/invariants.py`, the checks
+  listed under the test games) after every turn and before the game is stored: a game whose state
+  breaks one ends in error, `game.error_code = 'invariant_broken'`, and is never stored as
+  completed. **Five consecutive failures abort that pairing only** — its remaining cells are
+  skipped and the batch moves to the next pairing, because a systematic failure is a finding about
+  one pairing, not a reason to lose the other five.
 * **Level 2 — a game lost to the provider is played again.** When Ollama times out, is unavailable
   or rate limits, and still fails after the client's own retries, the game was lost to the
   provider, not the model. The batch probes both seats' providers (`health_check`, Ollama's
@@ -597,8 +600,9 @@ The log holds:
   * each guess, with what the card is on both sides;
   * skipped proposals and discarded draws;
   * stops, turn changes, sudden death and the end of the game.
-* **After every turn:** the state, and a check of the game's invariants. A broken invariant is
-  logged as an `ERROR`. The checks are:
+* **After every turn:** the state, and a check of the game's invariants
+  (`backend/app/core/invariants.py`, the same check the batch runs). A broken invariant is logged
+  as an `ERROR`, and the game plays on, where the batch would end it in error. The checks are:
   * the 9 tokens add up;
   * `pending_words` matches the board;
   * the clue validator's visible words are the uncovered ones;

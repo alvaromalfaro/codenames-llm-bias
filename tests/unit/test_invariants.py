@@ -1,18 +1,13 @@
-"""Tests for the invariant checker of scripts/play_games.py: a game played by the rules stays clean
-after every play, and each kind of broken state is reported."""
-import importlib.util
-import sys
-from pathlib import Path
+"""Tests for the invariant checker (backend.app.core.invariants): a game played by the rules stays
+clean after every play, each kind of broken state is reported, and the guard the game runner holds
+logs a breach, and raises it when strict."""
+import logging
+
+import pytest
 
 from backend.app.core.engine import CodenamesDuetEngine
+from backend.app.core.invariants import GameInvariantError, InvariantGuard, check_invariants
 from backend.app.models.game_schemas import Board, GamePhase
-
-_PATH = Path(__file__).resolve().parents[2] / "scripts" / "play_games.py"
-_SPEC = importlib.util.spec_from_file_location("play_games", _PATH)
-play_games = importlib.util.module_from_spec(_SPEC)
-sys.modules["play_games"] = play_games  # its dataclasses look their module up while being built
-_SPEC.loader.exec_module(play_games)
-check_invariants = play_games.check_invariants
 
 LLM, HUMAN = 0, 1
 
@@ -81,3 +76,45 @@ def test_broken_states_are_reported(valid_board_data: dict):
     assert "agent for the clue giver" in problems(token_on_a_giver_green)
     assert "visible words for clue validation" in problems(hide_a_visible_word)
     assert "guesses with nothing pending" in problems(guess_with_nothing_pending)
+
+
+def test_a_lenient_guard_logs_and_keeps_every_breach(valid_board_data: dict, caplog):
+    engine = _engine(valid_board_data)
+    guard = InvariantGuard("g", strict=False)
+    guard.check(engine)
+    engine.state.timer_tokens -= 1
+    with caplog.at_level(logging.ERROR, logger="backend.app.core.invariants"):
+        guard.check(engine)
+        guard.check(engine)
+    assert len(guard.violations) == 2 and "do not add up to 9" in guard.violations[0]
+    assert "invariant broken: game_id=g" in caplog.text
+
+
+def test_a_strict_guard_raises_at_the_first_breach(valid_board_data: dict):
+    engine = _engine(valid_board_data)
+    guard = InvariantGuard("g", strict=True)
+    engine.state.pending_words[LLM] -= 1
+    with pytest.raises(GameInvariantError) as excinfo:
+        guard.check(engine)
+    assert excinfo.value.code == "invariant_broken"
+    assert excinfo.value.problems == guard.violations
+    assert "pending_words" in str(excinfo.value)
+
+
+def test_the_guard_catches_a_turn_number_that_goes_back(valid_board_data: dict):
+    engine = _engine(valid_board_data)
+    guard = InvariantGuard("g", strict=False)
+    engine.state.turn_number = 3
+    guard.check(engine)
+    engine.state.turn_number = 2
+    guard.check(engine)
+    assert guard.violations == ["turn number went back from 3 to 2"]
+
+
+def test_the_final_state_is_checked_once(valid_board_data: dict):
+    engine = _engine(valid_board_data)
+    guard = InvariantGuard("g", strict=False)
+    engine.state.timer_tokens -= 1
+    guard.check_final(engine)
+    guard.check_final(engine)
+    assert len(guard.violations) == 1

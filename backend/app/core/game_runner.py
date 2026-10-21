@@ -17,7 +17,7 @@ import logging
 import os
 import random
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Callable, Optional
 
@@ -25,6 +25,7 @@ from backend.app import config
 from backend.app.core import provenance
 from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.core.game_conductor import conduct_clue, conduct_guess, conduct_sd_guess
+from backend.app.core.invariants import GameInvariantError, InvariantGuard
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.core.llm.client_openrouter import LLMClientOpenRouter
@@ -123,9 +124,13 @@ class GameRunResult:
     # engine.state.result (e.g. "victory" / "loss_assassin" / ...)
     result: Optional[str]
     error: Optional[str] = None    # error message when status == "error"
-    # The LLMError code ("truncated_response", "timeout", ...) when an LLM call ended the game, so the
-    # batch can tell a model's behaviour from a provider failure; None for any other error.
+    # The code of the error that ended the game, so the batch can tell a model's behaviour from a
+    # provider failure: an LLMError's ("truncated_response", "timeout", ...), or "invariant_broken"
+    # for a state that broke the game's rules (GameInvariantError); None for any other error.
     error_code: Optional[str] = None
+    # Every breach of the game's invariants found while it was played (core/invariants.py), in order.
+    # A strict game ends at the first state that breaks one, so it is an error then.
+    invariant_violations: list[str] = field(default_factory=list)
 
 
 # digest enforcement (reproducibility gate)
@@ -340,7 +345,8 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
                           client_factory: ClientFactory = default_client_factory,
                           enforce_digests: bool = False,
                           on_dispatch: Optional[DispatchHook] = None,
-                          service: Optional[LLMService] = None) -> GameRunResult:
+                          service: Optional[LLMService] = None,
+                          strict_invariants: bool = True) -> GameRunResult:
     """Play ONE complete LLM-vs-LLM Codenames Duet game and persist it.
 
     Game identity is deterministic in ``master_seed + game_index`` only (see ``_game_identity``);
@@ -374,6 +380,13 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
             and hands it to every game, so its templates are read once and the run's
             ``prompt_template_version`` is the fingerprint of what every game sent; when None, the
             game builds its own. Its temperature must be ``temperature``.
+        strict_invariants: the game's state is checked against its rules (core/invariants.py)
+            before the first dispatch, after every dispatch, and once the game is over, before it
+            is stored; each breach is logged as an ERROR and returned in
+            ``invariant_violations``. True (the default, and the batch's) ends the game in error at
+            the first state that breaks one (``GameInvariantError``, error code
+            "invariant_broken"): a game played on a broken state is no valid observation, and it is
+            never stored as completed. False plays on, for the test games, which report it.
     """
     # temperature must be explicit; do not fall back to any default.
     if temperature is None:
@@ -437,13 +450,16 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     )
     recorder.run_id = run_id
     recorder.derived_seed = seed_game
+    guard = InvariantGuard(game_id, strict=strict_invariants)
 
     def _flush_if_over(eng: CodenamesDuetEngine, rec: GameRecorder) -> None:
         """Terminal flush trigger passed to the conductors. Persists once at game-over (idempotent
-        via ``rec.flushed``). A persist error is not swallowed: it propagates to the game-level error
+        via ``rec.flushed``), after checking the final state, so a strict game that broke a rule is
+        stored as an error. A persist error is not swallowed: it propagates to the game-level error
         boundary."""
         if not eng.state.is_game_over or rec.flushed:
             return
+        guard.check_final(eng)
         rec.set_outcome(eng.state.result, eng.state.timer_tokens)
         if persist:
             writer.persist_game(rec, status="completed")
@@ -451,6 +467,7 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     try:
         if on_dispatch is not None:
             on_dispatch(engine, recorder)
+        guard.check(engine)
         dispatches = 0
         while not engine.state.is_game_over:
             if dispatches >= _MAX_DISPATCHES:
@@ -460,6 +477,9 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
             await _dispatch_phase(svc, clients, engine, recorder, seed_game, _flush_if_over)
             if on_dispatch is not None:
                 on_dispatch(engine, recorder)
+            # The state the game ended in is checked by the terminal flush, before it is stored.
+            if not engine.state.is_game_over:
+                guard.check(engine)
 
         # Defensive terminal flush: the conductor's per-reveal flush already fired at game-over, but
         # re-asserting here (idempotent) guarantees persistence even for terminal transitions that do
@@ -468,18 +488,19 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
         logger.info("run_single_game completed: game_id=%s result=%s",
                     game_id, engine.state.result)
         return GameRunResult(game_id=game_id, run_id=run_id, seed_game=seed_game,
-                             status="completed", result=engine.state.result)
+                             status="completed", result=engine.state.result,
+                             invariant_violations=list(guard.violations))
     except Exception as exc:
         # Terminal error: either deterministic, or a retriable error whose client-side retry budget
         # was exhausted. The boundary sees only terminals - transient retry lives in the client.
         # Flush the partial game as status='error', then return an error result.
         logger.error("run_single_game failed: game_id=%s run_id=%s error=%s",
                      game_id, run_id, exc, exc_info=True)
-        error_code = exc.code if isinstance(exc, LLMError) else None
+        error_code = exc.code if isinstance(exc, (LLMError, GameInvariantError)) else None
         _error_flush(engine, recorder, game_id, exc, error_code, persist=persist)
         return GameRunResult(game_id=game_id, run_id=run_id, seed_game=seed_game,
                              status="error", result=engine.state.result, error=str(exc),
-                             error_code=error_code)
+                             error_code=error_code, invariant_violations=list(guard.violations))
     finally:
         for client in clients:
             try:
@@ -492,7 +513,7 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
 def _error_flush(engine: CodenamesDuetEngine, recorder: GameRecorder, game_id: str,
                  exc: Exception, error_code: Optional[str], *, persist: bool) -> None:
     """Hardened partial-game flush as status='error', with why the game failed (``exc``, and its
-    ``LLMError`` code or None). Never raises: if the error-flush itself fails it is logged richly so
+    code or None; see ``GameRunResult.error_code``). Never raises: if the error-flush itself fails it is logged richly so
     it cannot mask the original error that triggered it."""
     if recorder.flushed:
         return

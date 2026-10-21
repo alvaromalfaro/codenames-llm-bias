@@ -241,7 +241,7 @@ class GameRecorder:
         self.timer_tokens_final = timer_tokens_final
 
     def set_error(self, code: Optional[str], message: str) -> None:
-        """Capture why the game ended in an error: the ``LLMError`` code, or None for any other
-        error, and the error's text."""
+        """Capture why the game ended in an error: its code (``GameRunResult.error_code``), or None
+        for an error that has none, and the error's text."""
         self.error_code = code
         self.error_message = message

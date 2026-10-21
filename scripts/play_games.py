@@ -14,10 +14,11 @@ What the log holds (one file per run, ``logs/games_<timestamp>.log``):
     and whether it is valid, each guess with what the card is on both sides, skipped proposals,
     retries, stops, turn changes, sudden death and the end of the game;
   * after every turn, the state (tokens, pending words, covered words, time tokens) and a check of
-    the game's invariants: the 9 tokens add up, pending_words matches the board, the words visible
-    to the clue validator are the uncovered ones, every time token sits on a word that was beige for
-    the clue giver, the phase fits the reserve and the pending words. A broken invariant is logged
-    as an ERROR;
+    the game's invariants, the one the batch runs (backend/app/core/invariants.py): the 9 tokens add
+    up, pending_words matches the board, the words visible to the clue validator are the uncovered
+    ones, every time token sits on a word that was beige for the clue giver, the phase fits the
+    reserve and the pending words. A broken invariant is logged as an ERROR, and the game plays on
+    (the batch would end it in error);
   * at the end of each game, the final board and the clues given; at the end of the run, a summary
     with every warning and error, game by game.
 
@@ -47,7 +48,7 @@ import sys
 import time
 import urllib.request
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional, cast
@@ -59,14 +60,12 @@ from backend.app.core.game_runner import GameRunResult, SeatSpec, run_single_gam
 from backend.app.core.llm_service import LLMService, text_digest
 from backend.app.core.loader import BoardLoader
 from backend.app.db.recorder import GameRecorder
-from backend.app.models.game_schemas import Board, CardRole, GamePhase, WordCard
+from backend.app.models.game_schemas import Board, CardRole, WordCard
 from backend.app.paths import BOARDS_DIR, LOGS_DIR
 
 logger = logging.getLogger("play_games")
 
 _KNOWN_PROVIDERS = ("ollama", "openrouter")
-_RESULTS = {"victory", "loss_assassin", "victory_sd", "loss_civilian_sd", "loss_assassin_sd",
-            "loss_stopped_sd"}
 # Libraries whose own DEBUG/INFO chatter would bury the game in the log.
 _QUIET_LOGGERS = ("httpx", "httpcore", "urllib3", "asyncio", "openai", "ollama", "sqlalchemy")
 
@@ -295,82 +294,13 @@ def _board_table(board: Board, *, with_state: bool) -> str:
     return "\n".join(lines)
 
 
-def _pending_on_board(engine: CodenamesDuetEngine) -> list[int]:
-    """pending_words as the board says it (§2): green on the OTHER seat's side, not covered."""
-    cards = engine.state.board.cards
-    return [sum(1 for c in cards if _role(c, 1 - seat) == CardRole.AGENT and not c.revealed)
-            for seat in (0, 1)]
-
-
-def check_invariants(engine: CodenamesDuetEngine) -> list[str]:
-    """Every rule of the game state that must hold between two turns; one message per breach."""
-    s = engine.state
-    cards = s.board.cards
-    problems = []
-
-    spent = s.bystander_tokens + s.check_tokens + s.penalty_tokens
-    if s.timer_tokens + spent != 9:
-        problems.append(f"tokens do not add up to 9 (§12): reserve={s.timer_tokens} "
-                        f"bystander={s.bystander_tokens} check={s.check_tokens} "
-                        f"penalty={s.penalty_tokens}")
-    if not 0 <= s.timer_tokens <= 9:
-        problems.append(f"reserve out of range: {s.timer_tokens}")
-    on_words = sum(len(c.time_marker_by) for c in cards)
-    if on_words != s.bystander_tokens:
-        problems.append(f"{on_words} time token(s) on words but bystander_tokens={s.bystander_tokens}")
-    if s.pending_words != _pending_on_board(engine):
-        problems.append(f"pending_words={s.pending_words} but the board says "
-                        f"{_pending_on_board(engine)} (§2)")
-
-    for c in cards:
-        if len(c.time_marker_by) > 2 or len(set(c.time_marker_by)) != len(c.time_marker_by):
-            problems.append(f"{c.text}: time tokens {c.time_marker_by} (at most one per direction)")
-        for guesser in c.time_marker_by:
-            if _role(c, 1 - guesser) != CardRole.CIVILIAN:
-                problems.append(f"{c.text}: time token from seat {guesser}, but the word is "
-                                f"{_role(c, 1 - guesser).value} for the clue giver (§6.4)")
-        if c.revealed and CardRole.AGENT not in (_role(c, 0), _role(c, 1)):
-            problems.append(f"{c.text}: covered by an agent card but green on neither side")
-
-    visible = {c.text.lower() for c in cards if not c.is_covered}
-    validator = set(engine.clue_validator.visible_words)
-    if visible != validator:
-        problems.append(f"visible words for clue validation differ from the board (§8.2): "
-                        f"validator has {sorted(validator - visible)} extra, misses "
-                        f"{sorted(visible - validator)}")
-
-    if s.is_game_over:
-        if s.result not in _RESULTS:
-            problems.append(f"unknown result {s.result!r}")
-        won = s.result in ("victory", "victory_sd")
-        if won != (s.pending_words == [0, 0]):
-            problems.append(f"result {s.result} with pending_words={s.pending_words}")
-    else:
-        phase = s.current_phase
-        if s.timer_tokens == 0 and phase not in (GamePhase.SUDDEN_DEATH_LLM,
-                                                 GamePhase.SUDDEN_DEATH_HUMAN):
-            problems.append(f"the reserve is empty but the phase is {phase.value} (§7.3)")
-        if phase in (GamePhase.GIVING_CLUE, GamePhase.GUESSING):
-            if s.clue_giver == s.guesser:
-                problems.append(f"seat {s.clue_giver} is both clue giver and guesser")
-            if s.pending_words[s.guesser] == 0:
-                problems.append(f"seat {s.guesser} guesses with nothing pending (§6.8)")
-        if phase == GamePhase.SUDDEN_DEATH_LLM and s.pending_words[0] == 0:
-            problems.append("SUDDEN_DEATH_LLM with nothing pending for seat 0")
-        if phase == GamePhase.SUDDEN_DEATH_HUMAN and (s.pending_words[1] == 0
-                                                      or s.pending_words[0] != 0):
-            problems.append(f"SUDDEN_DEATH_HUMAN with pending_words={s.pending_words}")
-    return problems
-
-
 @dataclass
 class _GameWatch:
-    """The observer handed to run_single_game: logs the state after every turn and checks it."""
+    """The observer handed to run_single_game: logs the state after every turn. The runner checks
+    the state itself, and returns the broken invariants in its result."""
 
     engine: Optional[CodenamesDuetEngine] = None
     dispatches: int = 0
-    violations: list[str] = field(default_factory=list)
-    last_turn: int = 0
 
     def __call__(self, engine: CodenamesDuetEngine, recorder: GameRecorder) -> None:
         try:
@@ -385,13 +315,6 @@ class _GameWatch:
                 self.dispatches, s.turn_number, s.current_phase.value, s.clue_giver, s.guesser,
                 s.timer_tokens, s.bystander_tokens, s.check_tokens, s.penalty_tokens,
                 s.pending_words, covered, tokens)
-            problems = check_invariants(engine)
-            if s.turn_number < self.last_turn:
-                problems.append(f"turn number went back from {self.last_turn} to {s.turn_number}")
-            self.last_turn = s.turn_number
-            for problem in problems:
-                logger.error("INVARIANT BROKEN: %s", problem)
-            self.violations.extend(problems)
             self.dispatches += 1
         except Exception:  # the observer must never end the game
             logger.exception("the state observer failed")
@@ -465,7 +388,7 @@ async def _play(args: argparse.Namespace, specs: list[SeatSpec], boards: list[Bo
         result = await run_single_game(
             board=board, seat_specs=seats, master_seed=master_seed, temperature=args.temperature,
             game_index=index, persist=False, enforce_digests=args.enforce_digests,
-            on_dispatch=watch, service=service)
+            on_dispatch=watch, service=service, strict_invariants=False)
         seconds = time.monotonic() - started
         _log_game_end(watch)
         if result.status != "completed":
@@ -493,7 +416,7 @@ def _log_summary(outcomes: list[_GameOutcome], collector: _IssueCollector, log_p
     for issue in collector.issues.get("run", []):
         lines.append(f"  run: {issue}")
     errored = sum(o.result.status != "completed" for o in outcomes)
-    broken = sum(bool(o.watch.violations) for o in outcomes)
+    broken = sum(bool(o.result.invariant_violations) for o in outcomes)
     issues = sum(len(v) for v in collector.issues.values())
     lines += ["-" * 100,
               f"games={len(outcomes)} completed={len(outcomes) - errored} errored={errored} "
