@@ -1,0 +1,7 @@
+# Commits that only change layout; git blame skips them. GitHub reads this file by itself; locally:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Format the platform with ruff format
+a1d72c4d088b40ea6730eacd7d901fb53a249771
+# Wrap every line at 100 columns, and check it (E501)
+eac5b3809c6d3faf1f271744bf1756f8a7809d6d

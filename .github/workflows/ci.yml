@@ -1,4 +1,4 @@
-# Lint, types, the whole test suite (the database tests on a throwaway pgvector container that
+# Lint, format, types, the whole test suite (the database tests on a throwaway pgvector container that
 # tests/conftest.py starts) and the batch's dry run, on every push and pull request. board_generator/
 # is a project of its own and is not checked here.
 name: CI
@@ -27,6 +27,9 @@ jobs:
 
       - name: Lint
         run: uv run --no-sync ruff check .
+
+      - name: Format
+        run: uv run --no-sync ruff format --check .
 
       - name: Types
         run: uv run --no-sync mypy
