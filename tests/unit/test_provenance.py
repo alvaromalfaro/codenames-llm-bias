@@ -34,6 +34,27 @@ def test_template_fingerprint_content_sensitive():
     assert svc.template_fingerprint() != before
 
 
+def test_template_fingerprint_covers_the_response_schemas(monkeypatch):
+    """A response schema is part of what the model is asked: a limit added to a format changes the
+    fingerprint, as a changed prompt would."""
+    from pydantic import BaseModel, Field
+
+    from backend.app.core import llm_service
+
+    before = LLMService().template_fingerprint()
+
+    class Ranked(BaseModel):
+        word: str
+        confidence: float = Field(ge=0.0, le=0.5)
+
+    class Ranking(BaseModel):
+        reasoning: str
+        rankings: list[Ranked]
+
+    monkeypatch.setitem(llm_service.RESPONSE_FORMATS, "measurement", Ranking)
+    assert LLMService().template_fingerprint() != before
+
+
 def test_template_fingerprint_reflects_default_fallback(monkeypatch):
     """The whole point of hashing loaded texts: the fingerprint follows the text a ``_default_*``
     fallback really loaded. The defaults are verbatim copies of the files, so falling back alone

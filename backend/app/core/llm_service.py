@@ -21,6 +21,16 @@ def text_digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
 
 
+# The response schema each kind of call sends with its request: the provider holds the answer to it
+# (Ollama constrains the decoding with it, OpenRouter passes it on), so it is part of what the model
+# is asked, and the template fingerprint covers it. pydantic puts each format's docstring in the
+# schema as its description, so editing one changes the fingerprint too.
+RESPONSE_FORMATS = {
+    "clue": ClueJSONFormat,
+    "guess": GuessJSONFormat,
+    "measurement": ConfidenceRankingJSONFormat,
+}
+
 # The seat allowed to guess in each sudden-death phase, mirroring the engine's own invariant
 # (resolve_guess raises unless seat 1 acts in SUDDEN_DEATH_HUMAN / seat 0 in SUDDEN_DEATH_LLM).
 _SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM,
@@ -110,18 +120,31 @@ class LLMService:
             "one_shot_assistant_gg": self._one_shot_assistant_gg,
         }
 
+    @staticmethod
+    def _response_schema_texts() -> dict[str, str]:
+        """Read-only accessor: stable key -> the JSON schema each kind of call sends
+        (``RESPONSE_FORMATS``), as canonical JSON: sorted keys, no whitespace."""
+        return {
+            f"response_schema_{kind}": json.dumps(
+                fmt.model_json_schema(), sort_keys=True, separators=(",", ":"))
+            for kind, fmt in RESPONSE_FORMATS.items()
+        }
+
     def template_fingerprint(self) -> str:
-        """Deterministic SHA-256 hex fingerprint of the LOADED template texts (not the directory).
+        """Deterministic SHA-256 hex fingerprint of the LOADED template texts (not the directory)
+        and of the response schemas the requests carry.
 
         Hashing the loaded texts - rather than the files on disk - is the whole point: the run row
         records exactly which prompt texts were sent, whether they came from a file or from a
         ``_default_*`` fallback. The defaults are verbatim copies of the files, so a fallback alone
-        leaves the fingerprint unchanged; a default that drifted from its file would change it.
-        Stable across processes: templates are sorted by key and each contributes
-        ``key\\0text\\0`` to the digest.
+        leaves the fingerprint unchanged; a default that drifted from its file would change it. The
+        response schemas are hashed as they are sent, so a limit added to a format, or a change to
+        its docstring, changes the fingerprint as a changed prompt would. Stable across processes:
+        the texts are sorted by key and each contributes ``key\\0text\\0`` to the digest.
         """
         h = hashlib.sha256()
-        for key, text in sorted(self._loaded_template_texts().items()):
+        texts = {**self._loaded_template_texts(), **self._response_schema_texts()}
+        for key, text in sorted(texts.items()):
             h.update(key.encode("utf-8"))
             h.update(b"\0")
             # ``str(text)`` defensively: a loaded text is normally a str, but a malformed hardcoded

@@ -350,8 +350,8 @@ def _resume_problems(run: StoredRun, *, schedule: Sequence[BatchCell], models: S
     if run.temperature != temperature:
         problems.append(f"temperature: the run has {run.temperature}, this batch {temperature}")
     if run.prompt_template_version != template_fingerprint:
-        problems.append(f"prompt templates: the run was minted with {run.prompt_template_version}, "
-                        f"the templates now hash to {template_fingerprint}")
+        problems.append(f"prompt templates and response schemas: the run was minted with "
+                        f"{run.prompt_template_version}, they now hash to {template_fingerprint}")
     minted = sorted(_snapshot_models(run.model_registry_snapshot))
     now = sorted(_model_id(spec) for spec in models)
     if minted != now:

@@ -12,7 +12,7 @@ import uuid
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from backend.app.core import game_runner
+from backend.app.core import game_runner, llm_service
 from backend.app.core.game_runner import (
     SeatSpec, _derive, _game_identity, _seed_engine, _seed_game,
     _seed_meas, _seed_play, run_single_game,
@@ -311,6 +311,14 @@ async def test_request_seeds_match_derivation_scheme(monkeypatch):
     assert seen[(g_name, GuessJSONFormat)] == _seed_play(seed_game, guesser, 1)
     assert seen[(g_name, ConfidenceRankingJSONFormat)
                 ] == _seed_meas(seed_game, guesser, 1)
+
+
+@pytest.mark.asyncio
+async def test_every_response_schema_a_game_sends_is_fingerprinted(monkeypatch):
+    """The fingerprint covers the response schemas of RESPONSE_FORMATS; a game must send no other."""
+    log = []
+    await _run_lemonade(777, monkeypatch, log)
+    assert {fmt for _, fmt, _ in log} == set(llm_service.RESPONSE_FORMATS.values())
 
 
 # identity determinism (run_id must NOT feed the derivation)

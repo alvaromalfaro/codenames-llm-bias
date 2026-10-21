@@ -259,11 +259,15 @@ def _log_run_header(args: argparse.Namespace, specs: list[SeatSpec], boards: lis
                 config.LLM_MAX_OUTPUT_TOKENS)
 
     # The call log names the constant messages of each request by text_digest; print each template
-    # once here under that id, so every prompt can be rebuilt from the log alone.
+    # once here under that id, so every prompt can be rebuilt from the log alone. The response
+    # schemas the requests carry go with them: the fingerprint covers both.
     service = LLMService(temperature=args.temperature)
     logger.debug("prompt template fingerprint %s", service.template_fingerprint())
     for name, text in service._loaded_template_texts().items():
         logger.debug("template %s id=%s\n--- template ---\n%s\n--- end of template ---",
+                     name, text_digest(text), text)
+    for name, text in service._response_schema_texts().items():
+        logger.debug("%s id=%s\n--- schema ---\n%s\n--- end of schema ---",
                      name, text_digest(text), text)
     return service
 

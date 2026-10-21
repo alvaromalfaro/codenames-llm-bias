@@ -359,9 +359,9 @@ dispatched**. Test games (`scripts/play_games.py`) log the release and the serve
 enforce them only with `--enforce-digests`.
 
 **Provenance.** Each `run` row records `code_version` (git short SHA, `-dirty` suffixed),
-`prompt_template_version` (a fingerprint over the loaded templates), `model_registry_snapshot` (the
-served digest per seat), `stimulus_manifest` (each scheduled board with its content hash), the
-`master_seed` and the `temperature`. `environment_snapshot` records the rest of what a game depends
+`prompt_template_version` (a fingerprint over the loaded templates and the response schemas the
+requests carry), `model_registry_snapshot` (the served digest per seat), `stimulus_manifest` (each
+scheduled board with its content hash), the `master_seed` and the `temperature`. `environment_snapshot` records the rest of what a game depends
 on: the Python release and the platform, the versions of the key packages, the Ollama daemon (host
 and release), the GPUs `nvidia-smi` sees, the clue validator's data (the SHA-256 of the MorphoLex
 file, the NLTK release, the WordNet version and the SHA-256 of its corpora) and the working tree
@@ -819,9 +819,12 @@ Never point them at the experiment database.
 **Prompt templates** live in `data/prompt_templates/` — system, user and one-shot templates for the
 clue giver and guesser, plus the sudden-death and out-of-band **measurement** variants. Editing one
 changes the run's `prompt_template_version` fingerprint, which is exactly the point: a run is
-comparable only to runs sharing its fingerprint. `llm_service.py` keeps a verbatim `_default_*` copy
-of each template, used when the file is missing, so edit both together:
-`tests/unit/test_llm_service.py` fails if they drift apart.
+comparable only to runs sharing its fingerprint. The response schemas sent with each request
+(`RESPONSE_FORMATS` in `llm_service.py`: `ClueJSONFormat`, `GuessJSONFormat` and
+`ConfidenceRankingJSONFormat` in `models/llm_schemas.py`) are part of the same fingerprint,
+docstrings included, since pydantic sends each format's docstring as its description.
+`llm_service.py` keeps a verbatim `_default_*` copy of each template, used when the file is missing,
+so edit both together: `tests/unit/test_llm_service.py` fails if they drift apart.
 
 **Model roster** lives in `backend/app/config.py`: `llm_models` (what the batch defaults to, and
 what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the
