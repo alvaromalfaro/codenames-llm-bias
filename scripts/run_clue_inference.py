@@ -1,7 +1,7 @@
 """CLI applying the cluster-bootstrap inference layer to the clue-giver metrics IAE and TAC/TAI.
 
-This adds intervals, so the clue-giver metrics report on the same footing as CIT, the skill metrics 
-and conc-SD. It changes no estimator: every point estimate printed here is produced by calling 
+This adds intervals, so the clue-giver metrics report on the same footing as CIT, the skill metrics
+and conc-SD. It changes no estimator: every point estimate printed here is produced by calling
 ``compute_iae`` / ``compute_tac_tai`` on the full data, exactly as ``run_clue_metrics.py`` does. The
 replicates supply dispersion only.
 

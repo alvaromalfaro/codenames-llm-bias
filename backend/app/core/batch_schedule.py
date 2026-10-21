@@ -2,8 +2,8 @@
 
 This is the batch's probe/control calendar, seat mirroring and pairing cross. Given the models and
 a ``master_seed``, :func:`build_schedule` produces the exact list of games to play - each with its pairing, board, seat assignment and ``game_index``.
-Because a silent error here becomes a biased dataset discovered only at analysis time, identity is 
-derived through the very same :func:`_game_identity` the runner and DB use, so the tests can prove 
+Because a silent error here becomes a biased dataset discovered only at analysis time, identity is
+derived through the very same :func:`_game_identity` the runner and DB use, so the tests can prove
 no two cells collide on the real ``game_id``.
 
 Design (fixed by prior decisions):
@@ -15,8 +15,8 @@ Design (fixed by prior decisions):
     guarantee (identical stimulus across pairings). Within each kind the canonical order is
     ``board_id`` ascending (a required, unique field: a total order, unlike the optional ``seed``);
     the first 4 / 4 / 8 are taken.
-  - Each board is played twice per pairing: once with model_a in seat 0 and once with model_a in 
-    seat 1, same ``board_id`` both times. So 16 boards x 2 = 32 games per pairing, 16 probe + 16 
+  - Each board is played twice per pairing: once with model_a in seat 0 and once with model_a in
+    seat 1, same ``board_id`` both times. So 16 boards x 2 = 32 games per pairing, 16 probe + 16
     control (50/50), 8 career + 8 science (4+4).
   - ``game_index = p * 32 + k`` with ``k = j * 2 + o`` for board ordinal ``j`` in 0..15 (over the
     fixed order ``[career4, science4, control8]``) and orientation ``o`` in {0, 1}. Range 0..191.
@@ -111,10 +111,10 @@ def build_schedule(
     """Build the deterministic batch schedule.
 
     The same inputs always produce a byte-identical result, and reordering ``models`` or ``boards``
-    does not change the output (canonical orders hold). ``boards`` is the already-loaded bank (the 
+    does not change the output (canonical orders hold). ``boards`` is the already-loaded bank (the
     caller reads disk; this function does not).
 
-    Raises :class:`ScheduleError` if ``models`` is not exactly _N_MODELS distinct models, or the 
+    Raises :class:`ScheduleError` if ``models`` is not exactly _N_MODELS distinct models, or the
     bank lacks _N_CAREER career + _N_SCIENCE science + _N_CONTROL control boards.
     """
     if len(models) != _N_MODELS:

@@ -63,8 +63,8 @@ def _daemon_error(e: Exception) -> LLMError:
 def degenerate_reason(parsed: BaseModel) -> str | None:
     """Why this well-formed response cannot yield a legal domain object, or None if it can.
 
-    A model can return JSON that parses cleanly and still be a non-answer. Because the domain object 
-    is built in ``llm_service`` outside the client's retry loop, that mismatch would otherwise 
+    A model can return JSON that parses cleanly and still be a non-answer. Because the domain object
+    is built in ``llm_service`` outside the client's retry loop, that mismatch would otherwise
     escape as a fatal ``ValidationError`` mid-game.
 
     Detecting it here - against the same permissive parse - lets the existing bounded re-sample
@@ -141,7 +141,7 @@ class LLMClientLocal(LLMClient):
                 self._thinking_capable = any(
                     str(c) == _THINKING_CAPABILITY for c in (capabilities or []))
             except _DAEMON_ERRORS as e:
-                raise _daemon_error(e)
+                raise _daemon_error(e) from e
             except Exception as e:
                 logger.warning(
                     "capability probe failed for %r (%s); omitting `think` from the request.",
@@ -230,7 +230,7 @@ class LLMClientLocal(LLMClient):
                     raise LLMMalformedResponseError(
                         provider="ollama", raw_payload=response_json, cause=e,
                         execution_mode="local"
-                    )
+                    ) from e
 
                 # Well-formed but degenerate (e.g. an empty proposals list): the permissive
                 # LLM-facing schema accepts it, the domain model would not. Raised as the RETRIABLE
@@ -269,15 +269,15 @@ class LLMClientLocal(LLMClient):
             )
 
         except _DAEMON_ERRORS as de:
-            raise _daemon_error(de)
+            raise _daemon_error(de) from de
         except RequestError as re:
             raise LLMModelNotProvidedError(
                 provider="ollama", cause=re, execution_mode="local"
-            )
+            ) from re
         except JSONDecodeError as je:
             raise LLMParseError(
                 provider="ollama", cause=je, execution_mode="local"
-            )
+            ) from je
 
     async def health_check(self) -> bool:
         """Whether the daemon answers and still has this model: its /api/show for the model, within

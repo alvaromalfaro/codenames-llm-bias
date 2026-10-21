@@ -675,7 +675,7 @@ def test_engine_resolve_guess_change_to_sudden_death(valid_board_data: dict):
 
 def test_engine_resolve_guess_sudden_death(valid_board_data: dict):
     """
-    Validates that the resolve_guess method correctly identifies a victory condition in the 
+    Validates that the resolve_guess method correctly identifies a victory condition in the
     SUDDEN_DEATH phase when the last agent card is guessed, and updates the game state to reflect
     the victory.
 

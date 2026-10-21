@@ -1,7 +1,7 @@
 """Atomic terminal flush of one completed game to Postgres.
 
 ``persist_game`` reads a fully-accumulated ``GameRecorder`` and writes the whole game in ONE
-transaction via ``session_scope``. Status is written directly as its terminal value 
+transaction via ``session_scope``. Status is written directly as its terminal value
 (``'completed'`` / ``'error'``); ``'in_progress'`` is never written, so the absence of a game row
 means the game never completed.
 
@@ -95,7 +95,7 @@ def _write_play(session, gp, *, game_id: str, turn_id: int, guesser_seat: int,
     session.add(proposal)
     session.flush()
     items: list[GuessProposalItemModel] = []
-    for position, (word, confidence) in enumerate(zip(gp.proposals, gp.confidence)):
+    for position, (word, confidence) in enumerate(zip(gp.proposals, gp.confidence, strict=True)):
         item = GuessProposalItemModel(
             guess_proposal_id=proposal.id,
             position=position,
@@ -235,7 +235,7 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
         # never a global index over turn.reveals - the SD conductor resets it per seat. A global
         # counter would overshoot len(items) and drop the backfill.
         backfilled = False
-        for reveal, row in zip(turn.reveals, reveal_rows):
+        for reveal, row in zip(turn.reveals, reveal_rows, strict=True):
             idx = reveal.proposal_index
             items = play_items_by_seat.get(reveal.acting_seat, [])
             if idx is not None and 0 <= idx < len(items):
@@ -268,7 +268,7 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
             session, turn.reveals, turn_id=turn_row.id)
         # index-aligned backfill of play items' reveal_event_id; the unreached / off-board tail
         # (items with no reveal) keeps reveal_event_id NULL.
-        for reveal, row in zip(turn.reveals, reveal_rows):
+        for reveal, row in zip(turn.reveals, reveal_rows, strict=True):
             idx = reveal.proposal_index
             if idx is not None and 0 <= idx < len(play_items):
                 play_items[idx].reveal_event_id = row.id
@@ -380,7 +380,7 @@ def delete_run(run_id: str) -> DeleteRunResult:
     Removing a run is how a re-run gets unblocked: game identity is deterministic in
     ``(master_seed, game_index)`` (a uuid5 ``game.id``), so re-persisting the same experiment
     collides on the primary key; the run must be deleted first. It is also how throwaway pilot
-    batches are cleaned up. The delete leans entirely on ``ON DELETE CASCADE`` from ``game.run_id`` - 
+    batches are cleaned up. The delete leans entirely on ``ON DELETE CASCADE`` from ``game.run_id`` -
     deleting the ``run`` row tears down every ``game``, ``game_seat``, ``turn``,
     ``clue``, ``clue_target``, ``llm_call``, ``guess_proposal``, ``guess_proposal_item`` and
     ``reveal_event`` beneath it. Shared ingest data (``board`` / ``word_card``) is not run-owned and

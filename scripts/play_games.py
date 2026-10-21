@@ -223,7 +223,7 @@ def _check_ollama(specs: list[SeatSpec]) -> None:
         tags = {m["name"]: m.get("digest") for m in _ollama_get("/api/tags").get("models", [])}
     except OSError as exc:
         raise SystemExit(f"No Ollama server at {_ollama_host()} ({exc}). Start it first "
-                         "(ollama serve) or set OLLAMA_HOST.")
+                         "(ollama serve) or set OLLAMA_HOST.") from exc
     logger.info("ollama server %s, version %s", _ollama_host(), version)
     missing = [m for m in local if m not in tags]
     if missing:

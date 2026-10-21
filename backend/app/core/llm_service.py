@@ -223,7 +223,7 @@ class LLMService:
 
     async def propose_clue(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> ClueProposal:
         """
-        Proposes a clue for the current game state. This method checks that the game is in the 
+        Proposes a clue for the current game state. This method checks that the game is in the
         correct phase and that the seat is the clue giver before building the request, sending it to
         the LLM, and processing the response.
 
@@ -256,7 +256,7 @@ class LLMService:
 
     async def propose_guess(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> GuessProposal:
         """
-        Proposes guesses for the current game state. This method checks that the game is in the 
+        Proposes guesses for the current game state. This method checks that the game is in the
         correct phase and that the seat is the guesser before building the request, sending it to
         the LLM, and processing the response.
 
@@ -457,7 +457,7 @@ class LLMService:
 
     def _build_clue_proposal(self, response: LLMResponse) -> ClueProposal:
         """
-        Processes the LLMResponse to extract the proposed clue and count, and constructs a 
+        Processes the LLMResponse to extract the proposed clue and count, and constructs a
         ClueProposal instance.
 
         :param response: The response from the LLM containing the generated clue proposal.
@@ -474,9 +474,9 @@ class LLMService:
             # The intended target set S. Captured verbatim for measurement only; a missing,
             # empty, or malformed list is recorded as-is and never triggers a retry.
             targets = response_json.get("targets", [])
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             raise ValueError(
-                "LLM response is not valid JSON. Response content: " + response_content)
+                "LLM response is not valid JSON. Response content: " + response_content) from e
 
         logger.info("clue proposal: clue=%r count=%s targets=%s reasoning=%r",
                     clue, count, targets, reasoning)
@@ -585,16 +585,16 @@ class LLMService:
             proposals = response_json.get("proposals", [])
             reasoning = response_json.get("reasoning", "")
             stop_reason = response_json.get("stop_reason", "")
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             raise ValueError(
-                "LLM response is not valid JSON. Response content: " + response_content)
+                "LLM response is not valid JSON. Response content: " + response_content) from e
 
         confidence = [proposal.get("confidence", 0) for proposal in proposals]
         proposals = [proposal.get("word", "").strip()
                      for proposal in proposals]
 
         logger.info("guess proposal: [%s] reasoning=%r stop_reason=%r",
-                    ", ".join(f"{word} ({conf})" for word, conf in zip(proposals, confidence)),
+                    ", ".join(f"{word} ({conf})" for word, conf in zip(proposals, confidence, strict=True)),
                     reasoning, stop_reason)
 
         return GuessProposal(
@@ -696,9 +696,9 @@ class LLMService:
             response_json = json.loads(response_content)
             rankings_raw = response_json.get("rankings", [])
             reasoning = response_json.get("reasoning", "")
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
             raise ValueError(
-                "LLM response is not valid JSON. Response content: " + response_content)
+                "LLM response is not valid JSON. Response content: " + response_content) from e
 
         ranked: list[RankedCard] = []
         for item in rankings_raw:
@@ -816,7 +816,7 @@ class LLMService:
         try:
             with open(template_path, "r", encoding="utf-8") as f:
                 return f.read()
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             match prompt_type:
                 case 0:
                     return self._default_system_prompt_cg()
@@ -844,13 +844,14 @@ class LLMService:
                         "1 (user clue giver), 2 (system guesser), 3 (user guesser), "
                         "4 (system sudden death guesser), 5 (user sudden death guesser), "
                         "6 (system measurement guesser), 7 (user measurement guesser), "
-                        "8 (system measurement sudden death), or 9 (user measurement sudden death).")
+                        "8 (system measurement sudden death), or 9 (user measurement sudden "
+                        "death).") from e
 
     def _load_one_shot(self, path: str, prompt_type: int) -> str:
         try:
             with open(path, "r", encoding="utf-8") as f:
                 return f.read()
-        except FileNotFoundError:
+        except FileNotFoundError as e:
             match prompt_type:
                 case 0:
                     return self._default_os_user_cg()
@@ -863,7 +864,7 @@ class LLMService:
                 case _:
                     raise ValueError("Invalid prompt type specified. Must be 0 (one-shot user clue "
                                      "giver), 1 (one-shot assistant clue giver), 2 (one-shot user "
-                                     "guesser), or 3 (one-shot assistant guesser).")
+                                     "guesser), or 3 (one-shot assistant guesser).") from e
 
     def _default_system_prompt_cg(self) -> str:
         """
@@ -1067,10 +1068,10 @@ class LLMService:
 
     def _default_os_assistant_cg(self) -> str:
         """
-        Provides a default one-shot example for the assistant in the clue giver role in case the 
+        Provides a default one-shot example for the assistant in the clue giver role in case the
         one-shot example file is not found.
 
-        This example should demonstrate the reasoning process and the final clue and count output in 
+        This example should demonstrate the reasoning process and the final clue and count output in
         the correct JSON format.
         """
         return (
@@ -1126,7 +1127,7 @@ class LLMService:
 
     def _default_os_assistant_gg(self) -> str:
         """
-        Provides a default one-shot example for the assistant in the guessing role in case the 
+        Provides a default one-shot example for the assistant in the guessing role in case the
         one-shot example file is not found.
 
         This example should demonstrate the reasoning process for selecting guesses based on the

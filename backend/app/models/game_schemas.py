@@ -9,9 +9,9 @@ class CardRole(str, Enum):
     """
     The role of a card in the game.
         - AGENT: A card that must be guessed by the other player.
-        - ASSASSIN: A card that causes the end of the game and the loss of the game if guessed by 
+        - ASSASSIN: A card that causes the end of the game and the loss of the game if guessed by
             the other player.
-        - CIVILIAN: A card that causes the end of turn and the loss of a time point if guessed by 
+        - CIVILIAN: A card that causes the end of turn and the loss of a time point if guessed by
             the other player.
     """
     AGENT = "agent"
@@ -40,7 +40,7 @@ class WordCard(BaseModel):
     ``is_covered`` vs ``revealed_by``):
 
     - ``revealed`` / ``time_marker_by`` describe what physically sits on the word, and therefore
-      whether ANYONE may still touch it. This is what ``is_covered`` and ``is_guessable_by`` are 
+      whether ANYONE may still touch it. This is what ``is_covered`` and ``is_guessable_by`` are
       derived from.
     - ``revealed_by`` describes for WHICH seats the word has stopped being a pending word, i.e.
       whose clue-giving no longer needs to target it. It is bookkeeping for the clue-giver side and

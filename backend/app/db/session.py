@@ -22,7 +22,7 @@ _SessionLocal: sessionmaker[Session] | None = None
 def _database_url() -> str:
     """Return the configured DATABASE_URL, normalised to the sync psycopg2 driver.
 
-    Raises ``RuntimeError`` if ``DATABASE_URL`` is unset so callers can handle a missing 
+    Raises ``RuntimeError`` if ``DATABASE_URL`` is unset so callers can handle a missing
     configuration explicitly.
     """
     url = os.environ.get("DATABASE_URL")

@@ -59,9 +59,9 @@ _CARDS = [
 def _board(board_id: str = "tb") -> Board:
     return Board(
         board_id=board_id, category="neutral",
-        cards=[WordCard(id=i, text=t, human_perspective_role=h,
-                        llm_perspective_role=l, category="neutral")
-               for i, (t, h, l) in enumerate(_CARDS)],
+        cards=[WordCard(id=i, text=text, human_perspective_role=human,
+                        llm_perspective_role=llm, category="neutral")
+               for i, (text, human, llm) in enumerate(_CARDS)],
     )
 
 
@@ -86,7 +86,7 @@ def _mock_response(text: str) -> MagicMock:
 def _guess_json(words, confidences=None, reasoning="r", stop_reason="done") -> str:
     confidences = confidences or [0.9] * len(words)
     items = ", ".join(
-        f'{{"word": "{w}", "confidence": {c}}}' for w, c in zip(words, confidences))
+        f'{{"word": "{w}", "confidence": {c}}}' for w, c in zip(words, confidences, strict=True))
     return f'{{"reasoning": "{reasoning}", "stop_reason": "{stop_reason}", "proposals": [{items}]}}'
 
 
@@ -324,8 +324,8 @@ async def test_every_response_schema_a_game_sends_is_fingerprinted(monkeypatch):
 # identity determinism (run_id must NOT feed the derivation)
 @pytest.mark.asyncio
 async def test_identity_ignores_run_id(monkeypatch):
-    """Same master_seed + game_index but different run_id (including a random uuid4, simulating a 
-    DB-minted run.id) must yield the same game_id and seed_game. run_id is persistence bookkeeping, 
+    """Same master_seed + game_index but different run_id (including a random uuid4, simulating a
+    DB-minted run.id) must yield the same game_id and seed_game. run_id is persistence bookkeeping,
     never identity."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
 
@@ -362,8 +362,8 @@ def test_identity_is_master_seed_sensitive():
 # error boundary
 @pytest.mark.asyncio
 async def test_retriable_error_propagates_without_dispatch_retry(monkeypatch):
-    """The dispatch no longer retries, retry lives in the client. A retriable error from a (mock) 
-    client - standing in for the real client's exhausted budget - propagates straight to the game 
+    """The dispatch no longer retries, retry lives in the client. A retriable error from a (mock)
+    client - standing in for the real client's exhausted budget - propagates straight to the game
     boundary, and the conductor is dispatched exactly once (no re-dispatch)."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
 
@@ -536,8 +536,8 @@ async def test_deterministic_error_not_retried(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_all_unmappable_guess_errors_without_redispatch(monkeypatch):
-    """A guesser whose entire proposal is off-board resolves zero guesses, so conduct_guess's 
-    pass_turn raises and now propagates to the boundary as status='error' - the driver does not loop 
+    """A guesser whose entire proposal is off-board resolves zero guesses, so conduct_guess's
+    pass_turn raises and now propagates to the boundary as status='error' - the driver does not loop
     on the still-GUESSING phase (the guess dispatch happens exactly once)."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
     # Both seats propose only off-board words; whichever seat guesses first triggers the raise.
@@ -722,7 +722,6 @@ async def test_created_run_records_provenance(monkeypatch):
     model_registry_snapshot (both seats, ollama strong / openrouter best-effort), a prompt-template
     fingerprint (64-hex), and a code_version (short SHA, maybe -dirty). The ollama digest is
     monkeypatched to a fixed value so seat 0 is a strong identity without a live daemon."""
-    from sqlalchemy import select
 
     from backend.app.core import provenance
     from backend.app.core.llm_service import LLMService

@@ -15,7 +15,7 @@ from backend.app.models.game_schemas import (
 )
 from backend.app.models.llm_errors import LLMParseError, LLMTruncatedResponseError
 from backend.app.models.llm_schemas import (
-    GuessJSONFormat, ConfidenceRankingJSONFormat, ClueJSONFormat,
+    GuessJSONFormat, ConfidenceRankingJSONFormat,
 )
 
 
@@ -49,7 +49,7 @@ def _mock_client(texts: list[str]) -> MagicMock:
 def _guess_json(words, confidences=None, reasoning="r", stop_reason="done") -> str:
     confidences = confidences or [0.9] * len(words)
     items = ", ".join(
-        f'{{"word": "{w}", "confidence": {c}}}' for w, c in zip(words, confidences))
+        f'{{"word": "{w}", "confidence": {c}}}' for w, c in zip(words, confidences, strict=True))
     return f'{{"reasoning": "{reasoning}", "stop_reason": "{stop_reason}", "proposals": [{items}]}}'
 
 
@@ -101,9 +101,9 @@ _CARDS = [
 def _board() -> Board:
     return Board(
         board_id="tb", category="neutral",
-        cards=[WordCard(id=i, text=t, human_perspective_role=h,
-                        llm_perspective_role=l, category="neutral")
-               for i, (t, h, l) in enumerate(_CARDS)],
+        cards=[WordCard(id=i, text=text, human_perspective_role=human,
+                        llm_perspective_role=llm, category="neutral")
+               for i, (text, human, llm) in enumerate(_CARDS)],
     )
 
 
@@ -301,7 +301,7 @@ async def test_conduct_guess_flush_sees_game_over_on_terminal_reveal():
 
 @pytest.mark.asyncio
 async def test_conduct_guess_reraises_proposal_error():
-    """A raising propose_guess is re-raised unchanged (same type/message) so the caller can map it 
+    """A raising propose_guess is re-raised unchanged (same type/message) so the caller can map it
     to its 400; the play proposal is NOT recorded and ``proposal`` is never touched."""
     eng = _guessing_engine(guesser=0, agents=(5, 5))
     client = MagicMock(spec=LLMClient)
@@ -321,7 +321,7 @@ async def test_conduct_guess_reraises_proposal_error():
 
 @pytest.mark.asyncio
 async def test_conduct_guess_measurement_failure_does_not_propagate():
-    """A measurement failure is still swallowed - the proposal succeeds, the measurement raises, 
+    """A measurement failure is still swallowed - the proposal succeeds, the measurement raises,
     conduct_guess completes normally and records the play proposal with measurement absent."""
     eng = _guessing_engine(guesser=0, agents=(5, 5))
     client = _mock_client([_guess_json(["BRICK", "CAVE"])])
@@ -381,9 +381,9 @@ async def test_conduct_sd_guess_measurement_model_failure_does_not_end_the_turn(
 
 @pytest.mark.asyncio
 async def test_conduct_guess_skips_unplayable_item_and_continues(caplog):
-    """An item the engine refuses (an already-revealed card, positioned between valid agent words) 
-    is skipped like a hallucinated word - the turn is NOT abandoned, the later valid word still 
-    resolves, one conduct_guess call suffices, and the phase advances off GUESSING (so the driver 
+    """An item the engine refuses (an already-revealed card, positioned between valid agent words)
+    is skipped like a hallucinated word - the turn is NOT abandoned, the later valid word still
+    resolves, one conduct_guess call suffices, and the phase advances off GUESSING (so the driver
     never re-dispatches this turn and overwrites its single play proposal)."""
     eng = _guessing_engine(guesser=0, agents=(5, 5))
     # TATTOO(8) is a seat-0 agent already revealed by seat 0 -> resolve_guess raises "already revealed".
@@ -448,7 +448,7 @@ async def test_conduct_guess_stops_when_the_guesser_covers_its_last_pending_word
 
 @pytest.mark.asyncio
 async def test_conduct_guess_all_unmappable_raises_on_pass(caplog):
-    """Every proposed word is off-board, so no guess resolves (guesses_made_this_turn == 0) and the 
+    """Every proposed word is off-board, so no guess resolves (guesses_made_this_turn == 0) and the
     for/else pass_turn raises - the raise now PROPAGATES (no longer swallowed), leaving the phase at
     GUESSING for the caller's error boundary rather than spinning the driver."""
     eng = _guessing_engine(guesser=0, agents=(5, 5))
@@ -555,7 +555,6 @@ async def test_conduct_sd_guess_reraises_proposal_error():
     # skip measurement; isolate the proposal error
     eng.state.sd_measurement_pending = False
     eng.state.sudden_death = None
-    service = LLMService()
     mock_service = MagicMock()
     mock_service.propose_guess_sd = AsyncMock(side_effect=ValueError("boom"))
     client = MagicMock(spec=LLMClient)

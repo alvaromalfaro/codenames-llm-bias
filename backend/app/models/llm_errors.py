@@ -3,9 +3,9 @@ from typing import Any
 
 class LLMError(Exception):
     """
-    A base class for errors related to interactions with the LLM. It includes a code to categorize 
+    A base class for errors related to interactions with the LLM. It includes a code to categorize
     the error, a message describing the error, a flag indicating whether the error is retriable, and
-    optional metadata such as the provider, HTTP status code, request ID, raw payload from the LLM, 
+    optional metadata such as the provider, HTTP status code, request ID, raw payload from the LLM,
     the original exception that caused this error (if any), and the execution mode.
     """
 
@@ -32,8 +32,8 @@ class LLMError(Exception):
 
 class LLMModelNotProvidedError(LLMError):
     """
-    A specific error class for when the LLM model is not provided in the request. This error is not 
-    retriable, as the model must be specified in order for the request to succeed on a subsequent 
+    A specific error class for when the LLM model is not provided in the request. This error is not
+    retriable, as the model must be specified in order for the request to succeed on a subsequent
     attempt.
     """
 
@@ -97,7 +97,7 @@ class LLMRefusalError(LLMError):
 
 class LLMTimeoutError(LLMError):
     """
-    A specific error class for LLM timeouts, indicating that the request to the LLM exceeded the 
+    A specific error class for LLM timeouts, indicating that the request to the LLM exceeded the
     allowed time limit. This error is retriable, as the timeout may have been a transient issue that
     could succeed on a subsequent attempt.
     """
@@ -113,7 +113,7 @@ class LLMTimeoutError(LLMError):
 
 class LLMRateLimitError(LLMError):
     """
-    A specific error class for LLM rate limits, indicating that the request to the LLM was rejected 
+    A specific error class for LLM rate limits, indicating that the request to the LLM was rejected
     due to exceeding the allowed number of requests in a given time period. This error is retriable,
     as the rate limit may reset after a certain amount of time, allowing the request to succeed on a
     subsequent attempt.
@@ -130,8 +130,8 @@ class LLMRateLimitError(LLMError):
 
 class LLMAuthError(LLMError):
     """
-    A specific error class for LLM authentication errors, indicating that the request to the LLM 
-    failed due to authentication issues (e.g., invalid API key, expired token, etc.). This error is 
+    A specific error class for LLM authentication errors, indicating that the request to the LLM
+    failed due to authentication issues (e.g., invalid API key, expired token, etc.). This error is
     not retriable, as the authentication issue must be resolved before the request can succeed on a
     subsequent attempt.
     """
@@ -261,9 +261,9 @@ class LLMMalformedResponseError(LLMParseError):
 
 class LLMProviderUnavailableError(LLMError):
     """
-    A specific error class for LLM provider unavailability, indicating that the LLM provider is 
+    A specific error class for LLM provider unavailability, indicating that the LLM provider is
     currently unavailable (e.g., due to maintenance, outages, etc.). This error is retriable, as the
-    provider may become available again after some time, allowing the request to succeed on a 
+    provider may become available again after some time, allowing the request to succeed on a
     subsequent attempt.
     """
 

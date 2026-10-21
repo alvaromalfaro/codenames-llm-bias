@@ -22,8 +22,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "mypy>=2.4.0",
     "pytest",
     "pytest-asyncio",
+    "ruff>=0.17.1",
 ]
 # Offline phi* embedding backfill only (scripts/backfill_embeddings.py). Deliberately not a default
 # dependency: it pulls torch, which has no business in the app image. Pinned to the exact version
@@ -35,6 +37,21 @@ embeddings = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["backend*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# board_generator/ is a project of its own, with its own ruff configuration.
+extend-exclude = ["board_generator"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes and bugbear to start with; long lines (E501) are not checked yet.
+select = ["E", "W", "F", "B"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# A migration that was applied stays as it was written, trailing spaces included.
+"backend/migrations/versions/*" = ["W291"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

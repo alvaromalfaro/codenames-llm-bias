@@ -229,7 +229,7 @@ def load_skill_data(
     # EP: one row per clue, carrying the agents revealed on that clue's turn. Joining from `clue`
     # rather than from `turn` is what keeps clue-less sudden-death turns out of the numerator.
     agents_by_turn: dict[int, int] = defaultdict(int)
-    for turn_id, count in session.execute(
+    for turn_id, _reveal_id in session.execute(
         select(RevealEventModel.turn_id, RevealEventModel.id)
         .join(TurnModel, TurnModel.id == RevealEventModel.turn_id)
         .where(

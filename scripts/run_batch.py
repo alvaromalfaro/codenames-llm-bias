@@ -1,11 +1,11 @@
 """The batch orchestrator CLI: play the full 192-game model-pairing cross under one run.
 
-This is the real batch - the probe/control calendar, the per-board seat mirror and the C(4,2) 
-pairing cross from ``batch_schedule.build_schedule`` - played with count-and-continue fault 
-isolation and a per-pairing consecutive-failure abort. It imports from backend.app and modifies 
+This is the real batch - the probe/control calendar, the per-board seat mirror and the C(4,2)
+pairing cross from ``batch_schedule.build_schedule`` - played with count-and-continue fault
+isolation and a per-pairing consecutive-failure abort. It imports from backend.app and modifies
 nothing under backend/.
 
-The orchestration lives in ``backend.app.core.batch_runner``; this file is only the CLI: argument 
+The orchestration lives in ``backend.app.core.batch_runner``; this file is only the CLI: argument
 parsing, model/board loading, the dry-run wiring and the final report print.
 
 Preconditions (all fail loud before any provider call - see batch_runner.run_batch):

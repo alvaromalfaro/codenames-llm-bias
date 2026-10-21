@@ -91,7 +91,7 @@ class LLMClientOpenRouter(LLMClient):
                                    content)
                     raise LLMMalformedResponseError(
                         provider="openrouter", raw_payload=response.model_dump(), cause=e,
-                        execution_mode="api")
+                        execution_mode="api") from e
 
             usage = response.usage
             raw_payload = response.model_dump()
@@ -120,16 +120,16 @@ class LLMClientOpenRouter(LLMClient):
 
         except AuthenticationError as e:
             raise LLMAuthError(provider="openrouter",
-                               cause=e, execution_mode="api")
+                               cause=e, execution_mode="api") from e
         except RateLimitError as e:
             raise LLMRateLimitError(
-                provider="openrouter", cause=e, execution_mode="api")
+                provider="openrouter", cause=e, execution_mode="api") from e
         except APITimeoutError as e:
             raise LLMTimeoutError(provider="openrouter",
-                                  cause=e, execution_mode="api")
+                                  cause=e, execution_mode="api") from e
         except APIConnectionError as e:
             raise LLMProviderUnavailableError(
-                provider="openrouter", cause=e, execution_mode="api")
+                provider="openrouter", cause=e, execution_mode="api") from e
 
     async def close(self) -> None:
         await self._client.close()

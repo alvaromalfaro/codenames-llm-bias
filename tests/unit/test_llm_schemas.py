@@ -24,7 +24,7 @@ def test_llm_message_invalid_content(content, expected_error):
     Validates that an LLMMessage instance with empty or whitespace-only content fails validation.
 
     :param content: A string representing the content of the message to be tested.
-    :param expected_error: A string indicating the expected error message to be raised during 
+    :param expected_error: A string indicating the expected error message to be raised during
         validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -163,7 +163,7 @@ def test_llm_request_empty_messages():
 
 def test_llm_request_no_user_role_in_message():
     """
-    Validates that an LLMRequest instance with messages that do not include a user role fails 
+    Validates that an LLMRequest instance with messages that do not include a user role fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -231,7 +231,7 @@ def test_llm_request_empty_model():
 ])
 def test_llm_request_temperature_out_of_bounds(temperature, expected_error_substring):
     """
-    Validates that an LLMRequest instance with a temperature value outside the valid range fails 
+    Validates that an LLMRequest instance with a temperature value outside the valid range fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -276,7 +276,7 @@ def test_llm_request_max_tokens_out_of_bounds():
 
 def test_llm_request_timeout_out_of_bounds():
     """
-    Validates that an LLMRequest instance with a timeout_s value less than or equal to 0 fails 
+    Validates that an LLMRequest instance with a timeout_s value less than or equal to 0 fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -416,7 +416,7 @@ def test_llm_response_empty_text():
 
 def test_llm_response_model_not_provided():
     """
-    Validates that an LLMResponse instance with an empty or whitespace-only model_used field fails 
+    Validates that an LLMResponse instance with an empty or whitespace-only model_used field fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -792,7 +792,7 @@ def test_llm_guess_proposal_empty_proposals():
 
 def test_llm_guess_proposal_invalid_proposal():
     """
-    Validates that a GuessProposal instance with an invalid proposal in the proposals list fails 
+    Validates that a GuessProposal instance with an invalid proposal in the proposals list fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -826,7 +826,7 @@ def test_llm_guess_proposal_empty_confidence():
 
 def test_llm_guess_proposal_proposals_confidence_length_mismatch():
     """
-    Validates that a GuessProposal instance where the length of the proposals list does not match 
+    Validates that a GuessProposal instance where the length of the proposals list does not match
     the length of the confidence list fails validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -844,7 +844,7 @@ def test_llm_guess_proposal_proposals_confidence_length_mismatch():
 
 def test_llm_guess_proposal_confidence_out_of_bounds():
     """
-    Validates that a GuessProposal instance with confidence scores outside the range of 0 to 1 fails 
+    Validates that a GuessProposal instance with confidence scores outside the range of 0 to 1 fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:

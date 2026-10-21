@@ -72,11 +72,11 @@ class RunModel(Base):
 
 
 class MeasurementFrameModel(Base):
-    """Frozen extrinsic measurement frame: the arbiter encoder (phi*) and the gender axis (e_gen) 
+    """Frozen extrinsic measurement frame: the arbiter encoder (phi*) and the gender axis (e_gen)
     that both populated the boards and define per-word gender load rho.
 
-    Content-addressed by frame_id (a hash of encoder + axis + construction), hence immutable: 
-    changing the yardstick means inserting a new row, which is the correct semantics since changing 
+    Content-addressed by frame_id (a hash of encoder + axis + construction), hence immutable:
+    changing the yardstick means inserting a new row, which is the correct semantics since changing
     the measure is changing the experiment. Emitted by the board generator as a sidecar and consumed
     here; the platform never originates it.
     """
@@ -98,11 +98,11 @@ class MeasurementFrameModel(Base):
 
 
 class ExtractionRecipeModel(Base):
-    """Versioned recipe for extracting an intrinsic embedding from an evaluated (decoder-only) 
+    """Versioned recipe for extracting an intrinsic embedding from an evaluated (decoder-only)
     model: (model@revision, precision, layer, pooling, template).
 
-    Content-addressed by recipe_id. The recipe is part of the identity of every intrinsic embedding: 
-    two different recipes yield incomparable SEAT/ML-EAT results, so the recipe must gate any 
+    Content-addressed by recipe_id. The recipe is part of the identity of every intrinsic embedding:
+    two different recipes yield incomparable SEAT/ML-EAT results, so the recipe must gate any
     intrinsic-bias computation.
     """
     __tablename__ = "extraction_recipe"
@@ -120,10 +120,10 @@ class ExtractionRecipeModel(Base):
 
 
 class BoardModel(Base):
-    """A persisted board artifact (probe or control). 
+    """A persisted board artifact (probe or control).
 
-    The probe/control distinction lives here (via  `type`) rather than being denormalized onto 
-    games. Persisting boards makes the database self-contained: the metrics pipeline joins 
+    The probe/control distinction lives here (via  `type`) rather than being denormalized onto
+    games. Persisting boards makes the database self-contained: the metrics pipeline joins
     board -> cards -> covariates without reading from disk.
 
     measurement_frame_id is nullable for now. content_sha256 is the SHA-256 of the board artifact's
@@ -159,13 +159,13 @@ class BoardModel(Base):
 
 
 class WordCardModel(Base):
-    """One of the 25 cards of a board. 
+    """One of the 25 cards of a board.
 
-    Carries both perspective roles, since the Duet double-sided key card is encoded per card rather 
+    Carries both perspective roles, since the Duet double-sided key card is encoded per card rather
     than as a separate object.
 
-    Lexical covariates (SUBTLEX frequency, length, WordNet polysemy) are flattened into columns 
-    instead of nested JSON, because they are the difficulty confounders the analysis must control 
+    Lexical covariates (SUBTLEX frequency, length, WordNet polysemy) are flattened into columns
+    instead of nested JSON, because they are the difficulty confounders the analysis must control
     for: flattened, that adjustment is a plain join.
     """
     __tablename__ = "word_card"
@@ -213,7 +213,7 @@ class WordCardModel(Base):
 class GameModel(Base):
     """One complete Duet play.
 
-    game_status gates the analysis: a game is committed atomically at finish and only 'completed' 
+    game_status gates the analysis: a game is committed atomically at finish and only 'completed'
     games are valid observations, so a run truncated by an error is marked 'error' and never
     silently pollutes the estimators.
 
@@ -305,7 +305,7 @@ class GameSeatModel(Base):
 
 
 class TurnModel(Base):
-    """One turn: a clue plus its guessing phase. 
+    """One turn: a clue plus its guessing phase.
 
     `phase` discriminates normal play from sudden death, which the sudden-death bias metric needs to
     isolate.
@@ -338,13 +338,13 @@ class TurnModel(Base):
 
 
 class LlmCallModel(Base):
-    """Per-invocation sampling telemetry for one model call. 
+    """Per-invocation sampling telemetry for one model call.
 
-    retry_index > 0 marks a call regenerated after a clue-legality rejection; these rejected calls 
-    are persisted (not only the accepted one) so the effect of eliciting targets on gameplay can be 
-    audited. 
+    retry_index > 0 marks a call regenerated after a clue-legality rejection; these rejected calls
+    are persisted (not only the accepted one) so the effect of eliciting targets on gameplay can be
+    audited.
 
-    resolved_model and system_fingerprint let us detect after the fact whether an API provider 
+    resolved_model and system_fingerprint let us detect after the fact whether an API provider
     silently swapped the model mid-experiment.
     """
     __tablename__ = "llm_call"
@@ -399,11 +399,11 @@ class LlmCallModel(Base):
 
 
 class ClueModel(Base):
-    """The clue-giver's action for a turn (one per turn). 
+    """The clue-giver's action for a turn (one per turn).
 
     llm_call_id points to the accepted call; retries live in llm_call with retry_index > 0 (only in
     games recorded before invalid clues were played with a penalty).
-    targets_raw stores the model's raw intended-target list verbatim; the resolved form lives in 
+    targets_raw stores the model's raw intended-target list verbatim; the resolved form lives in
     clue_target.
     invalid_reason is why the clue broke the validity rules, NULL for a valid clue. An invalid clue
     is played anyway and costs a penalty token (rules §8.4).
@@ -438,7 +438,7 @@ class ClueTargetModel(Base):
     """One resolved element of the clue-giver's intended set S.
 
     Deliberately has no constraint tying the number of targets to the clue's count: the cardinality
-    of S is a diagnostic, not a gate, and enforcing it would discard classifiable observations. 
+    of S is a diagnostic, not a gate, and enforcing it would discard classifiable observations.
 
     card_id is null when the target word cannot be mapped to a board card (derivable malformation).
     """
@@ -467,9 +467,9 @@ class ClueTargetModel(Base):
 
 
 class RevealEventModel(Base):
-    """The engine's ground truth for a single card resolution during a turn. 
+    """The engine's ground truth for a single card resolution during a turn.
 
-    This is the authoritative source from which per-card reveal and time-marker state are 
+    This is the authoritative source from which per-card reveal and time-marker state are
     reconstructed, so that state is not duplicated. Records whether the reveal ended the turn or the
     game, and the time-token bank level afterwards.
     """
@@ -508,7 +508,7 @@ class RevealEventModel(Base):
 
 
 class GuessProposalModel(Base):
-    """The guesser's single model output for a turn: the ordered list of proposed cards with 
+    """The guesser's single model output for a turn: the ordered list of proposed cards with
     confidences, produced in one forward pass.
 
     The individual items live in guess_proposal_item.
@@ -582,7 +582,7 @@ class GuessProposalItemModel(Base):
 
 
 class EmbeddingMpnetModel(Base):
-    """Extrinsic embeddings in the arbiter phi* (mpnet) space, keyed by (frame, text). 
+    """Extrinsic embeddings in the arbiter phi* (mpnet) space, keyed by (frame, text).
 
     Populated in two phases: board words at platform startup, and clue words after the fact, since
     clues are not known a priori.
@@ -611,9 +611,9 @@ class EmbeddingMpnetModel(Base):
 
 
 class EmbeddingLlamaModel(Base):
-    """Intrinsic embeddings in the evaluated Llama model's space, keyed by (recipe, text). 
+    """Intrinsic embeddings in the evaluated Llama model's space, keyed by (recipe, text).
 
-    Uniqueness on (recipe, text) rather than text alone is what prevents a stale-recipe cache hit: 
+    Uniqueness on (recipe, text) rather than text alone is what prevents a stale-recipe cache hit:
     if the extraction recipe changes, the old vector must not be silently reused.
     """
     __tablename__ = "embedding_llama"
@@ -634,7 +634,7 @@ class EmbeddingLlamaModel(Base):
 
 
 class EmbeddingMistralModel(Base):
-    """Intrinsic embeddings in the evaluated Mistral model's space (5120-dim), keyed by (recipe, 
+    """Intrinsic embeddings in the evaluated Mistral model's space (5120-dim), keyed by (recipe,
     text).
 
     Same recipe-scoped caching rule as the Llama table.
@@ -658,10 +658,10 @@ class EmbeddingMistralModel(Base):
 
 
 class WordLoadModel(Base):
-    """Derived per-word gender load: rho = cos(phi*(w), e_gen), plus the WEAT-by-sets robustness 
+    """Derived per-word gender load: rho = cos(phi*(w), e_gen), plus the WEAT-by-sets robustness
     variant.
 
-    Keyed by frame because a load value is meaningless without the frame that produced it. 
+    Keyed by frame because a load value is meaningless without the frame that produced it.
 
     These are post-hoc batch products of the metrics pipeline, not written during play.
     """

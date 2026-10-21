@@ -430,7 +430,7 @@ _MAX_INT4 = 2_147_483_647  # llm_call.latency_ms is a 32-bit int column
 async def test_llm_client_local_latency_ms_converts_nanoseconds(llm_request_cg):
     """Ollama reports total_duration in NANOSECONDS; latency_ms must be milliseconds.
 
-    A ~42.7s call reports total_duration ~4.27e10 ns, which as a raw value overflows the 32-bit 
+    A ~42.7s call reports total_duration ~4.27e10 ns, which as a raw value overflows the 32-bit
     llm_call.latency_ms column. After ns->ms it is ~42707 ms and fits comfortably.
     """
     mock_response = _mock_ollama_response()

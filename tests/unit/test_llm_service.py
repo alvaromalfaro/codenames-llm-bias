@@ -164,7 +164,7 @@ async def test_llm_service_propose_guess_wrong_phase(game_state_guessing):
 @pytest.mark.asyncio
 async def test_llm_service_propose_guess_wrong_player(game_state_guessing):
     """
-    Tests that the LLMService raises a ValueError when propose_guess is called by a player who is 
+    Tests that the LLMService raises a ValueError when propose_guess is called by a player who is
     not the guesser.
     """
     # Create a mock LLMClient (the specific behavior of the client is not relevant for this test)
@@ -228,28 +228,32 @@ async def test_elicit_confidence_ranking_no_clue(game_state_guessing, stale):
         await service.elicit_confidence_ranking(mock_client, game_state_guessing)
 
 
+def _section(prompt: str, heading: str, next_heading: str) -> set[str]:
+    """The words listed under ``heading`` in a clue-giver prompt (one ``- WORD`` per line), up to
+    ``next_heading``."""
+    block = prompt.split(heading + "\n")[1].split("\n\n" + next_heading)[0]
+    return {line.removeprefix("- ") for line in block.splitlines()}
+
+
 def test_llm_service_build_clue_request_player1(game_state_cg):
     """
-    Tests that the LLMService correctly builds an LLMRequest for proposing a clue when the current
-    player is seat 1.
+    Tests that the LLMService builds the clue request of seat 1 from seat 1's side of the key card:
+    its own agents and assassins, not seat 0's.
     """
-    mock_client = MagicMock(spec=LLMClient)
     service = LLMService()
 
     request = service._build_clue_request(
         game_state_cg, 'test_client', player_id=1)
 
-    agent_words = [
-        card.text for card in game_state_cg.board.cards if card.human_perspective_role == "agent"]
-    danger_words = [
-        card.text for card in game_state_cg.board.cards if card.human_perspective_role != "agent"]
-
-    assert request is not None
+    cards = game_state_cg.board.cards
+    user_prompt = request.messages[-1].content
     assert len(request.messages) == 4
     assert request.messages[0].role == "system"
     assert request.messages[1].role == "user"
-    assert f"agent_words={{", ".join(agent_words)}}" in request.messages[1].content
-    assert f"danger_words={{", ".join(danger_words)}}" in request.messages[1].content
+    assert _section(user_prompt, "AGENTS (Words to connect):", "ASSASSINS") == {
+        card.text for card in cards if card.human_perspective_role == "agent"}
+    assert _section(user_prompt, "ASSASSINS (Terminal state - strictly avoid):", "CIVILIANS") == {
+        card.text for card in cards if card.human_perspective_role == "assassin"}
 
 
 def test_llm_service_build_clue_request_player0(game_state_cg):
@@ -281,7 +285,7 @@ def test_llm_service_build_clue_request_player0(game_state_cg):
         assert word in user_prompt
     for word in human_only_agent_words:
         # Human-only agents must not appear in the LLM's agent section
-        assert f"AGENTS" not in user_prompt or word not in user_prompt.split("ASSASSINS")[
+        assert "AGENTS" not in user_prompt or word not in user_prompt.split("ASSASSINS")[
             0]
 
 
@@ -550,8 +554,8 @@ async def test_propose_clue_records_malformed_targets_without_retry(game_state_c
 @pytest.mark.asyncio
 async def test_targets_never_reach_guesser_prompt(game_state_guessing):
     """
-    The intended target set S must never enter any guesser-side code path. A sentinel target word 
-    placed on the current clue (and on a historical clue) must appear nowhere in the guesser request 
+    The intended target set S must never enter any guesser-side code path. A sentinel target word
+    placed on the current clue (and on a historical clue) must appear nowhere in the guesser request
     built for that turn.
     """
     sentinel = "ZZ_SENTINEL_TARGET_ZZ"

@@ -146,7 +146,7 @@ class LLMClient(ABC):
         # Default implementation assumes the provider is healthy.
         return True
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # noqa: B027 - a no-op by default, not an abstract method
         """
         Optional method to close any resources or connections used by the LLM client. This can be
         overridden by subclasses if they need to perform any cleanup when the client is no longer

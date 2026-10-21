@@ -4,10 +4,10 @@ Plays one complete Codenames Duet game between two LLM seats. The driver owns ex
 reproducible seeding; a minimal ``run`` row; the two seat identities; and terminal persistence via
 the writer. It is the single-game unit that the 192-game batch calls repeatedly.
 
-The same ``master_seed`` played with the same (deterministic) clients yields a byte-identical game - 
+The same ``master_seed`` played with the same (deterministic) clients yields a byte-identical game -
 same engine ``game_id``, same per-(seat, turn) derived seeds sent on each request (and, for a bad
 draw drawn again, the same seeds derived from those), and the same recorder
-turn/reveal/proposal sequence. The engine, service and conductor stay seed-agnostic; all 
+turn/reveal/proposal sequence. The engine, service and conductor stay seed-agnostic; all
 derivation lives here (see ``_derive`` and the seed scheme below).
 """
 from __future__ import annotations
@@ -95,9 +95,9 @@ def _game_identity(master_seed: int, game_index: int) -> tuple[str, int, int]:
     derivation. This function is pure and is the seam the tests use to predict the deterministic
     engine start-player.
 
-    Because identity is deterministic, re-running the same ``(master_seed, game_index)`` yields the 
-    same ``game_id``, so a second persist collides on ``game.id`` (primary key). This is intended 
-    semantics meaning "this experiment is already in the database". Re-running requires deleting the 
+    Because identity is deterministic, re-running the same ``(master_seed, game_index)`` yields the
+    same ``game_id``, so a second persist collides on ``game.id`` (primary key). This is intended
+    semantics meaning "this experiment is already in the database". Re-running requires deleting the
     run first.
     """
     game_id = str(uuid.uuid5(_GAME_NAMESPACE, f"{master_seed}:{game_index}"))

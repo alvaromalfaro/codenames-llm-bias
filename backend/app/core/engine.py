@@ -219,7 +219,7 @@ class CodenamesDuetEngine:
 
         :raises ValueError: If no card carries that id, if the card is covered (agent card or two
             time tokens), or if it is already marked by this player's own time token.
-        :raises PermissionError: If a player other than the guesser attempts to make a guess, the 
+        :raises PermissionError: If a player other than the guesser attempts to make a guess, the
             game is not in the GUESSING or SUDDEN_DEATH phase, or if the guesser has already
             revealed all of their agents in the SUDDEN_DEATH phase.
         """
@@ -287,9 +287,9 @@ class CodenamesDuetEngine:
 
         :param player_id: The identifier of the player attempting to pass their turn.
 
-        :raises PermissionError: If a player other than the guesser attempts to pass their turn or 
+        :raises PermissionError: If a player other than the guesser attempts to pass their turn or
             if the game is not in the GUESSING phase.
-        :raises ValueError: If the guesser attempts to pass their turn without making at least one 
+        :raises ValueError: If the guesser attempts to pass their turn without making at least one
             guess.
         """
         if self.state.current_phase != GamePhase.GUESSING:
@@ -446,7 +446,7 @@ class CodenamesDuetEngine:
 
     def _finish_game(self, result: str):
         """
-        Finishes the game by setting the game over flag, updating the current phase to GAME_OVER, 
+        Finishes the game by setting the game over flag, updating the current phase to GAME_OVER,
         and storing the result.
 
         :param result: A string indicating the result of the game: "victory", "loss_assassin", or a

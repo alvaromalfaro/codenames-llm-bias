@@ -520,7 +520,7 @@ def assign_bands_by_board_type(
                 [_similarity(card, variant) for card in group])
             cuts_by_key[f"{board_type}_{variant}"] = cuts
             c33, c66 = cuts
-            for index, card in enumerate(group):
+            for card in group:
                 banded_by_id[id(card)][variant] = assign_tercile(
                     _similarity(card, variant), c33, c66
                 )

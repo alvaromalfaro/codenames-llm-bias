@@ -1,7 +1,7 @@
 """The batch orchestrator: play the game schedule under one run, with fault isolation.
 
-This assembles :func:`build_schedule` (the deterministic calendar), :func:`create_run` (mint-once 
-run identity + digest gate + provenance) and :func:`run_single_game` (the play unit) into the full 
+This assembles :func:`build_schedule` (the deterministic calendar), :func:`create_run` (mint-once
+run identity + digest gate + provenance) and :func:`run_single_game` (the play unit) into the full
 batch. It owns exactly two distinct failure levels, kept separate:
 
 Level 1 - BATCH PRECONDITIONS (fail loud, abort the whole batch before any game plays):
