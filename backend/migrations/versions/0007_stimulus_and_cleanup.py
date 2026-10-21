@@ -1,6 +1,6 @@
 """stimulus integrity, run provenance, game errors, indexes; drop the columns never written
 
-Revision ID: 0007_stimulus_integrity_and_cleanup
+Revision ID: 0007_stimulus_and_cleanup
 Revises: 0006_clue_invalid_reason
 Create Date: 2026-10-18
 
@@ -32,7 +32,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = "0007_stimulus_integrity_and_cleanup"
+revision: str = "0007_stimulus_and_cleanup"
 down_revision: Union[str, None] = "0006_clue_invalid_reason"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
