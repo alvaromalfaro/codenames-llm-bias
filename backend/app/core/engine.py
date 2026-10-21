@@ -41,8 +41,8 @@ class CodenamesDuetEngine:
             randomness per-instance, which is safe for concurrently interleaved games. When omitted,
             a fresh unseeded random.Random() is used, reproducing the previous behaviour.
         :param game_id: Optional externally supplied game id. The headless runner injects a
-            deterministic id so seed derivation and persistence are reproducible; when omitted a fresh
-            uuid4 is generated.
+            deterministic id so seed derivation and persistence are reproducible; when omitted a
+            fresh uuid4 is generated.
         """
         self._rng = rng if rng is not None else random.Random()
         start_player = self._rng.choice([0, 1])
@@ -249,7 +249,8 @@ class CodenamesDuetEngine:
         _sd_phases = [GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]
         if self.state.current_phase not in [GamePhase.GUESSING] + _sd_phases:
             raise PermissionError(
-                "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or SUDDEN_DEATH_LLM phase."
+                "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or "
+                "SUDDEN_DEATH_LLM phase."
             )
 
         if self.state.current_phase == GamePhase.GUESSING and player_id != self.state.guesser:
@@ -271,9 +272,9 @@ class CodenamesDuetEngine:
             raise ValueError(f"There is no card with id {card_id} on this board.")
 
         # Coverage is a property of the word, not of the seat asking: once an agent card - or a
-        # second time token - sits on a word, NEITHER player may touch it again. Reading the per-seat
-        # bookkeeping (revealed_by) here instead would let the seat that did not cover the word
-        # re-guess it and have it resolved against the new clue giver's face.
+        # second time token - sits on a word, NEITHER player may touch it again. Reading the
+        # per-seat bookkeeping (revealed_by) here instead would let the seat that did not cover the
+        # word re-guess it and have it resolved against the new clue giver's face.
         if card.revealed:
             raise ValueError("This card is covered by an agent card and cannot be guessed.")
 
@@ -283,7 +284,8 @@ class CodenamesDuetEngine:
         if player_id in card.time_marker_by:
             raise ValueError("This card is currently marked by a time token and cannot be guessed.")
 
-        # Determine the role of the card for the guessing player and update the number of guesses made
+        # Determine the role of the card for the guessing player and update the number of guesses
+        # made
         card_role = card.human_perspective_role if player_id == 0 else card.llm_perspective_role
         self.state.guesses_made_this_turn += 1
 
@@ -358,7 +360,8 @@ class CodenamesDuetEngine:
         """
         if self.state.current_phase not in _SD_PHASE_BY_SEAT.values():
             raise PermissionError(
-                "Sudden death can only be conceded during the SUDDEN_DEATH_HUMAN or SUDDEN_DEATH_LLM phase."
+                "Sudden death can only be conceded during the SUDDEN_DEATH_HUMAN or "
+                "SUDDEN_DEATH_LLM phase."
             )
         if self.state.current_phase != _SD_PHASE_BY_SEAT.get(player_id):
             raise PermissionError("Only the player guessing in sudden death can concede it.")
@@ -434,8 +437,8 @@ class CodenamesDuetEngine:
         card.revealed_by.append(guessed_by)
         self.clue_validator.remove_word(card.text)
 
-        # The word stops being pending for the guesser, and also for the giver if it is a shared agent
-        # (green on both sides).
+        # The word stops being pending for the guesser, and also for the giver if it is a shared
+        # agent (green on both sides).
         self.state.pending_words[guessed_by] -= 1
         if card.llm_perspective_role == card.human_perspective_role == CardRole.AGENT:
             self.state.pending_words[1 - guessed_by] -= 1
@@ -458,8 +461,8 @@ class CodenamesDuetEngine:
             return res
 
         # The guesser just covered the last word it had to find (§6.8): the giver must tell it there
-        # is nothing left, and every word it could still touch is beige or black on the giver's face.
-        # The turn ends here as a voluntary stop - one token, exactly as pass_turn - and
+        # is nothing left, and every word it could still touch is beige or black on the giver's
+        # face. The turn ends here as a voluntary stop - one token, exactly as pass_turn - and
         # _switch_roles hands every remaining guess to the partner.
         if (
             self.state.current_phase == GamePhase.GUESSING

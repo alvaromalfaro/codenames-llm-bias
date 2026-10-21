@@ -1,8 +1,8 @@
 """A.6 — measurement-frame TRANSPORT consistency (no embeddings).
 
 Closes the §1.5 transport loop: generator → sidecar → sealed boards → DB row → platform read. It
-proves the platform holds the SAME frame that produced the A.3 reference fixture, without recomputing
-any embedding.
+proves the platform holds the SAME frame that produced the A.3 reference fixture, without
+recomputing any embedding.
 
 PROVES:
   * The platform holds the correct frame — its identity (frame_id), gender axis (at float32 storage

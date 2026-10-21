@@ -100,8 +100,8 @@ from backend.app.models.llm_schemas import (
 
 logger = logging.getLogger("run_batch")
 
-# Per-pairing consecutive-failure abort threshold (Level 2). A pairing with this many errors in a row
-# is aborted (its remaining cells skipped); the batch continues with the next pairing.
+# Per-pairing consecutive-failure abort threshold (Level 2). A pairing with this many errors in a
+# row is aborted (its remaining cells skipped); the batch continues with the next pairing.
 _CONSECUTIVE_FAILURE_THRESHOLD = 5
 
 # A game lost to the provider is played again once the provider answers again (Level 2): at most
@@ -113,8 +113,8 @@ _PROVIDER_WAIT_S = 30 * 60
 _PROVIDER_PROBE_BASE_S = 15
 _PROVIDER_PROBE_MAX_S = 5 * 60
 
-# A nonsense, non-English clue for the dry-run mock: in neither MorphoLex nor WordNet, so it can never
-# be a board word, a morphological or derived form of one, or a compound component - it passes
+# A nonsense, non-English clue for the dry-run mock: in neither MorphoLex nor WordNet, so it can
+# never be a board word, a morphological or derived form of one, or a compound component - it passes
 # ClueValidator on any board.
 _DRY_RUN_CLUE = "ZZXQJ"
 
@@ -315,7 +315,8 @@ def _migration_heads() -> set[str]:
 
 
 def _database_revisions() -> set[str]:
-    """The revision(s) the database is stamped with; empty for a database that was never migrated."""
+    """The revision(s) the database is stamped with; empty for a database that was never
+    migrated."""
     from alembic.runtime.migration import MigrationContext
     from backend.app.db.session import get_engine
 
@@ -324,9 +325,10 @@ def _database_revisions() -> set[str]:
 
 
 def _check_schema_at_head() -> None:
-    """Level-1e: fail unless the database schema is at the head of the migrations. On an older schema
-    every game would be played to the end and then fail to be stored (the writer fills every mapped
-    column), and so would its error flush: the batch would burn GPU hours and keep nothing."""
+    """Level-1e: fail unless the database schema is at the head of the migrations. On an older
+    schema every game would be played to the end and then fail to be stored (the writer fills every
+    mapped column), and so would its error flush: the batch would burn GPU hours and keep
+    nothing."""
     heads, current = _migration_heads(), _database_revisions()
     if current != heads:
         raise BatchPreconditionError(
@@ -415,8 +417,8 @@ def load_run(run_id: str) -> Optional[StoredRun]:
 
 
 def _snapshot_models(snapshot: Optional[dict]) -> dict[str, Optional[str]]:
-    """Each model of a ``model_registry_snapshot`` by model id (as :func:`_model_id` writes it), with
-    its identity: the served digest of a local model, the requested string of an API one."""
+    """Each model of a ``model_registry_snapshot`` by model id (as :func:`_model_id` writes it),
+    with its identity: the served digest of a local model, the requested string of an API one."""
     return {
         f"{entry.get('provider')}:{entry.get('model_name')}": entry.get("identity")
         for entry in (snapshot or {}).values()
@@ -554,8 +556,8 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> dict[str, str]:
     frame_path = bank_dir / "measurement_frame.json"
     if not frame_path.exists():
         raise BatchPreconditionError(
-            f"no measurement frame at {frame_path}: the sealed boards point at it, and the analysis "
-            f"measures against it."
+            f"no measurement frame at {frame_path}: the sealed boards point at it, and the "
+            "analysis measures against it."
         )
     try:
         with session_scope() as session:
@@ -692,9 +694,9 @@ async def run_batch(
     and boards are stored in the database before the run is minted.
 
     ``client_factory`` (flat, ``(seat_index, spec) -> LLMClient``) is forwarded to every game; when
-    ``None`` the runner's real default is used. ``make_client_factory`` takes precedence and builds a
-    per-board factory (the dry-run path, whose mock must know each board's assassin). ``persist`` and
-    ``enforce_digests`` default to the real batch path; the dry run passes both effectively off.
+    ``None`` the runner's real default is used. ``make_client_factory`` takes precedence and builds
+    a per-board factory (the dry-run path, whose mock must know each board's assassin). ``persist``
+    and ``enforce_digests`` default to the real batch path; the dry run passes both effectively off.
     """
     # Level 1a: the schedule (raises ScheduleError on a bank shortfall - surfaced, not swallowed)
     schedule = build_schedule(models, boards, master_seed)
@@ -956,9 +958,9 @@ def shared_assassin_word(board: Board) -> str:
 
 
 class DryRunClient(LLMClient):
-    """A deterministic mock client that plays no real model: it gives a nonsense-safe clue and always
-    guesses the board's shared assassin, so every game completes in two dispatches. Used only by the
-    dry run to exercise schedule + loop wiring without a daemon or a database."""
+    """A deterministic mock client that plays no real model: it gives a nonsense-safe clue and
+    always guesses the board's shared assassin, so every game completes in two dispatches. Used only
+    by the dry run to exercise schedule + loop wiring without a daemon or a database."""
 
     def __init__(self, assassin_word: str, model_name: str = "dry-run"):
         self._assassin = assassin_word

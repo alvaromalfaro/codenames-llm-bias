@@ -1,4 +1,5 @@
-"""Tests for the CIT inputs: the words a measured turn offered, and the ranked words outside them."""
+"""Tests for the CIT inputs: the words a measured turn offered, and the ranked words outside
+them."""
 
 from backend.app.analysis.guesser_metrics import (
     TurnRecord,

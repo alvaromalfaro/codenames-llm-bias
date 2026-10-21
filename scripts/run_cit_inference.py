@@ -1,9 +1,10 @@
 """CLI applying the cluster-bootstrap inference layer to CIT.
 
-This adds intervals, and in particular the two paired contrasts that the point estimates cannot settle:
+This adds intervals, and in particular the two paired contrasts that the point estimates cannot
+settle:
 
-  * ``probe_all - control_all`` - is probe genuinely different from the gender-neutral control, or do
-    the two overlap? Increment 2b found control sitting at 0.53-0.69, sometimes above probe;
+  * ``probe_all - control_all`` - is probe genuinely different from the gender-neutral control, or
+    do the two overlap? Increment 2b found control sitting at 0.53-0.69, sometimes above probe;
   * ``probe_b1 - probe_b3`` - the monotone-profile hypothesis, that the effect grows as thematic
     proximity to the clue falls.
 
@@ -200,7 +201,8 @@ def main(argv: list[str] | None = None) -> int:
         pair = cuts[board_type]
         if pair:
             print(
-                f"cuts {board_type:<8}: c33={pair[0]:.6f} c66={pair[1]:.6f}  (frozen before bootstrap)"
+                f"cuts {board_type:<8}: c33={pair[0]:.6f} c66={pair[1]:.6f}  (frozen before "
+                "bootstrap)"
             )
     print("null       : CIT = 0.5 means no association. MDE at alpha 0.05, power 0.8.")
     print("             No p-values: effect, interval and sensitivity only.")

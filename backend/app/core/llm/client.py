@@ -80,8 +80,8 @@ async def generate_with_retries(
       (``LLMMalformedResponseError``) answer - is drawn again at once, with a new seed:
       ``redraw_seed(request.seed, k)`` for the k-th new draw. With the same seed a local model gives
       the same answer again (a model that loops loops again), so re-sending the request would only
-      spend the budget. The answer that is finally kept carries
-      the seed it was drawn with (``LLMResponse.requested_seed``, hence ``llm_call.requested_seed``).
+      spend the budget. The answer that is finally kept carries the seed it was drawn with
+      (``LLMResponse.requested_seed``, hence ``llm_call.requested_seed``).
     - **A transient failure** (timeout, rate limit, provider unavailable) re-sends the same request
       after an exponential backoff: the network failed, not the model.
 
@@ -137,8 +137,8 @@ async def generate_with_retries(
                 )
                 await asyncio.sleep(backoff)
         else:
-            # Stamp the re-sample counts onto the response that finally succeeded, so the audit trail
-            # records how many bad draws this single call absorbed (0 for the common case).
+            # Stamp the re-sample counts onto the response that finally succeeded, so the audit
+            # trail records how many bad draws this single call absorbed (0 for the common case).
             response.raw_payload.update(resamples)
             return response
 

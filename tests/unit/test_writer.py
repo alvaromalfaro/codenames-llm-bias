@@ -267,9 +267,9 @@ def test_persist_normal_game_maps_all_rows():
 
 
 def test_clue_llm_calls_carry_clue_giver_seat():
-    """Every clue_giver llm_call - including the rejected retry attempts, not just the accepted one -
-    is attributed to the seat that actually gave the clue (turn.clue_giver_seat), for either seat. In
-    LLM-vs-LLM seat 1 gives half the clues."""
+    """Every clue_giver llm_call - including the rejected retry attempts, not just the accepted one
+    - is attributed to the seat that actually gave the clue (turn.clue_giver_seat), for either seat.
+    In LLM-vs-LLM seat 1 gives half the clues."""
     from backend.app.db import writer
     from backend.app.db.models import LlmCallModel, TurnModel
     from backend.app.db.session import session_scope
@@ -535,8 +535,8 @@ def test_persist_two_seat_sd_persists_both():
 
 
 def test_persist_normal_guesser_seat_derived():
-    """Normal-play guesser_seat is derived as 1 - clue_giver_seat (the guesser is the non-clue-giver),
-    for either clue giver."""
+    """Normal-play guesser_seat is derived as 1 - clue_giver_seat (the guesser is the
+    non-clue-giver), for either clue giver."""
     from backend.app.db import writer
     from backend.app.db.models import GuessProposalModel, TurnModel
     from backend.app.db.session import session_scope
@@ -590,12 +590,14 @@ def test_persist_normal_guesser_seat_derived():
 
 
 def test_persist_two_seat_sd_backfill_is_per_seat():
-    """SD reveal.proposal_index is 0-based per acting seat's own play proposal, not a global counter.
+    """SD reveal.proposal_index is 0-based per acting seat's own play proposal, not a global
+    counter.
 
-    Both seats play; seat 1 reveals TWO cards, the second at per-seat index 1. That index-1 reveal is
-    the discriminating case: a global counter over turn.reveals would hand it index 2 (its ordinal
-    across all reveals), overshoot seat 1's 2-item proposal, and leave item[1] NULL - failing this
-    test. Under the correct per-seat contract, item[1] is backfilled and no reveal leaks across seats.
+    Both seats play; seat 1 reveals TWO cards, the second at per-seat index 1. That index-1 reveal
+    is the discriminating case: a global counter over turn.reveals would hand it index 2 (its
+    ordinal across all reveals), overshoot seat 1's 2-item proposal, and leave item[1] NULL -
+    failing this test. Under the correct per-seat contract, item[1] is backfilled and no reveal
+    leaks across seats.
     """
     from backend.app.db import writer
     from backend.app.db.models import GuessProposalItemModel, GuessProposalModel, TurnModel

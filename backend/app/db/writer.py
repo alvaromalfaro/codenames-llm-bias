@@ -78,7 +78,8 @@ def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int) -> Llm
 def _write_play(
     session, gp, *, game_id: str, turn_id: int, guesser_seat: int, word_map: dict[str, int]
 ) -> list[GuessProposalItemModel]:
-    """Insert one ``kind='play'`` guess_proposal (+ its llm_call and ordered items) for ``guesser_seat``.
+    """Insert one ``kind='play'`` guess_proposal (+ its llm_call and ordered items) for
+    ``guesser_seat``.
 
     Returns the item rows in position order so the caller can index-align reveal backfill.
     """
@@ -116,7 +117,8 @@ def _write_play(
 def _write_measurement(
     session, cr, *, game_id: str, turn_id: int, guesser_seat: int, word_map: dict[str, int]
 ) -> None:
-    """Insert one ``kind='measurement'`` guess_proposal (+ its llm_call and items) for ``guesser_seat``.
+    """Insert one ``kind='measurement'`` guess_proposal (+ its llm_call and items) for
+    ``guesser_seat``.
 
     Measurement items never reference a reveal (they are an out-of-band ranking, not plays).
     """
@@ -223,7 +225,8 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
 
     if turn.phase == "sudden_death":
         # Sudden death is one collective turn on which both seats may guess/measure. Emit a
-        # guess_proposal row per (seat, kind); UNIQUE(turn_id, kind, guesser_seat) admits both seats.
+        # guess_proposal row per (seat, kind); UNIQUE(turn_id, kind, guesser_seat) admits both
+        # seats.
         play_items_by_seat: dict[int, list[GuessProposalItemModel]] = {}
         for seat, gp in sorted(turn.sd_play_by_seat.items()):
             play_items_by_seat[seat] = _write_play(
@@ -257,8 +260,8 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
                 items[idx].reveal_event_id = row.id
                 backfilled = True
             elif idx is not None and idx >= len(items):
-                # Out-of-range index breaks the per-seat contract (e.g. a global counter leaking in);
-                # skip rather than raise but surface it.
+                # Out-of-range index breaks the per-seat contract (e.g. a global counter leaking
+                # in); skip rather than raise but surface it.
                 logger.warning(
                     "SD reveal proposal_index %d out of range for game %s turn %d seat %d "
                     "(%d play items); reveal_event backfill skipped",
@@ -317,8 +320,8 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
         ).first()
         if board_present is None:
             raise ValueError(
-                f"Cannot persist game {recorder.game_id}: board {recorder.board_id!r} is not in the "
-                "database. Ingest the board before persisting games that reference it."
+                f"Cannot persist game {recorder.game_id}: board {recorder.board_id!r} is not in "
+                "the database. Ingest the board before persisting games that reference it."
             )
 
         # Case-insensitive word -> card_id map (mirrors Board.get_card_id_by_word).
@@ -413,14 +416,13 @@ class DeleteRunResult:
 def delete_run(run_id: str) -> DeleteRunResult:
     """Delete a run and, via DB cascade, all its games and their entire subtree.
 
-    Removing a run is how a re-run gets unblocked: game identity is deterministic in
-    ``(master_seed, game_index)`` (a uuid5 ``game.id``), so re-persisting the same experiment
-    collides on the primary key; the run must be deleted first. It is also how throwaway pilot
-    batches are cleaned up. The delete leans entirely on ``ON DELETE CASCADE`` from ``game.run_id`` -
-    deleting the ``run`` row tears down every ``game``, ``game_seat``, ``turn``,
-    ``clue``, ``clue_target``, ``llm_call``, ``guess_proposal``, ``guess_proposal_item`` and
-    ``reveal_event`` beneath it. Shared ingest data (``board`` / ``word_card``) is not run-owned and
-    is never touched.
+    Removing a run is how a re-run gets unblocked: game identity is deterministic in ``(master_seed,
+    game_index)`` (a uuid5 ``game.id``), so re-persisting the same experiment collides on the
+    primary key; the run must be deleted first. It is also how throwaway pilot batches are cleaned
+    up. The delete leans entirely on ``ON DELETE CASCADE`` from ``game.run_id`` - deleting the
+    ``run`` row tears down every ``game``, ``game_seat``, ``turn``, ``clue``, ``clue_target``,
+    ``llm_call``, ``guess_proposal``, ``guess_proposal_item`` and ``reveal_event`` beneath it.
+    Shared ingest data (``board`` / ``word_card``) is not run-owned and is never touched.
 
     Idempotent: deleting a run that does not exist is a no-op returning ``found=False`` (re-running
     the pilot -> inspect -> delete -> re-run cycle stays safe to repeat). Genuine database errors

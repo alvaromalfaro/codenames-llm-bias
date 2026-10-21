@@ -164,13 +164,14 @@ class LLMCallRecord(BaseModel):
     persistence write-path reads these post-hoc to write ``llm_call`` rows. Permissive by design so
     a partial or provider-specific response never blocks capture.
 
-    ``rendered_prompt`` is the messages list as sent (``LLMRequest.messages``); the writer serialises
-    it to JSONB. ``retry_index`` marked clue-legality regenerations (> 0 = a rejected/regenerated
-    attempt). Invalid clues are no longer regenerated but played with a penalty (§8.4), so it is
-    always 0 now; it stays for the games recorded before that change.
+    ``rendered_prompt`` is the messages list as sent (``LLMRequest.messages``); the writer
+    serialises it to JSONB. ``retry_index`` marked clue-legality regenerations (> 0 = a
+    rejected/regenerated attempt). Invalid clues are no longer regenerated but played with a penalty
+    (§8.4), so it is always 0 now; it stays for the games recorded before that change.
     """
 
-    # The role of the call: 'clue_giver' | 'guesser' | 'guesser_sd' | 'measurement' | 'measurement_sd'.
+    # The role of the call: 'clue_giver' | 'guesser' | 'guesser_sd' | 'measurement' |
+    # 'measurement_sd'.
     role: str
     # Always 0 now (see the class docstring); > 0 only in games recorded with clue regenerations.
     retry_index: int = 0
@@ -270,7 +271,8 @@ class GuessProposal(BaseModel):
 class ClueJSONFormat(BaseModel):
     """
     A model for the expected JSON format of a clue proposal from the LLM. It includes the reasoning
-    for the clue, the clue text itself, and the count of how many words are associated with the clue.
+    for the clue, the clue text itself, and the count of how many words are associated with the
+    clue.
 
     This model is used to validate the structure of the JSON response from the LLM when it is
     expected to return a clue proposal in JSON format.
@@ -364,8 +366,8 @@ class ConfidenceRankingJSONFormat(BaseModel):
 
     The fields are as follows:
         - reasoning: A string containing the LLM's reasoning for the ranking.
-        - rankings: A list of RankingFormat instances, one per unrevealed card (a response that omits
-            some cards is parsed permissively downstream, never rejected here).
+        - rankings: A list of RankingFormat instances, one per unrevealed card (a response that
+            omits some cards is parsed permissively downstream, never rejected here).
     """
 
     reasoning: str

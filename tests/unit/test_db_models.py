@@ -192,8 +192,8 @@ def test_unique_constraints():
         tables["guess_proposal_item"]
     )
     # The clue is 1:1 with its turn (single-column UNIQUE on turn_id). A turn can carry a 'play' and
-    # a 'measurement' guess_proposal per guesser seat (both seats guess in sudden death, on one turn),
-    # so uniqueness there is on (turn_id, kind, guesser_seat).
+    # a 'measurement' guess_proposal per guesser seat (both seats guess in sudden death, on one
+    # turn), so uniqueness there is on (turn_id, kind, guesser_seat).
     assert frozenset({"turn_id"}) in _unique_column_sets(tables["clue"])
     assert frozenset({"turn_id", "kind", "guesser_seat"}) in _unique_column_sets(
         tables["guess_proposal"]

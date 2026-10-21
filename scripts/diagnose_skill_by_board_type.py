@@ -24,8 +24,8 @@ each bootstrap replicate, so both arms come from the same draw of clusters and t
 their correlation. Differencing two independently-computed intervals would throw that away.
 
 Nothing is imputed. A stratum with no observations is reported empty (null point, null interval,
-zero counts) rather than filled in, and thin cells carry ``reliable: false`` from the bootstrap's own
-usable-replicate rule. No threshold or inference parameter is changed.
+zero counts) rather than filled in, and thin cells carry ``reliable: false`` from the bootstrap's
+own usable-replicate rule. No threshold or inference parameter is changed.
 
 Strictly read-only: one session, compute, print, no writes.
 

@@ -66,7 +66,8 @@ def _print_iae(report: ClueMetricsReport) -> None:
     )
     print(
         "by_seat exposes whether dilemmas are single- or dual-perspective: on the shipped boards\n"
-        "all three dilemma words are agents only under seat 0, so seat-1 counts are expected to be 0."
+        "all three dilemma words are agents only under seat 0, so seat-1 counts are expected to be "
+        "0."
     )
 
 

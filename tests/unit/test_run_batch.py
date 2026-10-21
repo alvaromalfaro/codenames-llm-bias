@@ -1,9 +1,9 @@
 """Tests for the batch orchestrator (batch_runner.run_batch).
 
 Two failure levels are exercised separately: Level-1 preconditions (bank shortfall, collision) abort
-before any game; Level-2 fault isolation (count-and-continue + per-pairing consecutive-failure abort)
-is tested by patching run_single_game so the loop's own logic is what's under test. One hermetic
-end-to-end test plays all 192 games with deterministic mock clients (no DB, no daemon).
+before any game; Level-2 fault isolation (count-and-continue + per-pairing consecutive-failure
+abort) is tested by patching run_single_game so the loop's own logic is what's under test. One
+hermetic end-to-end test plays all 192 games with deterministic mock clients (no DB, no daemon).
 
 The threshold reset test is the discriminating one: 4 errors + 1 completion + 4 errors must not
 abort, proving the counter is consecutive, not cumulative.
@@ -335,8 +335,8 @@ def test_ingest_bank_stops_on_a_frame_that_contradicts_the_stored_one(tmp_path) 
 
 # Level 2: count-and-continue
 async def test_count_and_continue_plays_all_cells(monkeypatch) -> None:
-    # Alternate error/complete by game_index: consecutive errors never exceed 1, so no pairing aborts
-    # and every one of the 192 cells is attempted.
+    # Alternate error/complete by game_index: consecutive errors never exceed 1, so no pairing
+    # aborts and every one of the 192 cells is attempted.
     def outcome(gi):
         return ("error", "provider timeout") if gi % 2 == 0 else ("completed", None)
 
@@ -483,8 +483,8 @@ async def test_the_batch_plays_strict_and_counts_a_broken_invariant_apart(monkey
 
 # Level 2: per-pairing consecutive-failure threshold
 async def test_threshold_aborts_pairing_and_next_pairing_still_runs(monkeypatch) -> None:
-    # Pairing 0 is game_index 0..31. Error its first 5 games -> abort after the 5th; the remaining 27
-    # are skipped. Everything else completes, so pairing 1+ run normally.
+    # Pairing 0 is game_index 0..31. Error its first 5 games -> abort after the 5th; the remaining
+    # 27 are skipped. Everything else completes, so pairing 1+ run normally.
     def outcome(gi):
         return ("error", "boom") if gi < 5 else ("completed", None)
 

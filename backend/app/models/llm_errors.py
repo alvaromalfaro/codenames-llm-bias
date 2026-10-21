@@ -35,7 +35,8 @@ class LLMError(Exception):
     def __str__(self) -> str:
         return (
             f"LLMError(code={self.code}, message={self.message}, retriable={self.retriable}, "
-            f"provider={self.provider}, http_status={self.http_status}, request_id={self.request_id}, "
+            f"provider={self.provider}, http_status={self.http_status}, "
+            f"request_id={self.request_id}, "
             f"execution_mode={self.execution_mode}, cause={repr(self.cause)})"
         )
 
@@ -287,11 +288,11 @@ class LLMParseError(LLMError):
 
 class LLMEmptyResponseError(LLMParseError):
     """
-    A specific parse error for when the provider returns empty or whitespace-only content. Unlike its
-    parent, this error is retriable: an empty draw is a stochastic non-answer (observed
+    A specific parse error for when the provider returns empty or whitespace-only content. Unlike
+    its parent, this error is retriable: an empty draw is a stochastic non-answer (observed
     intermittently from ollama at temperature > 0), and a new draw, with a new seed, usually
-    succeeds. It stays a subclass of
-    LLMParseError so existing ``except LLMParseError`` handlers keep catching it.
+    succeeds. It stays a subclass of LLMParseError so existing ``except LLMParseError`` handlers
+    keep catching it.
     """
 
     def __init__(
@@ -334,8 +335,8 @@ class LLMDegenerateResponseError(LLMParseError):
     experiment wants to count them apart.
 
     It stays a subclass of ``LLMParseError`` so existing handlers keep catching it. Note the domain
-    constraint it protects (``min_length=1``) is not loosened: an empty guess list is illegal by game
-    rules, so after the retry budget is exhausted this still errors out.
+    constraint it protects (``min_length=1``) is not loosened: an empty guess list is illegal by
+    game rules, so after the retry budget is exhausted this still errors out.
     """
 
     def __init__(

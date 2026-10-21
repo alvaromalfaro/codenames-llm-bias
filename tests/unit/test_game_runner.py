@@ -122,7 +122,8 @@ def _clue_json(clue="OCEAN", count=1, reasoning="r", targets=None) -> str:
 def _make_client(name: str, guess_supplier, log=None) -> MagicMock:
     """A mock LLMClient. ``guess_supplier()`` is called per guess request and returns the word list
     (or raises to inject an error); clue/ranking are canned. Each response echoes the request seed
-    (as real clients do). ``log``, if given, records (name, format, seed) per call in dispatch order.
+    (as real clients do). ``log``, if given, records (name, format, seed) per call in dispatch
+    order.
     """
 
     def gen(request, expected_format=None):
@@ -155,14 +156,15 @@ def _queue_supplier(word_lists):
 
 
 def _unique_game_index() -> int:
-    """A fresh game_index per invocation so the deterministic game_id is unique across test runs on a
-    persistent DB (the driver's game_id folds in game_index)."""
+    """A fresh game_index per invocation so the deterministic game_id is unique across test runs on
+    a persistent DB (the driver's game_id folds in game_index)."""
     return uuid.uuid4().int % (2**31)
 
 
 def _seed_with_start_player(target: int, game_index=0) -> int:
     """Find a master seed whose derived engine RNG picks ``target`` as the start player, so the
-    scripted dispatch order is deterministic. Uses the driver's own derivation (the seam under test).
+    scripted dispatch order is deterministic. Uses the driver's own derivation (the seam under
+    test).
     """
     for master_seed in range(100000):
         _, _, seed_engine = _game_identity(master_seed, game_index)
@@ -358,7 +360,8 @@ async def test_reproducibility_identical_across_runs(monkeypatch):
     assert res1.status == "completed" and res1.result == "loss_assassin"
     assert res1.game_id == res2.game_id
     assert res1.seed_game == res2.seed_game
-    # Identical sequence of (seat, format, seed) requests -> identical derived seeds & dispatch order.
+    # Identical sequence of (seat, format, seed) requests -> identical derived seeds & dispatch
+    # order.
     assert log1 == log2
     assert len(log1) >= 3  # at least: one clue, one guess, one measurement
 
@@ -384,7 +387,8 @@ async def test_request_seeds_match_derivation_scheme(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_every_response_schema_a_game_sends_is_fingerprinted(monkeypatch):
-    """The fingerprint covers the response schemas of RESPONSE_FORMATS; a game must send no other."""
+    """The fingerprint covers the response schemas of RESPONSE_FORMATS; a game must send no
+    other."""
     log = []
     await _run_lemonade(777, monkeypatch, log)
     assert {fmt for _, fmt, _ in log} == set(llm_service.RESPONSE_FORMATS.values())
@@ -461,7 +465,8 @@ async def test_retriable_error_propagates_without_dispatch_retry(monkeypatch):
 
     assert res.status == "error"
     assert "timed out" in (res.error or "")
-    # Exactly one seat guessed, and its guess dispatch happened exactly once (no dispatch-level retry).
+    # Exactly one seat guessed, and its guess dispatch happened exactly once (no dispatch-level
+    # retry).
     guess_calls = sum(
         1
         for c in clients.values()
@@ -768,9 +773,9 @@ def _insert_board(session, board_id):
 @_db_required
 @pytest.mark.asyncio
 async def test_dispatch_full_game_persists_two_seats():
-    """A 2-turn game with start_player 0 forced: seat 1 guesses BRICK (agent both -> pass), then seat
-    0 guesses LEMONADE (assassin -> loss). Both seats give a clue, guess, and are measured; the game
-    persists with two real seat identities and both turns."""
+    """A 2-turn game with start_player 0 forced: seat 1 guesses BRICK (agent both -> pass), then
+    seat 0 guesses LEMONADE (assassin -> loss). Both seats give a clue, guess, and are measured; the
+    game persists with two real seat identities and both turns."""
     from sqlalchemy import select
 
     from backend.app.db.models import GameModel, GameSeatModel, GuessProposalModel, TurnModel
@@ -843,8 +848,8 @@ async def test_dispatch_full_game_persists_two_seats():
 @_db_required
 @pytest.mark.asyncio
 async def test_sudden_death_both_seats_persists():
-    """A game driven to natural sudden death (start_player 0): nine civilian turns exhaust the timer,
-    then seat 0 (SUDDEN_DEATH_LLM) reveals all its agents and hands off to seat 1
+    """A game driven to natural sudden death (start_player 0): nine civilian turns exhaust the
+    timer, then seat 0 (SUDDEN_DEATH_LLM) reveals all its agents and hands off to seat 1
     (SUDDEN_DEATH_HUMAN) for the win. The single SD turn persists both seats' play + measurement."""
     from sqlalchemy import select
 

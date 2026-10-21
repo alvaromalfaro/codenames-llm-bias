@@ -397,7 +397,8 @@ async def test_conduct_guess_skips_unplayable_item_and_continues(caplog):
     resolves, one conduct_guess call suffices, and the phase advances off GUESSING (so the driver
     never re-dispatches this turn and overwrites its single play proposal)."""
     eng = _guessing_engine(guesser=0, agents=(5, 5))
-    # TATTOO(8) is a seat-0 agent already revealed by seat 0 -> resolve_guess raises "already revealed".
+    # TATTOO(8) is a seat-0 agent already revealed by seat 0 -> resolve_guess raises "already
+    # revealed".
     eng.state.board.cards[8].revealed = True
     eng.state.board.cards[8].revealed_by.append(0)
     client = _mock_client([_guess_json(["BRICK", "CAVE", "TATTOO", "RANCH"]), _rankings_json()])
@@ -517,9 +518,9 @@ async def test_conduct_sd_guess_seat1_per_seat_proposal_index():
 
 @pytest.mark.asyncio
 async def test_two_seat_sudden_death_populates_both_seats():
-    """Both seats conducting SD in one game (seat 0 in SUDDEN_DEATH_LLM, then the engine hands off to
-    seat 1 in SUDDEN_DEATH_HUMAN) populate sd_play_by_seat / sd_measurement_by_seat for both seats on
-    the single SD turn."""
+    """Both seats conducting SD in one game (seat 0 in SUDDEN_DEATH_LLM, then the engine hands off
+    to seat 1 in SUDDEN_DEATH_HUMAN) populate sd_play_by_seat / sd_measurement_by_seat for both
+    seats on the single SD turn."""
     eng = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=1, agents=(1, 3))
     service = LLMService()
 
@@ -588,9 +589,10 @@ async def test_conduct_sd_guess_skips_unplayable_item_and_continues(caplog):
     assert eng.state.pending_words[0] == 1
     assert eng.state.result == "loss_stopped_sd"
 
-    # The whole ordered proposal is preserved on the single SD turn, but only the valid item produced
-    # a reveal - and at its OWN per-seat index 1, satisfying the writer's per-seat backfill contract.
-    # The invalid item (index 0) has no reveal, so its guess_proposal_item.reveal_event_id stays NULL.
+    # The whole ordered proposal is preserved on the single SD turn, but only the valid item
+    # produced a reveal - and at its OWN per-seat index 1, satisfying the writer's per-seat backfill
+    # contract. The invalid item (index 0) has no reveal, so its guess_proposal_item.reveal_event_id
+    # stays NULL.
     sd = rec.turns[-1]
     assert sd.phase == "sudden_death"
     assert sd.sd_play_by_seat[0].proposals == ["TATTOO", "CAVE"]
@@ -602,8 +604,8 @@ async def test_conduct_sd_guess_skips_unplayable_item_and_continues(caplog):
 @pytest.mark.asyncio
 async def test_conduct_sd_guess_concedes_when_nothing_is_playable():
     """A sudden-death proposal with no playable item (an off-board word and an already covered card)
-    makes no progress. The seat concedes instead of returning in its own SD phase, which used to make
-    the driver re-dispatch the same seat with the same seed until _MAX_DISPATCHES (ENG-04)."""
+    makes no progress. The seat concedes instead of returning in its own SD phase, which used to
+    make the driver re-dispatch the same seat with the same seed until _MAX_DISPATCHES (ENG-04)."""
     eng = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=1, agents=(2, 3))
     eng.state.board.cards[8].revealed = True  # TATTOO, already covered
     eng.state.board.cards[8].revealed_by = [0, 1]
@@ -628,7 +630,8 @@ async def test_conduct_sd_guess_concedes_when_nothing_is_playable():
 @pytest.mark.asyncio
 async def test_conduct_sd_guess_concedes_when_the_proposal_runs_out_with_words_pending():
     """A seat that proposes fewer words than it still has to find, all of them hits, has stopped:
-    with no clue ever coming again it concedes after its last hit rather than being re-dispatched."""
+    with no clue ever coming again it concedes after its last hit rather than being
+    re-dispatched."""
     eng = _sd_engine(GamePhase.SUDDEN_DEATH_HUMAN, clue_giver=0, agents=(0, 3))
     client = _mock_client([_rankings_json(), _guess_json(["RUSSIA", "RIFLE"])])
     rec = _recorder(client)
@@ -707,7 +710,8 @@ async def test_sd_gate_admits_seat1_in_sudden_death_human():
 
 @pytest.mark.asyncio
 async def test_sd_gate_rejects_seat_phase_mismatch():
-    """Seat/phase mismatch raises before any client call: seat 1 in LLM phase, seat 0 in HUMAN phase."""
+    """Seat/phase mismatch raises before any client call: seat 1 in LLM phase, seat 0 in HUMAN
+    phase."""
     service = LLMService()
     # gate raises before generate() is reached
     client = MagicMock(spec=LLMClient)

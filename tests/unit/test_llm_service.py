@@ -639,8 +639,8 @@ def test_guess_prompt_shows_the_guesser_own_key_side(game_state_guessing, seat):
 
 def test_own_key_side_states_what_the_guesser_found_on_its_black_words(game_state_guessing):
     """A black word the guesser can no longer touch says what its guess showed: an agent card means
-    it was the guesser's agent, its own time token means it was a civilian. The green and beige lists
-    keep only the words the guesser can still guess."""
+    it was the guesser's agent, its own time token means it was a civilian. The green and beige
+    lists keep only the words the guesser can still guess."""
     cards = {c.text: c for c in game_state_guessing.board.cards}
     cards["ANT"].revealed = True  # black for seat 0, an agent for it
     cards["ANT"].revealed_by = [0, 1]

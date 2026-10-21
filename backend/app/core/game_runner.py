@@ -57,9 +57,9 @@ def _derive(seed: int, *parts: bytes) -> int:
     """The single seed-derivation primitive: ``SHA-256(seed_as_8B_be || *parts) mod 2**64``.
 
     Deterministic and sensitive to every byte of every part, so different labels / seats / turns
-    yield different seeds while identical inputs yield identical seeds. ``seed`` is masked to 64 bits
-    before hashing so any caller-supplied master seed is accepted. Each integer part is fixed at an
-    explicit byte width by the callers below (8-byte big-endian for seeds and turn numbers).
+    yield different seeds while identical inputs yield identical seeds. ``seed`` is masked to 64
+    bits before hashing so any caller-supplied master seed is accepted. Each integer part is fixed
+    at an explicit byte width by the callers below (8-byte big-endian for seeds and turn numbers).
     """
     h = hashlib.sha256((seed & _MASK64).to_bytes(8, "big"))
     for part in parts:
@@ -91,10 +91,10 @@ def _game_identity(master_seed: int, game_index: int) -> tuple[str, int, int]:
     """Return ``(game_id, seed_game, seed_engine)`` for this game.
 
     Game identity derives from ``master_seed + game_index`` only - the two things that define the
-    experiment. ``run_id`` is deliberately not an input: it is persistence bookkeeping, not identity,
-    and a DB-minted ``run.id`` is a random uuid4 that would break reproducibility if it fed the
-    derivation. This function is pure and is the seam the tests use to predict the deterministic
-    engine start-player.
+    experiment. ``run_id`` is deliberately not an input: it is persistence bookkeeping, not
+    identity, and a DB-minted ``run.id`` is a random uuid4 that would break reproducibility if it
+    fed the derivation. This function is pure and is the seam the tests use to predict the
+    deterministic engine start-player.
 
     Because identity is deterministic, re-running the same ``(master_seed, game_index)`` yields the
     same ``game_id``, so a second persist collides on ``game.id`` (primary key). This is intended
@@ -131,8 +131,8 @@ class GameRunResult:
     # provider failure: an LLMError's ("truncated_response", "timeout", ...), or "invariant_broken"
     # for a state that broke the game's rules (GameInvariantError); None for any other error.
     error_code: Optional[str] = None
-    # Every breach of the game's invariants found while it was played (core/invariants.py), in order.
-    # A strict game ends at the first state that breaks one, so it is an error then.
+    # Every breach of the game's invariants found while it was played (core/invariants.py), in
+    # order. A strict game ends at the first state that breaks one, so it is an error then.
     invariant_violations: list[str] = field(default_factory=list)
 
 
@@ -275,14 +275,15 @@ def create_run(
 
     Returns ``(run_id, model_registry_snapshot)``. Takes ``template_fingerprint`` as a plain string
     (the caller builds the ``LLMService`` and passes ``svc.template_fingerprint()``) so this stays
-    free of service/template concerns and owns only run identity + provenance + the gate - the lower-
-    coupling option.
+    free of service/template concerns and owns only run identity + provenance + the gate - the
+    lower- coupling option.
 
     The served-model snapshot is built only when it will be used - persisted into the run row, or
     required by the enforcement gate - so the default dry-run path adds no daemon call. The gate
     aborts (``ModelDigestMismatchError``) before any run row exists when ``enforce_digests`` and a
     served local digest is not vetted; it is a no-op when ``enforce_digests=False``.
-    ``persist=False`` synthesizes a deterministic ``run_id`` and touches no DB (snapshot may be None).
+    ``persist=False`` synthesizes a deterministic ``run_id`` and touches no DB (snapshot may be
+    None).
     """
     snapshot = None
     if persist or enforce_digests:
@@ -407,18 +408,19 @@ async def run_single_game(
         seat_specs: a 2-element sequence of ``SeatSpec`` (index == seat).
         master_seed: the batch/game master seed; all per-call seeds derive from it.
         temperature: required and explicit - raised if None (never falls back to the default).
-        run_id: an existing run id to attach to; when None a minimal ``run`` row is created (DB only).
+        run_id: an existing run id to attach to; when None a minimal ``run`` row is created (DB
+            only).
         game_index: index of this game within its run, folded into the deterministic game id.
         persist: when True (default) the game is written to Postgres and a missing ``DATABASE_URL``
             is a hard error raised up front - refusing to burn provider calls on an unpersistable
             game. Pass False for a dry run (mock / reproducibility tests) that touches no database.
         client_factory: builds a client per (seat_index, spec); overridden by tests with mocks.
         enforce_digests: the reproducibility gate. False (default) keeps ``model_registry_snapshot``
-            a record-only witness. True (the batch path) compares each local
-            seat's served ollama digest against ``config.EXPECTED_LOCAL_DIGESTS`` at run-row creation
-            and ABORTS (``ModelDigestMismatchError``) on a mismatch / unavailable digest, before the
-            run row exists and before any game is dispatched. Only meaningful when this call mints
-            the run row (``run_id`` is None); games 1..N-1 reuse the vetted run.
+            a record-only witness. True (the batch path) compares each local seat's served ollama
+            digest against ``config.EXPECTED_LOCAL_DIGESTS`` at run-row creation and ABORTS
+            (``ModelDigestMismatchError``) on a mismatch / unavailable digest, before the run row
+            exists and before any game is dispatched. Only meaningful when this call mints the run
+            row (``run_id`` is None); games 1..N-1 reuse the vetted run.
         on_dispatch: optional observer, called with the engine and the recorder before the first
             dispatch and after every dispatch, so a caller can log the state or check it. It must
             not change them, and it must not raise: an exception it raises ends the game as an
@@ -550,8 +552,8 @@ async def run_single_game(
                 guard.check(engine)
 
         # Defensive terminal flush: the conductor's per-reveal flush already fired at game-over, but
-        # re-asserting here (idempotent) guarantees persistence even for terminal transitions that do
-        # not end on a reveal.
+        # re-asserting here (idempotent) guarantees persistence even for terminal transitions that
+        # do not end on a reveal.
         _flush_if_over(engine, recorder)
         logger.info("run_single_game completed: game_id=%s result=%s", game_id, engine.state.result)
         return GameRunResult(
@@ -603,8 +605,8 @@ def _error_flush(
     persist: bool,
 ) -> None:
     """Hardened partial-game flush as status='error', with why the game failed (``exc``, and its
-    code or None; see ``GameRunResult.error_code``). Never raises: if the error-flush itself fails it is logged richly so
-    it cannot mask the original error that triggered it."""
+    code or None; see ``GameRunResult.error_code``). Never raises: if the error-flush itself fails
+    it is logged richly so it cannot mask the original error that triggered it."""
     if recorder.flushed:
         return
     try:

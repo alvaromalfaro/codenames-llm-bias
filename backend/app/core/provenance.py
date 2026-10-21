@@ -3,10 +3,10 @@ the environment snapshot.
 
 These populate the ``run`` provenance columns (``code_version``, ``prompt_template_version``,
 ``model_registry_snapshot``, ``environment_snapshot``) so a persisted batch is reconstructible after
-the fact. Everything here is RECORD-ONLY: a lookup that fails (git absent, ollama daemon unreachable)
-must never abort or alter a game - it records a null value with an explanatory note and logs a
-WARNING. The gates that do abort (the served digests, the Ollama version) live in game_runner and
-read what these return.
+the fact. Everything here is RECORD-ONLY: a lookup that fails (git absent, ollama daemon
+unreachable) must never abort or alter a game - it records a null value with an explanatory note and
+logs a WARNING. The gates that do abort (the served digests, the Ollama version) live in game_runner
+and read what these return.
 """
 
 from __future__ import annotations
@@ -72,7 +72,8 @@ def resolve_ollama_digest(model_name: str, host: Optional[str] = None) -> Option
         from ollama import Client
 
         # Bounded as the game's own calls are: without a limit a hung daemon would stop the batch
-        # before its first game. A lookup that times out records null, which the digest gate refuses.
+        # before its first game. A lookup that times out records null, which the digest gate
+        # refuses.
         client = Client(
             host=host or os.environ.get("OLLAMA_HOST", "http://localhost:11434"),
             timeout=httpx.Timeout(config.OLLAMA_TIMEOUT_S, connect=config.OLLAMA_CONNECT_TIMEOUT_S),
@@ -118,19 +119,20 @@ def build_model_registry_snapshot(
     *,
     digest_resolver: Optional[Callable[[str], Optional[str]]] = None,
 ) -> dict:
-    """Build the ``model_registry_snapshot`` JSONB value: an asymmetric, honest record of which model
-    served each seat, keyed by seat index (string keys, since JSON).
+    """Build the ``model_registry_snapshot`` JSONB value: an asymmetric, honest record of which
+    model served each seat, keyed by seat index (string keys, since JSON).
 
     Provider identity is not symmetrically resolvable before a batch:
-    - ``ollama`` (local): the digest is queryable from the daemon -> ``identity_kind="ollama_digest"``
-      with the real digest (or ``"ollama_digest_unavailable"`` + null identity if the lookup failed).
+    - ``ollama`` (local): the digest is queryable from the daemon ->
+      ``identity_kind="ollama_digest"`` with the real digest (or ``"ollama_digest_unavailable"`` +
+      null identity if the lookup failed).
     - ``openrouter`` (API): no pre-run identity exists -> ``identity_kind="requested_model_string"``
       with the requested model string; effective identity lives per call in ``llm_call``.
 
     The strong/best-effort distinction is explicit in ``identity_kind`` (data), not just prose.
     ``digest_resolver`` is injectable so tests can supply a deterministic digest without a daemon;
-    when omitted it resolves the module-level ``resolve_ollama_digest`` at call time (so a monkeypatch
-    of that name is honoured). Record-only: never raises on a lookup failure.
+    when omitted it resolves the module-level ``resolve_ollama_digest`` at call time (so a
+    monkeypatch of that name is honoured). Record-only: never raises on a lookup failure.
     """
     resolver = digest_resolver if digest_resolver is not None else resolve_ollama_digest
     snapshot: dict[str, dict] = {}
@@ -184,7 +186,8 @@ def build_model_registry_snapshot(
 
 
 def ollama_base_url(host: Optional[str] = None) -> str:
-    """The Ollama daemon's base URL: ``host``, else ``OLLAMA_HOST``, else the default, with a scheme."""
+    """The Ollama daemon's base URL: ``host``, else ``OLLAMA_HOST``, else the default, with a
+    scheme."""
     host = (host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
     return host if "://" in host else f"http://{host}"
 

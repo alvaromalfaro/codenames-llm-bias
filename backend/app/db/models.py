@@ -39,12 +39,12 @@ class RunModel(Base):
     """One experimental batch (e.g. the 6x32 model-pairing cross).
 
     Anchors the master seed and the temperature regime that govern the batch, plus the code version
-    and model registry snapshot needed to reproduce it. prompt_template_version is the fingerprint of
-    the prompt templates and of the response schemas the requests carry
-    (LLMService.template_fingerprint). stimulus_manifest maps every board the batch schedules to
-    the SHA-256 of its artifact (board.content_sha256); environment_snapshot holds the environment
-    the batch ran in (interpreter, packages, server versions, the clue validator's data). notes is
-    free text: each resume of the batch appends a line to it.
+    and model registry snapshot needed to reproduce it. prompt_template_version is the fingerprint
+    of the prompt templates and of the response schemas the requests carry
+    (LLMService.template_fingerprint). stimulus_manifest maps every board the batch schedules to the
+    SHA-256 of its artifact (board.content_sha256); environment_snapshot holds the environment the
+    batch ran in (interpreter, packages, server versions, the clue validator's data). notes is free
+    text: each resume of the batch appends a line to it.
 
     game.run_id is nullable: a game written outside a batch belongs to no run. The removed web UI
     wrote its human-vs-LLM games that way.

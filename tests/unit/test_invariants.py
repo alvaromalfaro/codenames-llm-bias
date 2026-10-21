@@ -21,7 +21,8 @@ def _engine(valid_board_data: dict) -> CodenamesDuetEngine:
 
 def test_a_game_played_by_the_rules_breaks_no_invariant(valid_board_data: dict):
     """A shared agent, a miss that leaves a time token, a word found under the partner's token, a
-    stop, an invalid clue's penalty and the stop forced by the last pending word: clean after each."""
+    stop, an invalid clue's penalty and the stop forced by the last pending word: clean after
+    each."""
     engine = _engine(valid_board_data)
     plays = [
         lambda: engine.receive_clue("battle", 2, LLM),

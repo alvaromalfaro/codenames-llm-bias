@@ -354,7 +354,8 @@ def test_build_encoder_rejects_pooling_mismatch():
 
 @requires_real_encoder
 def test_build_encoder_rejects_normalize_mismatch():
-    """The checkpoint ends in Normalize; a frame declaring encoder_normalize=False contradicts it."""
+    """The checkpoint ends in Normalize; a frame declaring encoder_normalize=False contradicts
+    it."""
     from backend.app.db.embed_mpnet import (
         EncoderContractError,
         EncoderSpec,

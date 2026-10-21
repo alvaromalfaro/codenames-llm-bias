@@ -10,20 +10,20 @@ Two things this can settle that the point estimates could not:
   * how much of IAE's distance from indifference survives the small decidable denominators - roughly
     7-13 resolved dilemmas per model, so the interval is expected to be wide and to say so;
   * ``gap(b1) - gap(b3)``, the monotonicity hypothesis of section 4.5.1. Band 1 is the least similar
-    tercile, so "the gap widens as thematic proximity falls" predicts a positive contrast;
-    found the opposite ordering for every model, and this contrast is what says whether that inversion
-    is distinguishable from noise. It is accumulated inside each replicate from the same draw, so its
+    tercile, so "the gap widens as thematic proximity falls" predicts a positive contrast; found the
+    opposite ordering for every model, and this contrast is what says whether that inversion is
+    distinguishable from noise. It is accumulated inside each replicate from the same draw, so its
     interval carries the correlation between the two bands.
 
 Games are the resampling unit, and both metrics share one cluster set per model: the games in which
-that model gave clues. The tercile cuts are computed once over the full eligible-pair distribution and
-frozen into the estimator closures; the bootstrap has no path to recompute them.
+that model gave clues. The tercile cuts are computed once over the full eligible-pair distribution
+and frozen into the estimator closures; the bootstrap has no path to recompute them.
 
 Reference points, neither of which is a hypothesis test. For the TAC/TAI gaps the null is 0 - equal
 grouping rates for congruent and incongruent pairs. For IAE the reference is 0.5, standing for
 indifference between the stereotypical and the neutral bridge among decidable observations; it is
-printed so the MDE has a scale to be read against, NOT as a null being tested. The rate cells (TAC and
-TAI themselves) have no meaningful reference point, so no exclusion flag is printed for them.
+printed so the MDE has a scale to be read against, NOT as a null being tested. The rate cells (TAC
+and TAI themselves) have no meaningful reference point, so no exclusion flag is printed for them.
 
 Strictly read-only: one session, compute, print, no writes.
 

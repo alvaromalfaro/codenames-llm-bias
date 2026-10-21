@@ -1,8 +1,8 @@
 """Play N games between two models and write a full log of each one to a text file.
 
-A diagnostic tool, not the batch: no database, no schedule, no digest gate unless asked. Each game is
-played by ``run_single_game``, the same driver the batch uses, so what is logged is what the batch
-would play. The log is meant to be read after the run to find anything that went wrong.
+A diagnostic tool, not the batch: no database, no schedule, no digest gate unless asked. Each game
+is played by ``run_single_game``, the same driver the batch uses, so what is logged is what the
+batch would play. The log is meant to be read after the run to find anything that went wrong.
 
 What the log holds (one file per run, ``logs/games_<timestamp>.log``):
 

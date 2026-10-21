@@ -34,7 +34,8 @@ class BoardLoader:
         Loads a board configuration from a JSON file and validates it against the Board schema.
 
         :param self: The instance of the BoardLoader class.
-        :param filename: The name of the JSON file containing the board configuration (e.g., "board1.json").
+        :param filename: The name of the JSON file containing the board configuration (e.g.,
+            "board1.json").
         :return: The validated Board object.
         """
         file_path = self.data_path / filename

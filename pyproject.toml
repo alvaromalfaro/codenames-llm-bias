@@ -49,13 +49,12 @@ extend-exclude = ["board_generator"]
 exclude = ["backend/migrations/versions/*"]
 
 [tool.ruff.lint]
-# pycodestyle, pyflakes and bugbear to start with; long lines (E501) are not checked yet.
+# pycodestyle (long lines included), pyflakes and bugbear.
 select = ["E", "W", "F", "B"]
-ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-# A migration that was applied stays as it was written, trailing spaces included.
-"backend/migrations/versions/*" = ["W291"]
+# A migration that was applied stays as it was written, trailing spaces and long lines included.
+"backend/migrations/versions/*" = ["W291", "E501"]
 
 [tool.mypy]
 python_version = "3.12"

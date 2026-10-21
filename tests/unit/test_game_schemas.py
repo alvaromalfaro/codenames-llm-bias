@@ -50,25 +50,31 @@ def test_measurement_frame_id_present_is_carried(valid_board_data):
     [
         (
             "less_llm_agents",
-            "There must be exactly 9 agent cards for both LLM and human players (3 shared between them).",
+            "There must be exactly 9 agent cards for both LLM and human players (3 shared between "
+            "them).",
         ),
         (
             "less_human_agents",
-            "There must be exactly 9 agent cards for both LLM and human players (3 shared between them).",
+            "There must be exactly 9 agent cards for both LLM and human players (3 shared between "
+            "them).",
         ),
         (
             "wrong_shared_count",
-            "There must be exactly 9 agent cards for both LLM and human players (3 shared between them).",
+            "There must be exactly 9 agent cards for both LLM and human players (3 shared between "
+            "them).",
         ),
     ],
 )
 def test_board_invalid_agent_rules(valid_board_data, modification, expected_error):
     """
-    Validates that a board configuration with an incorrect number of agent cards or incorrect intersections fails validation.
+    Validates that a board configuration with an incorrect number of agent cards or incorrect
+    intersections fails validation.
 
     :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
-    :param modification: A string indicating the type of modification to apply to the valid board data to make it invalid.
-    :param expected_error: A string indicating the expected error message to be raised during validation.
+    :param modification: A string indicating the type of modification to apply to the valid board
+        data to make it invalid.
+    :param expected_error: A string indicating the expected error message to be raised during
+        validation.
     """
     data = valid_board_data.copy()
 
@@ -96,7 +102,8 @@ def test_board_invalid_agent_rules(valid_board_data, modification, expected_erro
                 card["human_perspective_role"] = CardRole.CIVILIAN
                 break
 
-        # Then, set one of the civilian cards to be an agent for the human player to maintain the total count of 9 agents for the human player
+        # Then, set one of the civilian cards to be an agent for the human player to maintain the
+        # total count of 9 agents for the human player
         for card in data["cards"]:
             if (
                 card["llm_perspective_role"] == CardRole.CIVILIAN
@@ -114,15 +121,18 @@ def test_board_invalid_agent_rules(valid_board_data, modification, expected_erro
     [
         (
             "less_llm_assassins",
-            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human).",
+            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 "
+            "unique to LLM, 1 unique to human).",
         ),
         (
             "less_human_assassins",
-            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human).",
+            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 "
+            "unique to LLM, 1 unique to human).",
         ),
         (
             "wrong_shared_count",
-            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human).",
+            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 "
+            "unique to LLM, 1 unique to human).",
         ),
         (
             "invalid_human_intersection",
@@ -136,11 +146,14 @@ def test_board_invalid_agent_rules(valid_board_data, modification, expected_erro
 )
 def test_board_invalid_assassin_rules(valid_board_data, modification, expected_error):
     """
-    Validates that a board configuration with an incorrect number of assassin cards or incorrect intersections fails validation.
+    Validates that a board configuration with an incorrect number of assassin cards or incorrect
+    intersections fails validation.
 
     :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
-    :param modification: A string indicating the type of modification to apply to the valid board data to make it invalid.
-    :param expected_error: A string indicating the expected error message to be raised during validation.
+    :param modification: A string indicating the type of modification to apply to the valid board
+        data to make it invalid.
+    :param expected_error: A string indicating the expected error message to be raised during
+        validation.
     """
     data = valid_board_data.copy()
 
@@ -168,7 +181,8 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
                 card["human_perspective_role"] = CardRole.CIVILIAN
                 break
 
-        # Then, set one of the civilian cards to be an assassin for the human player to maintain the total count of 3 assassins for the human player
+        # Then, set one of the civilian cards to be an assassin for the human player to maintain the
+        # total count of 3 assassins for the human player
         for card in data["cards"]:
             if (
                 card["llm_perspective_role"] == CardRole.CIVILIAN
@@ -177,9 +191,11 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
                 card["human_perspective_role"] = CardRole.ASSASSIN
                 break
     elif modification == "invalid_human_intersection":
-        # Modify the valid board data to have a human assassin card that is not one of the LLM's agent cards
+        # Modify the valid board data to have a human assassin card that is not one of the LLM's
+        # agent cards
 
-        # First, set the human assassin card that intersects with the LLM's agent cards to be a civilian for the human player
+        # First, set the human assassin card that intersects with the LLM's agent cards to be a
+        # civilian for the human player
         for card in data["cards"]:
             if (
                 card["human_perspective_role"] == CardRole.ASSASSIN
@@ -188,7 +204,8 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
                 card["human_perspective_role"] = CardRole.CIVILIAN
                 break
 
-        # Then, set one of the civilian cards to be an assassin for the human player to maintain the total count of 3 assassins for the human player
+        # Then, set one of the civilian cards to be an assassin for the human player to maintain the
+        # total count of 3 assassins for the human player
         for card in data["cards"]:
             if (
                 card["human_perspective_role"] == CardRole.CIVILIAN
@@ -197,7 +214,8 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
                 card["human_perspective_role"] = CardRole.ASSASSIN
                 break
     elif modification == "invalid_llm_intersection":
-        # Modify the valid board data to have an LLM assassin card that is not one of the human's agent cards
+        # Modify the valid board data to have an LLM assassin card that is not one of the human's
+        # agent cards
         for card in data["cards"]:
             if (
                 card["llm_perspective_role"] == CardRole.ASSASSIN
@@ -206,7 +224,8 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
                 card["llm_perspective_role"] = CardRole.CIVILIAN
                 break
 
-        # Then, set one of the civilian cards to be an assassin for the LLM player to maintain the total count of 3 assassins for the LLM player
+        # Then, set one of the civilian cards to be an assassin for the LLM player to maintain the
+        # total count of 3 assassins for the LLM player
         for card in data["cards"]:
             if (
                 card["llm_perspective_role"] == CardRole.CIVILIAN

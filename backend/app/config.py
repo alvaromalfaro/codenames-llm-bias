@@ -38,8 +38,8 @@ llm_models = {
 # so the tag stays the PLAYED tag (the exact key in `llm_models["Ollama"]`, e.g. `llama3.1:8b` -
 # never a bare `:latest`, which would not match what is played) and this map is the reproducibility
 # anchor. When digest enforcement is on (the batch path), a served digest that differs from the
-# expected one below ABORTS the run before any game is dispatched (see game_runner._enforce_local_digests /
-# ModelDigestMismatchError).
+# expected one below ABORTS the run before any game is dispatched (see
+# game_runner._enforce_local_digests / ModelDigestMismatchError).
 # Human-readable: llama3.1 = 8B Q4_K_M; mistral-small3.2 = 24B Q4_K_M.
 #
 # mistral-small3.2 is a vision model. Ollama 0.40 serves it with its llamacpp runner: the first time
@@ -48,16 +48,18 @@ llm_models = {
 # The digest below is that converted variant's, as Ollama 0.40.2 serves it. Before the conversion,
 # the model as pulled had this one, which is the one exp_data.dump records:
 #   sha256:5a408ab55df5c1b5cf46533c368813b30bf9e4d8fc39263bf2a3338cfa3b895b
-# The Ollama release the digests above were validated with, and that docker-compose.yml pins. Another
-# release may serve another digest, or the same weights another way: the batch refuses to start on a
-# daemon reporting another version (game_runner._enforce_ollama_version).
+# The Ollama release the digests above were validated with, and that docker-compose.yml pins.
+# Another release may serve another digest, or the same weights another way: the batch refuses to
+# start on a daemon reporting another version (game_runner._enforce_ollama_version).
 EXPECTED_OLLAMA_VERSION = "0.40.2"
 
 EXPECTED_LOCAL_DIGESTS = {
     "llama3.1:8b": "sha256:46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
     "gemma4:12b": "sha256:4eb23ef187e2c5462566d6a1d3bbbc2f1346d0b4327cbb66d58fffbcc9b2b05c",
     "qwen2.5:14b": "sha256:7cdf5a0187d5c58cc5d369b255592f7841d1c4696d45a8c8a9489440385b22f6",
-    "mistral-small3.2:24b": "sha256:57bbe3480604be532b76a11087b4028a73e251a22c34380527281039a3967a06",
+    "mistral-small3.2:24b": (
+        "sha256:57bbe3480604be532b76a11087b4028a73e251a22c34380527281039a3967a06"
+    ),
 }
 
 # The context window, in tokens, of every local (Ollama) request. Set here so that every machine

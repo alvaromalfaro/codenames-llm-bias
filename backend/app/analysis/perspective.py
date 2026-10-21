@@ -13,8 +13,8 @@ Two rules are derived from this mapping. This module deliberately builds no sets
 
 WARNING - ``engine.state.pending_words[s]`` is not "seat s's own agents". That counter is
 **guesser-indexed**: it counts the words seat ``s`` still has to find, which are agents in the
-opposite seat's column, ``perspective_column(1 - s)``. Reading it as the seat's own agent set inverts
-the perspective on every two-seat metric.
+opposite seat's column, ``perspective_column(1 - s)``. Reading it as the seat's own agent set
+inverts the perspective on every two-seat metric.
 """
 
 from __future__ import annotations

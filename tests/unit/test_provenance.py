@@ -1,6 +1,6 @@
 """Tests for run-provenance helpers (backend.app.core.provenance) and the LLMService template
-fingerprint. These run without a database; the end-to-end persisted-run provenance assertions live in
-test_game_runner.py (DB-gated)."""
+fingerprint. These run without a database; the end-to-end persisted-run provenance assertions live
+in test_game_runner.py (DB-gated)."""
 
 import re
 import subprocess
@@ -29,7 +29,8 @@ def test_template_fingerprint_deterministic():
 
 
 def test_template_fingerprint_content_sensitive():
-    """Mutating one loaded template text changes the fingerprint - it hashes content, not identity."""
+    """Mutating one loaded template text changes the fingerprint - it hashes content, not
+    identity."""
     svc = LLMService()
     before = svc.template_fingerprint()
     svc._user_prompt_cg = svc._user_prompt_cg + "x"
@@ -88,7 +89,8 @@ def test_template_fingerprint_reflects_default_fallback(monkeypatch):
 # model_registry_snapshot shape + asymmetry
 def test_snapshot_encodes_strong_vs_best_effort_asymmetry():
     """A local (ollama) seat records a strong ``ollama_digest`` identity; an API (openrouter) seat
-    records only the requested model string. Both seats present; the asymmetry is explicit in data."""
+    records only the requested model string. Both seats present; the asymmetry is explicit in
+    data."""
     specs = [SeatSpec("ollama", "m0"), SeatSpec("openrouter", "m1")]
     snap = provenance.build_model_registry_snapshot(
         specs, digest_resolver=lambda m: f"sha256:{m}-digest"
@@ -105,7 +107,8 @@ def test_snapshot_encodes_strong_vs_best_effort_asymmetry():
     assert api["provider"] == "openrouter" and api["model_name"] == "m1"
     assert api["identity_kind"] == "requested_model_string"
     assert api["identity"] == "m1"
-    # The two seats carry different identity_kinds - the strong/best-effort distinction is in the data.
+    # The two seats carry different identity_kinds - the strong/best-effort distinction is in the
+    # data.
     assert local["identity_kind"] != api["identity_kind"]
 
 
@@ -143,7 +146,8 @@ def test_snapshot_default_resolver_honours_monkeypatch(monkeypatch):
 
 # the digest lookup waits a bounded time on the daemon
 def test_digest_lookup_waits_the_configured_time(monkeypatch):
-    """ollama's own default is no limit at all: a hung daemon would stop the batch before it began."""
+    """ollama's own default is no limit at all: a hung daemon would stop the batch before it
+    began."""
     seen = {}
 
     class FakeClient:
@@ -178,8 +182,8 @@ def test_digest_lookup_that_times_out_records_none(monkeypatch):
 
 # code_version
 def test_git_code_version_format():
-    """In this repo git resolves: a short SHA, optionally suffixed ``-dirty``. Assert the format, not
-    a specific SHA."""
+    """In this repo git resolves: a short SHA, optionally suffixed ``-dirty``. Assert the format,
+    not a specific SHA."""
     cv = provenance.git_code_version()
     assert cv is not None
     assert re.fullmatch(r"[0-9a-f]{7,40}(-dirty)?", cv)

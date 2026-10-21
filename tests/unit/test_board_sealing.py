@@ -1,7 +1,9 @@
-"""A.4 end-to-end: the 28 sealed bank boards carry the frame_id and the platform loader accepts them.
+"""A.4 end-to-end: the 28 sealed bank boards carry the frame_id and the platform loader accepts
+them.
 
-Exercises the A.1 change (Board.measurement_frame_id optional) against the actually-sealed artifacts:
-seal + load, no board dropped. Reads the committed data/boards/ artifacts; no DB, no model.
+Exercises the A.1 change (Board.measurement_frame_id optional) against the actually-sealed
+artifacts: seal + load, no board dropped. Reads the committed data/boards/ artifacts; no DB, no
+model.
 """
 
 import glob

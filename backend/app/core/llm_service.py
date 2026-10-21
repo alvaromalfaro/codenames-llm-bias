@@ -157,8 +157,9 @@ class LLMService:
             h.update(key.encode("utf-8"))
             h.update(b"\0")
             # ``str(text)`` defensively: a loaded text is normally a str, but a malformed hardcoded
-            # ``_default_*`` fallback can hold a non-str. Coercing keeps the fingerprint deterministic
-            # and content-sensitive without ever raising - provenance must never abort a run.
+            # ``_default_*`` fallback can hold a non-str. Coercing keeps the fingerprint
+            # deterministic and content-sensitive without ever raising - provenance must never abort
+            # a run.
             h.update(str(text).encode("utf-8"))
             h.update(b"\0")
         return h.hexdigest()
@@ -369,8 +370,8 @@ class LLMService:
         parallel to propose_guess but for measurement. This is a separate call that does not touch
         the game-play guess request, is not appended to any conversation history, and never sees the
         clue-giver's intended target set S. It is elicited at the pre-resolution instant (same game
-        state as the play-guess request) and returns the parsed ranking; attaching it is the engine's
-        job.
+        state as the play-guess request) and returns the parsed ranking; attaching it is the
+        engine's job.
 
         :param llm_client: The LLM client to use for generating the response.
         :param game_state: The current state of the game (guessing phase, before resolution).
@@ -593,7 +594,8 @@ class LLMService:
         count = game_state.current_clue.count
         previous_clues_history = "\n".join(
             [
-                f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: {clue_entry.count}"
+                f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: "
+                f"{clue_entry.count}"
                 for clue_entry in game_state.clue_history
                 if clue_entry.clue_giver != player_id
             ]
@@ -722,11 +724,11 @@ class LLMService:
         Builds the out-of-band measurement request for the standard guessing phase. It mirrors
         _build_guess_request exactly for the public inputs the guesser sees - the current clue and
         count, the previous-clue history, and the SAME guessable-word filter - so the measurement
-        observes the identical game state as the play-guess request. The clue-giver's intended target
-        set S is never read here (only ``current_clue.clue``/``.count`` and history clue/count),
-        preserving the guardrail that S never reaches the guesser side. It also leaves out the
-        guesser's own key side, which the play request carries: the measurement scores what the
-        clue points to, and the key side would mix the risk of each word into that score.
+        observes the identical game state as the play-guess request. The clue-giver's intended
+        target set S is never read here (only ``current_clue.clue``/``.count`` and history
+        clue/count), preserving the guardrail that S never reaches the guesser side. It also leaves
+        out the guesser's own key side, which the play request carries: the measurement scores what
+        the clue points to, and the key side would mix the risk of each word into that score.
 
         :param game_state: The current state of the game.
         :param model: The LLM model to use.
@@ -740,7 +742,8 @@ class LLMService:
         count = game_state.current_clue.count
         previous_clues_history = "\n".join(
             [
-                f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: {clue_entry.count}"
+                f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: "
+                f"{clue_entry.count}"
                 for clue_entry in game_state.clue_history
                 if clue_entry.clue_giver != player_id
             ]
@@ -1068,8 +1071,8 @@ class LLMService:
             "- OTHER WORDS STILL ON THE BOARD: Words your partner already touched and cannot touch "
             "again. They carry no risk, but they are still on the board, so rules 2, 3 and 4 apply "
             "to them.\n"
-            "- REVEALED WORDS: Your agents that are already found. They are covered, so they are no "
-            "longer on the board.\n"
+            "- REVEALED WORDS: Your agents that are already found. They are covered, so they are "
+            "no longer on the board.\n"
             "The words in the first four lists are the words currently visible on the board.\n\n"
             "### OUTPUT FORMAT ###\n"
             "You must respond ONLY with a valid JSON object. DO NOT INCLUDE markdown formatting, "
@@ -1094,9 +1097,9 @@ class LLMService:
         """
         return (
             "### YOUR TASK ###\n"
-            "Propose a clue and a count for the guessing player, and list the exact board words your "
-            "clue is for. Remember: your clue cannot be any word listed below, nor a form of one."
-            "\n\n"
+            "Propose a clue and a count for the guessing player, and list the exact board words "
+            "your clue is for. Remember: your clue cannot be any word listed below, nor a form of "
+            "one.\n\n"
             "Turn: {turn_number}\n\n"
             "### BOARD STATUS ###\n"
             "AGENTS (Words to connect):\n"
@@ -1105,8 +1108,8 @@ class LLMService:
             "{assassin_words}\n\n"
             "CIVILIANS (Neutral - try to avoid):\n"
             "{civilian_words}\n\n"
-            "OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one of "
-            "them or a form of one):\n"
+            "OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one "
+            "of them or a form of one):\n"
             "{other_words}\n\n"
             "REVEALED WORDS (Already guessed, no longer valid targets):\n"
             "{revealed_words}"
@@ -1144,9 +1147,9 @@ class LLMService:
             "7. DO NOT invent words; you must select exactly from the provided board words.\n\n"
             "### YOUR SIDE OF THE KEY CARD ###\n"
             "You can see your own side of the key card. It colors the 25 words: 9 green, 3 black "
-            "and 13 beige. It does NOT show your Agents: your green words are the ones YOUR PARTNER "
-            "must find. It does tell you how risky each word is, because every key card follows "
-            "the same pattern:\n"
+            "and 13 beige. It does NOT show your Agents: your green words are the ones YOUR "
+            "PARTNER must find. It does tell you how risky each word is, because every key card "
+            "follows the same pattern:\n"
             "- Your 3 BLACK words: 1 is an Agent for you, 1 is an Assassin, 1 is a Civilian.\n"
             "- Your 9 GREEN words: 3 are Agents for you, 1 is an Assassin, 5 are Civilians.\n"
             "- Your 13 BEIGE words: 5 are Agents for you, 1 is an Assassin, 7 are Civilians.\n"
@@ -1211,9 +1214,9 @@ class LLMService:
         """
         return (
             "### YOUR TASK ###\n"
-            "Propose a clue and a count for the guessing player, and list the exact board words your "
-            "clue is for. Remember: your clue cannot be any word listed below, nor a form of one."
-            "\n\n"
+            "Propose a clue and a count for the guessing player, and list the exact board words "
+            "your clue is for. Remember: your clue cannot be any word listed below, nor a form of "
+            "one.\n\n"
             "Turn: 1\n\n"
             "### BOARD STATUS ###\n"
             "AGENTS (Words to connect):\n"
@@ -1225,8 +1228,8 @@ class LLMService:
             "CIVILIANS (Neutral - try to avoid):\n"
             "- TOWER\n"
             "- KNIGHT\n\n"
-            "OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one of "
-            "them or a form of one):\n"
+            "OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one "
+            "of them or a form of one):\n"
             "None.\n\n"
             "REVEALED WORDS (Already guessed, no longer valid targets):\n"
             "No words revealed yet."
@@ -1244,12 +1247,12 @@ class LLMService:
             '{"reasoning": "Step 1: CROWN, THRONE, CASTLE all relate to monarchy and royalty. '
             "TOWER and KNIGHT are civilians with medieval connotations — a clue like 'medieval' or "
             "'fortress' risks pulling them in. Step 2: Best candidate cluster is CROWN + THRONE + "
-            "CASTLE → clue 'royal'. Step 3: ASSASSIN CHECK — BRIDGE has no meaningful semantic link "
-            "to 'royal'. Safe to proceed. Step 4: TOWER could weakly associate with 'royal' (Tower "
-            "of London), so I reduce count to 2 targeting CROWN and THRONE, the strongest matches, "
-            "to avoid the civilian TOWER. Step 5: 'royal' is not a board word, not a derivative of "
-            'any board word, and not part of a compound board word. Valid.", "clue": "royal", '
-            '"count": 2, "targets": ["CROWN", "THRONE"]}'
+            "CASTLE → clue 'royal'. Step 3: ASSASSIN CHECK — BRIDGE has no meaningful semantic "
+            "link to 'royal'. Safe to proceed. Step 4: TOWER could weakly associate with 'royal' "
+            "(Tower of London), so I reduce count to 2 targeting CROWN and THRONE, the strongest "
+            "matches, to avoid the civilian TOWER. Step 5: 'royal' is not a board word, not a "
+            'derivative of any board word, and not part of a compound board word. Valid.", '
+            '"clue": "royal", "count": 2, "targets": ["CROWN", "THRONE"]}'
         )
 
     def _default_os_user_gg(self) -> str:
@@ -1335,9 +1338,9 @@ class LLMService:
             "6. DO NOT invent words; select only from the provided unrevealed board words.\n\n"
             "### YOUR SIDE OF THE KEY CARD ###\n"
             "You can see your own side of the key card. It colors the 25 words: 9 green, 3 black "
-            "and 13 beige. It does NOT show your Agents: your green words are the ones YOUR PARTNER "
-            "must find. It does tell you how risky each word is, because every key card follows "
-            "the same pattern:\n"
+            "and 13 beige. It does NOT show your Agents: your green words are the ones YOUR "
+            "PARTNER must find. It does tell you how risky each word is, because every key card "
+            "follows the same pattern:\n"
             "- Your 3 BLACK words: 1 is an Agent for you, 1 is an Assassin, 1 is a Civilian.\n"
             "- Your 9 GREEN words: 3 are Agents for you, 1 is an Assassin, 5 are Civilians.\n"
             "- Your 13 BEIGE words: 5 are Agents for you, 1 is an Assassin, 7 are Civilians.\n"
@@ -1372,20 +1375,21 @@ class LLMService:
     def _default_system_prompt_meas_gg(self) -> str:
         """
         Default system prompt for the standard confidence-ranking measurement call, used when the
-        template file is missing. Purely mechanical: it instructs the model to score every unrevealed
-        card and never mentions gender, associations, stereotypes, or bias (construct non-reactivity).
+        template file is missing. Purely mechanical: it instructs the model to score every
+        unrevealed card and never mentions gender, associations, stereotypes, or bias (construct
+        non-reactivity).
         """
         return (
             "You are scoring a clue against a board in Codenames Duet. You are given a single clue "
             "(a word and a count) and the full list of unrevealed board words. Your task is purely "
             "mechanical.\n\n"
             "### TASK ###\n"
-            "For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that the word "
-            "is one of the words the clue points to. 0.0 means the clue clearly does not point to "
-            "it; 1.0 means the clue clearly points to it.\n\n"
+            "For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that the "
+            "word is one of the words the clue points to. 0.0 means the clue clearly does not "
+            "point to it; 1.0 means the clue clearly points to it.\n\n"
             "### RULES ###\n"
-            "1. Score EVERY unrevealed word. Do not omit any word, and do not invent words that are "
-            "not listed.\n"
+            "1. Score EVERY unrevealed word. Do not omit any word, and do not invent words that "
+            "are not listed.\n"
             "2. Confidence must be a number in the range [0.0, 1.0].\n"
             "3. Score each word independently on its own merits; the count is only context.\n\n"
             "### OUTPUT FORMAT ###\n"
@@ -1422,16 +1426,16 @@ class LLMService:
         mechanical; never mentions gender, associations, stereotypes, or bias.
         """
         return (
-            "You are scoring a board in Codenames Duet during SUDDEN DEATH. There are no more clues; "
-            "you are given the full clue history and the list of unrevealed board words. Your task "
-            "is purely mechanical.\n\n"
+            "You are scoring a board in Codenames Duet during SUDDEN DEATH. There are no more "
+            "clues; you are given the full clue history and the list of unrevealed board words. "
+            "Your task is purely mechanical.\n\n"
             "### TASK ###\n"
-            "For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that the word "
-            "is one of YOUR remaining agent cards. 0.0 means it clearly is not one of your agents; "
-            "1.0 means it clearly is.\n\n"
+            "For EVERY unrevealed board word, assign a confidence between 0.0 and 1.0 that the "
+            "word is one of YOUR remaining agent cards. 0.0 means it clearly is not one of your "
+            "agents; 1.0 means it clearly is.\n\n"
             "### RULES ###\n"
-            "1. Score EVERY unrevealed word. Do not omit any word, and do not invent words that are "
-            "not listed.\n"
+            "1. Score EVERY unrevealed word. Do not omit any word, and do not invent words that "
+            "are not listed.\n"
             "2. Confidence must be a number in the range [0.0, 1.0].\n"
             "3. Use the clue history to recall which words your partner was pointing at.\n\n"
             "### OUTPUT FORMAT ###\n"
@@ -1450,9 +1454,9 @@ class LLMService:
         """Default user prompt for the sudden-death confidence-ranking measurement call."""
         return (
             "### YOUR TASK ###\n"
-            "For every unrevealed board word listed below, assign a confidence in [0.0, 1.0] that it "
-            "is one of your remaining agent cards. Score every word. Follow the required JSON format "
-            "exactly.\n\n"
+            "For every unrevealed board word listed below, assign a confidence in [0.0, 1.0] that "
+            "it is one of your remaining agent cards. Score every word. Follow the required JSON "
+            "format exactly.\n\n"
             "### CLUE HISTORY (all clues given to you during the game) ###\n"
             "{clue_history}\n\n"
             "### UNREVEALED BOARD WORDS ###\n"

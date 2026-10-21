@@ -697,8 +697,8 @@ def build_clue_estimators(
     ever contrasting a cell of one against a cell of the other.
 
     The closures capture pairs that have **already been banded** over the full dataset and only ever
-    filter them. There is no path from here back to ``compute_tercile_cuts``, so the tercile cuts are
-    frozen structurally rather than by convention: no draw can move a band boundary.
+    filter them. There is no path from here back to ``compute_tercile_cuts``, so the tercile cuts
+    are frozen structurally rather than by convention: no draw can move a band boundary.
 
     A game drawn twice must contribute twice. Both aggregators count rows rather than grouping by
     game, so duplicating a game's rows is already correct; each copy nonetheless gets a copy-tagged

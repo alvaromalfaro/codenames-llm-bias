@@ -1,10 +1,11 @@
 """The batch schedule.
 
-This is the batch's probe/control calendar, seat mirroring and pairing cross. Given the models and
-a ``master_seed``, :func:`build_schedule` produces the exact list of games to play - each with its pairing, board, seat assignment and ``game_index``.
-Because a silent error here becomes a biased dataset discovered only at analysis time, identity is
-derived through the very same :func:`_game_identity` the runner and DB use, so the tests can prove
-no two cells collide on the real ``game_id``.
+This is the batch's probe/control calendar, seat mirroring and pairing cross. Given the models and a
+``master_seed``, :func:`build_schedule` produces the exact list of games to play - each with its
+pairing, board, seat assignment and ``game_index``. Because a silent error here becomes a biased
+dataset discovered only at analysis time, identity is derived through the very same
+:func:`_game_identity` the runner and DB use, so the tests can prove no two cells collide on the
+real ``game_id``.
 
 Design (fixed by prior decisions):
   - 4 models, all cross-model pairs, no self-play => C(4,2) = 6 pairings. A model's stable id is

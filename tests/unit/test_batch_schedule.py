@@ -1,8 +1,8 @@
 """Tests for the pure batch schedule (batch_schedule.build_schedule).
 
 These tests are the deliverable: each one is written to fail if the schedule violated the invariant
-it names, not merely to pass. No database, no model calls, no engine - the builder is a pure function
-and these fixtures are minimal in-memory Board/SeatSpec objects."""
+it names, not merely to pass. No database, no model calls, no engine - the builder is a pure
+function and these fixtures are minimal in-memory Board/SeatSpec objects."""
 
 import random
 

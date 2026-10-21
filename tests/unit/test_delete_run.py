@@ -86,7 +86,8 @@ def _recorder(*, game_id, board_id, run_id):
 
 
 def _record_full_game(rec):
-    """Drive a rec through a normal turn AND a two-seat sudden-death turn with backfilled reveals."""
+    """Drive a rec through a normal turn AND a two-seat sudden-death turn with backfilled
+    reveals."""
     # Normal turn: clue (2 attempts) + 3-item play (2 reveals -> tail NULL) + measurement.
     rec.record_clue(
         ClueEntry(
@@ -411,8 +412,8 @@ def test_delete_run_enables_rerun_of_same_identity():
     from backend.app.db.session import session_scope
 
     # A unique master_seed per invocation keeps the deterministic game_id from colliding with a row
-    # left by a prior run of this test (mirrors test_game_runner._unique_game_index); the identity is
-    # still reused WITHIN this test to demonstrate the same-identity collision.
+    # left by a prior run of this test (mirrors test_game_runner._unique_game_index); the identity
+    # is still reused WITHIN this test to demonstrate the same-identity collision.
     master_seed, game_index = uuid.uuid4().int % 2**31, 0
     game_id, _, _ = _game_identity(master_seed, game_index)
 

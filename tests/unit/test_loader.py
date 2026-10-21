@@ -6,8 +6,10 @@ from backend.app.models.game_schemas import Board
 
 def test_load_board_success(tmp_path, valid_board_data):
     """
-    Validates that the BoardLoader can successfully load and validate a board configuration from a JSON file.
-    :param tmp_path: A pytest fixture providing a temporary directory for file operations during the test.
+    Validates that the BoardLoader can successfully load and validate a board configuration from a
+    JSON file.
+    :param tmp_path: A pytest fixture providing a temporary directory for file operations during the
+        test.
     :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
     """
     # Create a temporary data directory and write the valid board configuration to a JSON file
@@ -16,7 +18,8 @@ def test_load_board_success(tmp_path, valid_board_data):
     board_file = d / "test_board.json"
     board_file.write_text(json.dumps(valid_board_data))
 
-    # Initialize the BoardLoader with the path to the temporary data directory and load the board configuration
+    # Initialize the BoardLoader with the path to the temporary data directory and load the board
+    # configuration
     loader = BoardLoader(data_path=str(d))
     board = loader.load_board("test_board.json")
 
@@ -71,21 +74,27 @@ def test_a_strict_loader_skips_the_sidecars(tmp_path, valid_board_data):
 
 def test_load_board_file_not_found(tmp_path):
     """
-    Validates that the BoardLoader raises a FileNotFoundError when attempting to load a non-existent board configuration file.
-    :param tmp_path: A pytest fixture providing a temporary directory for file operations during the test.
+    Validates that the BoardLoader raises a FileNotFoundError when attempting to load a non-existent
+    board configuration file.
+    :param tmp_path: A pytest fixture providing a temporary directory for file operations during the
+        test.
     """
-    # Initialize the BoardLoader with the path to the temporary data directory (which is empty) and attempt to load a non-existent board configuration file
+    # Initialize the BoardLoader with the path to the temporary data directory (which is empty) and
+    # attempt to load a non-existent board configuration file
     loader = BoardLoader(data_path=str(tmp_path))
 
-    # Assert that a FileNotFoundError is raised when trying to load a board configuration file that does not exist in the temporary data directory
+    # Assert that a FileNotFoundError is raised when trying to load a board configuration file that
+    # does not exist in the temporary data directory
     with pytest.raises(FileNotFoundError):
         loader.load_board("non_existent_board.json")
 
 
 def test_list_available_boards(tmp_path):
     """
-    Validates that the BoardLoader can list all available board configuration files in the data directory.
-    :param tmp_path: A pytest fixture providing a temporary directory for file operations during the test.
+    Validates that the BoardLoader can list all available board configuration files in the data
+    directory.
+    :param tmp_path: A pytest fixture providing a temporary directory for file operations during the
+        test.
     """
     # Create a temporary data directory and write multiple valid board configurations to JSON files
     d = tmp_path / "data"
@@ -96,12 +105,14 @@ def test_list_available_boards(tmp_path):
             json.dumps({"board_id": f"board_{i}", "category": "neutral", "cards": []})
         )
 
-    # Create a non-JSON file in the data directory to ensure that it is not included in the list of available boards
+    # Create a non-JSON file in the data directory to ensure that it is not included in the list of
+    # available boards
     (d / "readme.txt").write_text(
         "This is a readme file and should not be listed as an available board configuration."
     )
 
-    # Initialize the BoardLoader with the path to the temporary data directory and list the available board configuration files
+    # Initialize the BoardLoader with the path to the temporary data directory and list the
+    # available board configuration files
     loader = BoardLoader(data_path=str(d))
     available_boards = loader.list_available_boards()
 
@@ -113,12 +124,16 @@ def test_list_available_boards(tmp_path):
 
 def test_list_available_boards_directory_not_found(tmp_path):
     """
-    Validates that the BoardLoader raises a FileNotFoundError when attempting to list available boards from a non-existent data directory.
-    :param tmp_path: A pytest fixture providing a temporary directory for file operations during the test.
+    Validates that the BoardLoader raises a FileNotFoundError when attempting to list available
+    boards from a non-existent data directory.
+    :param tmp_path: A pytest fixture providing a temporary directory for file operations during the
+        test.
     """
-    # Initialize the BoardLoader with a path to a non-existent data directory and attempt to list available board configuration files
+    # Initialize the BoardLoader with a path to a non-existent data directory and attempt to list
+    # available board configuration files
     loader = BoardLoader(data_path=str(tmp_path / "non_existent_data"))
 
-    # Assert that a FileNotFoundError is raised when trying to list available boards from a data directory that does not exist
+    # Assert that a FileNotFoundError is raised when trying to list available boards from a data
+    # directory that does not exist
     with pytest.raises(FileNotFoundError):
         loader.list_available_boards()

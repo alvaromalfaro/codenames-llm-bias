@@ -52,7 +52,8 @@ def test_expected_digests_cover_every_local_roster_model_and_are_wellformed():
 
 # unit: the gate helper over crafted snapshots
 def _snapshot(*, served, identity_kind="ollama_digest", model=_LOCAL_MODEL):
-    """A one-local-seat-plus-one-api-seat snapshot in the shape build_model_registry_snapshot emits."""
+    """A one-local-seat-plus-one-api-seat snapshot in the shape build_model_registry_snapshot
+    emits."""
     return {
         "0": {
             "provider": "ollama",
@@ -205,8 +206,8 @@ async def test_run_aborts_on_unavailable_digest_when_enforcing(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_run_proceeds_on_matching_digest_when_enforcing(monkeypatch):
-    """enforce_digests=True with a matching served digest lets the game play to completion - the gate
-    passes (and prefix-normalisation holds: bare-hex served vs sha256:-prefixed config)."""
+    """enforce_digests=True with a matching served digest lets the game play to completion - the
+    gate passes (and prefix-normalisation holds: bare-hex served vs sha256:-prefixed config)."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
     monkeypatch.setattr(
         provenance, "resolve_ollama_digest", lambda model_name, host=None: _SERVED_OK

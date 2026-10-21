@@ -104,12 +104,13 @@ async def conduct_guess(
         try:
             result = engine.resolve_guess(card_id, player_id)
         except (ValueError, PermissionError) as e:
-            # The engine refused this item (an already-revealed / time-marked card - models re-propose
-            # played cards because the guesser prompt carries the clue history). Treat it like a
-            # hallucinated word: skip it (its proposal item keeps reveal_event_id NULL) and continue,
-            # so a malformed item never costs the turn and never leaves the loop before the for/else
-            # passes the turn. Breaking here would return with the phase still GUESSING and let the
-            # driver re-dispatch the same turn, silently overwriting this turn's proposal record.
+            # The engine refused this item (an already-revealed / time-marked card - models
+            # re-propose played cards because the guesser prompt carries the clue history). Treat it
+            # like a hallucinated word: skip it (its proposal item keeps reveal_event_id NULL) and
+            # continue, so a malformed item never costs the turn and never leaves the loop before
+            # the for/else passes the turn. Breaking here would return with the phase still GUESSING
+            # and let the driver re-dispatch the same turn, silently overwriting this turn's
+            # proposal record.
             logger.warning("Skipping unplayable guess %r (seat %s): %s", word, player_id, e)
             continue
 
@@ -127,16 +128,17 @@ async def conduct_guess(
         reveals.append((card_id, result, engine.state.board.get_card_by_id(card_id)))
 
         if result != "agent":
-            # civilian, assassin, victory, or agent_turn_end (the guesser has nothing left to find) -
-            # turn or game ended
+            # civilian, assassin, victory, or agent_turn_end (the guesser has nothing left to find):
+            # the turn or the game ended
             break
     else:
         # Loop exhausted with no turn-ending reveal: every item was an agent, unmappable, or
-        # unplayable. Pass the turn to advance the phase. If pass_turn raises here, the loop resolved
-        # zero guesses (guesses_made_this_turn == 0) - Duet requires >=1 guess before a pass, so this
-        # is a state the rules do not contemplate (a model that produced no playable card). Let the
-        # error propagate to the runner's boundary (the game is flushed with status='error') rather
-        # than swallow it, which would leave the phase at GUESSING and spin the driver.
+        # unplayable. Pass the turn to advance the phase. If pass_turn raises here, the loop
+        # resolved zero guesses (guesses_made_this_turn == 0) - Duet requires >=1 guess before a
+        # pass, so this is a state the rules do not contemplate (a model that produced no playable
+        # card). Let the error propagate to the runner's boundary (the game is flushed with
+        # status='error') rather than swallow it, which would leave the phase at GUESSING and spin
+        # the driver.
         if engine.state.guesses_made_this_turn == 0:
             logger.error(
                 "seat %s proposed no playable card this turn, and a turn needs at least one "
@@ -163,14 +165,15 @@ async def conduct_sd_guess(
 
     Returns the ordered list of resolved ``(card_id, result, card)`` reveals.
 
-    This never returns with the engine still in this seat's sudden-death phase. Either a reveal ended
-    the game (victory or a miss), or the seat found its last word and the engine handed the board
-    to the partner, or the proposal ran out with words still pending and the seat conceded
+    This never returns with the engine still in this seat's sudden-death phase. Either a reveal
+    ended the game (victory or a miss), or the seat found its last word and the engine handed the
+    board to the partner, or the proposal ran out with words still pending and the seat conceded
     (``engine.concede_sudden_death``), or an exception propagated. Each seat therefore makes a
     single sudden-death play: the driver never re-dispatches it, so the run cannot spin on a seat
     that proposes nothing playable, and the seat's SD proposal record is never overwritten.
     """
-    # The sudden-death turn has no clue; record the clue_giver held at SD entry as its clue_giver_seat.
+    # The sudden-death turn has no clue; record the clue_giver held at SD entry as its
+    # clue_giver_seat.
     sd_clue_giver = engine.state.clue_giver
     # This seat's sudden-death phase; the service gate below refuses any other.
     sd_phase = engine.state.current_phase
@@ -246,10 +249,10 @@ async def conduct_sd_guess(
             break
 
     if not engine.state.is_game_over and engine.state.current_phase == sd_phase:
-        # The proposal is exhausted (all hits, unmappable or unplayable) and the seat still has words
-        # pending. No clue will ever come, so the seat has stopped: it concedes and both players
-        # lose. Returning instead would leave the phase unchanged and the driver would re-dispatch
-        # this seat with the same seed, overwriting its SD proposal record each time.
+        # The proposal is exhausted (all hits, unmappable or unplayable) and the seat still has
+        # words pending. No clue will ever come, so the seat has stopped: it concedes and both
+        # players lose. Returning instead would leave the phase unchanged and the driver would
+        # re-dispatch this seat with the same seed, overwriting its SD proposal record each time.
         engine.concede_sudden_death(player_id)
         flush(engine, recorder)
 

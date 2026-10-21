@@ -16,10 +16,10 @@ Three properties are load-bearing and are asserted by the tests:
     to be computed once over the full data and captured in the closure. Recomputing tercile cuts
     inside a replicate would let the bands drift with the resample, so a "band 1" interval would be
     an average over shifting definitions rather than an interval for a fixed quantity;
-  * **contrasts are paired.** ``probe_all - control_all`` is accumulated *within* each replicate from
-    the same draw, so the difference distribution carries the correlation between the two cells.
-    Differencing two independently-computed intervals throws that correlation away and inflates the
-    width - usually enough to hide a real difference;
+  * **contrasts are paired.** ``probe_all - control_all`` is accumulated *within* each replicate
+    from the same draw, so the difference distribution carries the correlation between the two
+    cells. Differencing two independently-computed intervals throws that correlation away and
+    inflates the width - usually enough to hide a real difference;
   * **degenerate replicates are dropped and counted, never imputed.** A thin band can yield no
     comparable pairs on some resamples. Such a replicate contributes nothing to that cell's
     percentiles, and the drop count is reported so a CI resting on a minority of replicates is

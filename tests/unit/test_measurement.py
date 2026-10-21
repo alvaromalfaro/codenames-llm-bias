@@ -2,7 +2,8 @@
 Tests for the out-of-band confidence-ranking measurement call (CIT / sudden-death metrics).
 
 The measurement is strictly additive and side-effect-free: it must never mutate game state, never
-receive the clue-giver's intended target set S, and be elicited at the correct pre-resolution instant.
+receive the clue-giver's intended target set S, and be elicited at the correct pre-resolution
+instant.
 """
 
 import json
@@ -130,7 +131,10 @@ def test_build_confidence_ranking_clamps_confidence():
 
 def test_build_confidence_ranking_skips_empty_words():
     """Entries with an empty word are skipped (derivable malformation, no flag fields)."""
-    text = '{"reasoning": "r", "rankings": [{"word": "  ", "confidence": 0.5}, {"word": "BRICK", "confidence": 0.8}]}'
+    text = (
+        '{"reasoning": "r", "rankings": [{"word": "  ", "confidence": 0.5}, '
+        '{"word": "BRICK", "confidence": 0.8}]}'
+    )
     ranking = LLMService()._build_confidence_ranking(_mock_response(text))
 
     assert [r.word for r in ranking.rankings] == ["BRICK"]
@@ -147,7 +151,8 @@ def test_build_confidence_ranking_json_error():
 
 @pytest.mark.asyncio
 async def test_elicit_confidence_ranking_end_to_end(game_state_guessing):
-    """elicit_confidence_ranking drives the client with the measurement format and returns the parse."""
+    """elicit_confidence_ranking drives the client with the measurement format and returns the
+    parse."""
     text = _rankings_json([("BRICK", 0.9), ("ANT", 0.1)])
     client = _mock_client(text)
 
@@ -442,7 +447,8 @@ def test_attach_confidence_ranking_sets_field(valid_board_data):
 
 
 def test_switch_roles_sets_sd_pending_flag(valid_board_data):
-    """Entering sudden death (timer exhausted, agents remaining) flags the measurement as pending."""
+    """Entering sudden death (timer exhausted, agents remaining) flags the measurement as
+    pending."""
     engine = CodenamesDuetEngine(Board(**valid_board_data))
     engine.state.timer_tokens = 0
     engine.state.current_clue = ClueEntry(

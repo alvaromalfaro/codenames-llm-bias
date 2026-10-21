@@ -89,9 +89,10 @@ class TurnRecord:
     measurement: Optional[ConfidenceRanking] = None  # kind='measurement'
     reveals: list[RevealRecord] = field(default_factory=list)
     # Sudden death is a single collective turn on which both seats guess (the guesser is not
-    # derivable from clue_giver_seat), so its play proposals and measurements are carried per guesser
-    # seat rather than in the single normal-play slots above. Empty on normal turns; the writer emits
-    # one guess_proposal row per (seat, kind) under UNIQUE(turn_id, kind, guesser_seat).
+    # derivable from clue_giver_seat), so its play proposals and measurements are carried per
+    # guesser seat rather than in the single normal-play slots above. Empty on normal turns; the
+    # writer emits one guess_proposal row per (seat, kind) under UNIQUE(turn_id, kind,
+    # guesser_seat).
     sd_play_by_seat: dict[int, GuessProposal] = field(default_factory=dict)
     sd_measurement_by_seat: dict[int, ConfidenceRanking] = field(default_factory=dict)
 
@@ -139,8 +140,8 @@ class GameRecorder:
 
     # normal play
     def record_clue(self, clue_entry: ClueEntry, proposal=None) -> None:
-        """Open a normal turn and record its clue. ``proposal`` is the LLM ClueProposal (carrying all
-        attempts + reasoning), or None to record the clue alone (no llm_calls, no reasoning)."""
+        """Open a normal turn and record its clue. ``proposal`` is the LLM ClueProposal (carrying
+        all attempts + reasoning), or None to record the clue alone (no llm_calls, no reasoning)."""
         llm_calls = list(proposal.llm_calls) if proposal is not None else []
         reasoning = proposal.reasoning if proposal is not None else None
         clue = ClueRecord(
@@ -165,8 +166,8 @@ class GameRecorder:
         self._current_turn().play_proposal = guess_proposal
 
     def record_measurement(self, ranking: Optional[ConfidenceRanking]) -> None:
-        """Attach the out-of-band confidence ranking to the current turn. No-op if measurement failed
-        (ranking is None)."""
+        """Attach the out-of-band confidence ranking to the current turn. No-op if measurement
+        failed (ranking is None)."""
         if ranking is None:
             return
         self._current_turn().measurement = ranking
@@ -232,11 +233,12 @@ class GameRecorder:
     ) -> None:
         """Record one sudden-death reveal on the single SD turn.
 
-        CONTRACT (relied on by the writer's per-seat backfill): in sudden death ``proposal_index`` is
-        0-based relative to ``acting_seat``'s own SD play proposal (``sd_play_by_seat[acting_seat]``),
-        not a global index over this turn's reveals. Both seats guess on one turn, so the SD conductor
-        must reset the index to 0 per seat; a global counter would mis-align the
-        ``guess_proposal_item.reveal_event_id`` backfill in ``writer._write_turn``.
+        CONTRACT (relied on by the writer's per-seat backfill): in sudden death ``proposal_index``
+        is 0-based relative to ``acting_seat``'s own SD play proposal
+        (``sd_play_by_seat[acting_seat]``), not a global index over this turn's reveals. Both seats
+        guess on one turn, so the SD conductor must reset the index to 0 per seat; a global counter
+        would mis-align the ``guess_proposal_item.reveal_event_id`` backfill in
+        ``writer._write_turn``.
         """
         self.ensure_sudden_death_turn(clue_giver_seat).reveals.append(
             RevealRecord(

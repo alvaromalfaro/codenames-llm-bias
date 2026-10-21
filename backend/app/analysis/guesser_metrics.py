@@ -9,10 +9,11 @@ It is a weighted Cliff-style sign delta mapped onto [0, 1], so **0.5 means no as
 zero. A band with no comparable pairs reports ``None`` rather than 0.5, because "undefined" and
 "measured, no effect" are different claims.
 
-The confidence signal is read from the **measurement** ranking (``guess_proposal.kind='measurement'``),
-never the play proposal. The measurement call is elicited out of band at the same pre-resolution
-state and by construction never influences the game, so it reports belief uncontaminated by game
-strategy. Reading ``kind='play'`` would silently measure something else.
+The confidence signal is read from the **measurement** ranking
+(``guess_proposal.kind='measurement'``), never the play proposal. The measurement call is elicited
+out of band at the same pre-resolution state and by construction never influences the game, so it
+reports belief uncontaminated by game strategy. Reading ``kind='play'`` would silently measure
+something else.
 
 Three policies carry the measurement and are asserted by the tests:
 
@@ -244,8 +245,9 @@ def words_offered(
     cards: Mapping[int, str], earlier_reveals: Iterable[tuple[int, int, str]], guesser_seat: int
 ) -> frozenset[str]:
     """The board words a guesser could still touch when its turn began. They are the words the
-    measurement offered it: its prompt lists exactly those (``LLMService._build_measurement_request``
-    uses ``WordCard.is_guessable_by``), so a ranked word outside them was never asked about.
+    measurement offered it: its prompt lists exactly those
+    (``LLMService._build_measurement_request`` uses ``WordCard.is_guessable_by``), so a ranked word
+    outside them was never asked about.
 
     A word is out once an agent card covers it, or a time token from each seat does, and it is out
     for the guesser alone while its own time token sits on it (§6.6). In normal play every civilian

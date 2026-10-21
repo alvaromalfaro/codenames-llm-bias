@@ -228,8 +228,10 @@ class Board(BaseModel):
           position, as the database's ``card_id BETWEEN 0 AND 24`` expects).
         - The 25 words must be distinct, ignoring case (§3), since words are matched to cards
           case-insensitively (``get_card_id_by_word``, the writer's word -> card_id map).
-        - There must be exactly 9 agent cards for both LLM and human players (3 shared between them).
-        - There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human).
+        - There must be exactly 9 agent cards for both LLM and human players (3 shared between
+          them).
+        - There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique
+          to LLM, 1 unique to human).
         - The rest of the cards will be civilian cards.
 
         The id and word checks run first: the role checks below collect card ids into sets, so a
@@ -251,7 +253,8 @@ class Board(BaseModel):
 
         if repeated_words:
             raise ValueError(
-                f"The 25 words on the board must be distinct (ignoring case); repeated: {repeated_words}."
+                "The 25 words on the board must be distinct (ignoring case); repeated: "
+                f"{repeated_words}."
             )
 
         # Agent cards (9 for both LLM and human players, with 3 shared between them)
@@ -266,7 +269,8 @@ class Board(BaseModel):
             or len(agents_llm.intersection(agents_human)) != 3
         ):
             raise ValueError(
-                "There must be exactly 9 agent cards for both LLM and human players (3 shared between them)."
+                "There must be exactly 9 agent cards for both LLM and human players (3 shared "
+                "between them)."
             )
 
         # Assassin cards (3 for both LLM and human players, with 1 shared between them)
@@ -283,7 +287,8 @@ class Board(BaseModel):
             or len(assassins_llm.intersection(assassins_human)) != 1
         ):
             raise ValueError(
-                "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human)."
+                "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 "
+                "unique to LLM, 1 unique to human)."
             )
 
         if len(assassins_human.intersection(agents_llm)) != 1:
@@ -504,8 +509,9 @@ class GameState(BaseModel):
     # Per-game sudden-death record (measurement only); None until the sudden-death phase is entered
     # and its confidence ranking is attached. Exactly one per game - not a per-turn list.
     sudden_death: Optional[SuddenDeathEntry] = None
-    # Set by the engine when the game transitions into sudden death, and consumed once when the LLM's
-    # sudden-death confidence ranking is elicited and attached (before the first sudden-death guess).
+    # Set by the engine when the game transitions into sudden death, and consumed once when the
+    # LLM's sudden-death confidence ranking is elicited and attached (before the first sudden-death
+    # guess).
     sd_measurement_pending: bool = False
 
     # Finalization state

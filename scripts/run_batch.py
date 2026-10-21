@@ -23,10 +23,10 @@ answers again. A provider that does not answer within --provider-wait-minutes (d
 batch: the report says where, and the exit code is 3.
 
 A batch that stopped (that exit 3, a crash, a Ctrl+C) continues with --resume RUN_ID: the same run,
-playing only the games it has not recorded. The run must match this batch - master seed, temperature,
-prompt templates, models and the weights served - or nothing plays; another code version only warns.
---master-seed and --temperature may be left out, and are then the run's. The games it recorded as
-errors stay so, unless --retry-errors plays them again.
+playing only the games it has not recorded. The run must match this batch - master seed,
+temperature, prompt templates, models and the weights served - or nothing plays; another code
+version only warns. --master-seed and --temperature may be left out, and are then the run's. The
+games it recorded as errors stay so, unless --retry-errors plays them again.
 
 Environment: export the vars yourself (no dotenv). DATABASE_URL, OLLAMA_HOST and/or
 OPENROUTER_API_KEY must be in the process environment.
@@ -92,8 +92,8 @@ def _models_from_config() -> list[SeatSpec]:
 
 
 def _parse_model(arg: str) -> SeatSpec:
-    """Parse a ``provider:model`` flag into a SeatSpec (split on the FIRST colon; model names contain
-    colons)."""
+    """Parse a ``provider:model`` flag into a SeatSpec (split on the FIRST colon; model names
+    contain colons)."""
     if ":" not in arg:
         raise SystemExit(f"--model {arg!r} must be provider:model (e.g. ollama:llama3.1:8b).")
     provider, model_name = arg.split(":", 1)

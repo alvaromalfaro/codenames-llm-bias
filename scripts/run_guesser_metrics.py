@@ -210,7 +210,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if report.n_turns == 0:
         print(
-            f"no completed normal-phase turns for master_seed={args.master_seed}; nothing to report",
+            f"no completed normal-phase turns for master_seed={args.master_seed}; nothing to "
+            "report",
             file=sys.stderr,
         )
         return 1

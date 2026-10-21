@@ -226,8 +226,8 @@ def test_engine_invalid_clue_is_played_with_a_penalty_token(valid_board_data: di
     [
         # A form of a visible word (§8.1.5).
         ("buckets", "'buckets' is a morphological form of the board word 'bucket'."),
-        # A name of several words (§6.2, §8.1.10). It used to fail ClueEntry's own validation, so it was
-        # rejected - and an LLM giving it lost the game to the error.
+        # A name of several words (§6.2, §8.1.10). It used to fail ClueEntry's own validation, so it
+        # was rejected - and an LLM giving it lost the game to the error.
         ("Leonardo da Vinci", "'Leonardo da Vinci' is not a single word."),
     ],
 )
@@ -525,7 +525,8 @@ def test_engine_resolve_guess_time_marker_from_other_player(valid_board_data: di
     [
         (
             "invalid_phase",
-            "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or SUDDEN_DEATH_LLM phase.",
+            "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or SUDDEN_DEATH_LLM "
+            "phase.",
         ),
         ("invalid_player", "Only the guesser can make guesses."),
         ("unknown_card_id", "There is no card with id 99 on this board."),
@@ -759,7 +760,8 @@ def test_engine_resolve_guess_sudden_death_loss_civilian(
     reflect the loss.
 
     :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
-    :param modification: A string indicating whether to test guessing a civilian or an assassin card.
+    :param modification: A string indicating whether to test guessing a civilian or an assassin
+        card.
     :param result: The expected result string to be set in the game state for the loss
     """
     board = Board(**valid_board_data)
@@ -1065,8 +1067,8 @@ def test_engine_seat_can_run_out_of_pending_words_on_the_partners_turn(
 ):
     """
     A seat can run out of pending words while it is the clue giver: the partner covering a shared
-    green also covers it for that seat. The seat that just gave the clue then gives the next one too,
-    so it gives two clues in a row (§6.8).
+    green also covers it for that seat. The seat that just gave the clue then gives the next one
+    too, so it gives two clues in a row (§6.8).
 
     :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
     :param exhausted: The seat that ends up with no pending words.
@@ -1114,7 +1116,8 @@ def test_engine_turn_ends_when_the_guesser_covers_its_last_pending_word(valid_bo
     on the giver's face. The turn closes as a voluntary stop - one token - and the partner guesses.
 
     This is the sequence that used to cost games: the human covers RUSSIA, its last pending word,
-    the turn stays in GUESSING, and the human goes on to touch MAKEUP - an assassin on the LLM's face.
+    the turn stays in GUESSING, and the human goes on to touch MAKEUP - an assassin on the LLM's
+    face.
 
     :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
     """

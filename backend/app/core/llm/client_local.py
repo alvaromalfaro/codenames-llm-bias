@@ -117,8 +117,8 @@ class LLMClientLocal(LLMClient):
         self.max_retries = max_retries
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
         # The async client, so a call in flight leaves the event loop free, and a bounded wait, so a
-        # hung daemon fails the call as a timeout instead of stopping the batch (ollama's own default
-        # is no limit at all). See config.OLLAMA_TIMEOUT_S for the value.
+        # hung daemon fails the call as a timeout instead of stopping the batch (ollama's own
+        # default is no limit at all). See config.OLLAMA_TIMEOUT_S for the value.
         self._client = AsyncClient(
             host=host,
             timeout=httpx.Timeout(config.OLLAMA_TIMEOUT_S, connect=config.OLLAMA_CONNECT_TIMEOUT_S),
@@ -132,8 +132,8 @@ class LLMClientLocal(LLMClient):
 
         For a reasoning-capable model ollama defaults thinking ON, which under structured output can
         leave ``message.content`` empty and always puts that model in a different inference regime
-        (and a far slower one) than the non-reasoning models it is compared against. So thinking-capable
-        models must be sent an explicit ``think`` value.
+        (and a far slower one) than the non-reasoning models it is compared against. So
+        thinking-capable models must be sent an explicit ``think`` value.
 
         The flag is withheld from models that do not advertise the capability: ollama rejects
         ``think=True`` for them outright (HTTP 400 "does not support thinking"), and older daemons
@@ -231,8 +231,8 @@ class LLMClientLocal(LLMClient):
                     provider="ollama", raw_payload=response_json, execution_mode="local"
                 )
 
-            # The answer reached the output limit (num_predict) or filled the context, so its JSON is
-            # unfinished: a bad draw, re-sampled within the caller's budget like the empty one.
+            # The answer reached the output limit (num_predict) or filled the context, so its JSON
+            # is unfinished: a bad draw, re-sampled within the caller's budget like the empty one.
             if ollama_response.done_reason == "length":
                 logger.debug(
                     "ollama %s answer cut at the output limit (%s prompt + %s answer "
@@ -282,7 +282,9 @@ class LLMClientLocal(LLMClient):
                         content,
                     )
                     raise LLMDegenerateResponseError(
-                        message=f"The LLM returned a well-formed but degenerate response: {reason}.",
+                        message=(
+                            f"The LLM returned a well-formed but degenerate response: {reason}."
+                        ),
                         provider="ollama",
                         raw_payload=response_json,
                         execution_mode="local",

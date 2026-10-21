@@ -1,9 +1,10 @@
 """Offline population of ``embedding_mpnet`` with extrinsic phi* embeddings.
 
 The encoder identity is read from the ``measurement_frame`` row at runtime and is never hardcoded:
-the frame is the source of truth for ``encoder_name/revision/pooling/normalize``. The board generator
-owns the same contract on its side, but this module deliberately does not import from it (the two
-sides stay dependency-isolated); it re-implements the contract and the frame keeps them honest.
+the frame is the source of truth for ``encoder_name/revision/pooling/normalize``. The board
+generator owns the same contract on its side, but this module deliberately does not import from it
+(the two sides stay dependency-isolated); it re-implements the contract and the frame keeps them
+honest.
 
 The phi* contract, matching the generator's ``Arbiter.embed``:
   * ``SentenceTransformer(name, revision=revision, device="cpu")``, then ``.eval()``;
@@ -43,7 +44,8 @@ KIND_CLUE = "clue"
 
 
 class MissingFrameError(RuntimeError):
-    """No ``measurement_frame`` row for the requested frame_id - there is no encoder spec to obey."""
+    """No ``measurement_frame`` row for the requested frame_id - there is no encoder spec to
+    obey."""
 
 
 class EncoderContractError(RuntimeError):
@@ -62,7 +64,8 @@ class EncoderSpec:
 
 
 class Encoder(Protocol):
-    """Anything that maps texts to phi* vectors. Lets tests inject a stub instead of loading torch."""
+    """Anything that maps texts to phi* vectors. Lets tests inject a stub instead of loading
+    torch."""
 
     def encode(self, texts: list[str]) -> list[list[float]]: ...
 
@@ -179,7 +182,8 @@ def board_word_texts(session: Session, frame_id: str) -> list[str]:
 
 
 def clue_texts(session: Session, frame_id: str) -> list[str]:
-    """Distinct lowercased ``clue.clue_word`` for every clue played on a board sealed to ``frame_id``.
+    """Distinct lowercased ``clue.clue_word`` for every clue played on a board sealed to
+    ``frame_id``.
 
     ``clue`` carries no frame reference, so the frame is reached the long way round:
     clue -> turn -> game -> board -> measurement_frame_id.
@@ -219,10 +223,11 @@ def insert_embeddings(
     encoder: Encoder,
     batch_size: int = DEFAULT_BATCH_SIZE,
 ) -> tuple[int, int]:
-    """Encode ``texts`` and insert them as ``kind`` rows, skipping any (frame_id, text) already stored.
+    """Encode ``texts`` and insert them as ``kind`` rows, skipping any (frame_id, text) already
+    stored.
 
-    Returns ``(inserted, skipped)``. ``ON CONFLICT DO NOTHING ... RETURNING`` yields exactly the rows
-    actually written, so the counts need no follow-up SELECT.
+    Returns ``(inserted, skipped)``. ``ON CONFLICT DO NOTHING ... RETURNING`` yields exactly the
+    rows actually written, so the counts need no follow-up SELECT.
     """
     candidates = _dedupe([t.lower() for t in texts])
     inserted = 0
