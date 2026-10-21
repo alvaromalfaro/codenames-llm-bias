@@ -2,7 +2,7 @@ import pytest
 import json
 from unittest.mock import MagicMock, AsyncMock, patch
 from backend.app.core import llm_service
-from backend.app.core.llm_service import LLMService
+from backend.app.core.llm_service import GuesserView, LLMService
 from backend.app.paths import PROMPT_TEMPLATES_DIR
 from backend.app.core.llm import client as client_module
 from backend.app.core.llm.client import LLMClient
@@ -855,3 +855,20 @@ def test_every_template_file_is_loaded_by_its_key():
     )
     for key, name in llm_service.TEMPLATE_FILES.items():
         assert texts[key] == (PROMPT_TEMPLATES_DIR / name).read_text(encoding="utf-8")
+
+
+def test_a_play_request_and_its_measurement_see_the_same_game(game_state_guessing):
+    """Both are built from the guesser's one GuesserView: the clues its partner gave it, and only
+    those, and the words it may still touch."""
+    state = game_state_guessing
+    state.clue_history.insert(0, ClueEntry(clue="own", count=1, clue_giver=0, turn_number=0))
+    state.board.cards[0].revealed = True
+    service = LLMService()
+    play = service._build_guess_request(state, "m", player_id=0).messages[-1].content
+    measurement = service._build_measurement_request(state, "m", player_id=0).messages[-1].content
+
+    view = GuesserView.of(state, 0)
+    assert [clue.clue for clue in view.clues] == ["battle"]
+    assert state.board.cards[0].text not in view.words
+    for part in (view.previous_clues(), view.words_remaining()):
+        assert part in play and part in measurement

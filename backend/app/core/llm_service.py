@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, TypeVar
 
@@ -20,6 +21,7 @@ from backend.app.models.llm_schemas import (
     ConfidenceRankingJSONFormat,
 )
 from backend.app.models.game_schemas import (
+    ClueEntry,
     GameState,
     GamePhase,
     CardRole,
@@ -86,6 +88,41 @@ RESPONSE_FORMATS: dict[str, type[BaseModel]] = {
     "guess": GuessJSONFormat,
     "measurement": ConfidenceRankingJSONFormat,
 }
+
+
+@dataclass(frozen=True)
+class GuesserView:
+    """What a seat sees when it guesses, read once from the state: the clues its partner gave it
+    before this turn's, and the words it may still touch, in board order. A play request and the
+    measurement taken at the same instant are both built from it, so they see the same game.
+
+    The clue history is listed in two ways, the ones the prompts have always shown: changing either
+    changes what the models are sent.
+    """
+
+    clues: tuple[ClueEntry, ...]
+    words: tuple[str, ...]
+
+    @classmethod
+    def of(cls, game_state: GameState, seat: int) -> "GuesserView":
+        return cls(
+            clues=tuple(e for e in game_state.clue_history if e.clue_giver != seat),
+            words=tuple(c.text for c in game_state.board.cards if c.is_guessable_by(seat)),
+        )
+
+    def previous_clues(self) -> str:
+        """The clues received, as the normal-phase prompts list them."""
+        lines = [f"- Turn: {e.turn_number}, Clue: {e.clue}, Count: {e.count}" for e in self.clues]
+        return "\n".join(lines) or "No previous clues."
+
+    def clue_history(self) -> str:
+        """The clues received, as the sudden-death prompts list them."""
+        lines = [f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})" for e in self.clues]
+        return "\n".join(lines) or "No clues were given."
+
+    def words_remaining(self) -> str:
+        return "\n".join(f"- {word}" for word in self.words)
+
 
 _Format = TypeVar("_Format", bound=BaseModel)
 
@@ -611,30 +648,14 @@ class LLMService:
         turn_number = game_state.turn_number
         if game_state.current_clue is None:
             raise ValueError("Cannot build a guess request when there is no clue available.")
-        clue = game_state.current_clue.clue
-        count = game_state.current_clue.count
-        previous_clues_history = "\n".join(
-            [
-                f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: "
-                f"{clue_entry.count}"
-                for clue_entry in game_state.clue_history
-                if clue_entry.clue_giver != player_id
-            ]
-        )
-        words_remaining = "\n".join(
-            [f"- {card.text}" for card in game_state.board.cards if card.is_guessable_by(player_id)]
-        )
-
-        # Format the user prompt with the game state information
+        view = GuesserView.of(game_state, player_id)
         user_prompt = self._user_prompt_gg.format(
             turn_number=turn_number,
-            clue=clue,
-            count=count,
-            previous_clues_history=previous_clues_history
-            if previous_clues_history
-            else "No previous clues.",
+            clue=game_state.current_clue.clue,
+            count=game_state.current_clue.count,
+            previous_clues_history=view.previous_clues(),
             own_key=self._format_own_key(game_state, player_id),
-            words_remaining=words_remaining,
+            words_remaining=view.words_remaining(),
         )
 
         # Build the list of messages for the LLM request
@@ -663,28 +684,18 @@ class LLMService:
         receives full clue history and must identify all remaining agents from memory. It is not
         told how many are left: the rules never say it (§9), and a player cannot work it out from
         its own key side. It does get that key side, as in the standard guess prompt (see
-        _format_own_key). Seat-parameterized: it uses the SAME guessable-word predicate
-        (``card.is_guessable_by(player_id)``) as _build_measurement_sd_request, so it generalizes
-        to either seat in an LLM-vs-LLM run.
+        _format_own_key). Seat-parameterized: the clues and the words on offer come from the
+        seat's ``GuesserView``, as in _build_measurement_sd_request.
 
         :param game_state: The current state of the game (sudden death).
         :param model: The LLM model to use.
         :param player_id: The seat of the guesser (0 or 1).
         """
-        clue_history = "\n".join(
-            [
-                f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
-                for e in game_state.clue_history
-                if e.clue_giver != player_id
-            ]
-        )
-        words_remaining = "\n".join(
-            [f"- {card.text}" for card in game_state.board.cards if card.is_guessable_by(player_id)]
-        )
+        view = GuesserView.of(game_state, player_id)
         user_prompt = self._user_prompt_sd_gg.format(
-            clue_history=clue_history or "No clues were given.",
+            clue_history=view.clue_history(),
             own_key=self._format_own_key(game_state, player_id),
-            words_remaining=words_remaining,
+            words_remaining=view.words_remaining(),
         )
 
         messages = [LLMMessage(role="system", content=self._system_prompt_sd_gg)]
@@ -729,10 +740,10 @@ class LLMService:
         self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None
     ) -> LLMRequest:
         """
-        Builds the out-of-band measurement request for the standard guessing phase. It mirrors
-        _build_guess_request exactly for the public inputs the guesser sees - the current clue and
-        count, the previous-clue history, and the SAME guessable-word filter - so the measurement
-        observes the identical game state as the play-guess request. The clue-giver's intended
+        Builds the out-of-band measurement request for the standard guessing phase. It reads the
+        public inputs the guesser sees - the current clue and count, and the previous clues and the
+        words on offer from the same ``GuesserView`` - so the measurement observes the game state
+        the play-guess request does. The clue-giver's intended
         target set S is never read here (only ``current_clue.clue``/``.count`` and history
         clue/count), preserving the guardrail that S never reaches the guesser side. It also leaves
         out the guesser's own key side, which the play request carries: the measurement scores what
@@ -746,27 +757,12 @@ class LLMService:
         """
         if game_state.current_clue is None:
             raise ValueError("Cannot build a measurement request when there is no clue available.")
-        clue = game_state.current_clue.clue
-        count = game_state.current_clue.count
-        previous_clues_history = "\n".join(
-            [
-                f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: "
-                f"{clue_entry.count}"
-                for clue_entry in game_state.clue_history
-                if clue_entry.clue_giver != player_id
-            ]
-        )
-        words_remaining = "\n".join(
-            [f"- {card.text}" for card in game_state.board.cards if card.is_guessable_by(player_id)]
-        )
-
+        view = GuesserView.of(game_state, player_id)
         user_prompt = self._user_prompt_meas_gg.format(
-            clue=clue,
-            count=count,
-            previous_clues_history=previous_clues_history
-            if previous_clues_history
-            else "No previous clues.",
-            words_remaining=words_remaining,
+            clue=game_state.current_clue.clue,
+            count=game_state.current_clue.count,
+            previous_clues_history=view.previous_clues(),
+            words_remaining=view.words_remaining(),
         )
 
         messages = [
@@ -789,9 +785,8 @@ class LLMService:
         """
         Builds the out-of-band measurement request for the sudden-death phase. Mirrors
         _build_guess_sd_request: it does not say how many agents are left (§9), and it is
-        seat-parameterized, with the SAME guessable-word filter from that seat's perspective, so it
-        generalizes to either seat in an LLM-vs-LLM run. Like _build_measurement_request, it leaves
-        out the guesser's own key side.
+        seat-parameterized, from the same ``GuesserView`` of that seat. Like
+        _build_measurement_request, it leaves out the guesser's own key side.
 
         :param game_state: The current state of the game (sudden death).
         :param model: The LLM model to use.
@@ -799,19 +794,10 @@ class LLMService:
 
         :return: The LLMRequest for the sudden-death measurement call.
         """
-        clue_history = "\n".join(
-            [
-                f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
-                for e in game_state.clue_history
-                if e.clue_giver != player_id
-            ]
-        )
-        words_remaining = "\n".join(
-            [f"- {card.text}" for card in game_state.board.cards if card.is_guessable_by(player_id)]
-        )
+        view = GuesserView.of(game_state, player_id)
         user_prompt = self._user_prompt_meas_sd.format(
-            clue_history=clue_history or "No clues were given.",
-            words_remaining=words_remaining,
+            clue_history=view.clue_history(),
+            words_remaining=view.words_remaining(),
         )
 
         messages = [
