@@ -423,6 +423,8 @@ def _record_resume(run_id: str, note: str) -> None:
     from backend.app.db.session import session_scope
     with session_scope() as session:
         run = session.get(RunModel, run_id)
+        if run is None:
+            raise BatchPreconditionError(f"there is no run {run_id} to record the resume on.")
         run.notes = note if not run.notes else f"{run.notes}\n{note}"
 
 
@@ -474,7 +476,12 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> dict[str, str]:
     if missing:
         raise BatchPreconditionError(
             f"scheduled boards missing from the database after ingesting {bank_dir}: {missing}")
-    return stored
+    # The ingestion hashes every board of the bank it stores, or finds stored with its hash.
+    unhashed = sorted(board_id for board_id, digest in stored.items() if digest is None)
+    if unhashed:
+        raise BatchPreconditionError(
+            f"scheduled boards stored without their content hash: {unhashed}")
+    return {board_id: digest for board_id, digest in stored.items() if digest is not None}
 
 
 async def _wait_for_provider(probe: Callable[[], Awaitable[bool]], *, max_wait_s: float,
@@ -685,8 +692,7 @@ async def run_batch(
         pr = reports[p]
         board = board_by_id[cell.board_id]
         factory = (make_client_factory(board) if make_client_factory is not None
-                   else client_factory)
-        extra = {} if factory is None else {"client_factory": factory}
+                   else client_factory) or default_client_factory
         if cell.game_id in recorded:
             # An error played again (retry_errors): its row would collide with the game's.
             _forget_error_game(cell.game_id, run_id)
@@ -698,7 +704,7 @@ async def run_batch(
                 board=board, seat_specs=[cell.seat0_spec, cell.seat1_spec],
                 master_seed=master_seed, temperature=temperature, run_id=run_id,
                 game_index=cell.game_index, persist=persist, enforce_digests=False,
-                service=svc, **extra)
+                service=svc, client_factory=factory)
             if (result.status != "error" or result.error_code not in _TRANSIENT_PROVIDER_CODES
                     or replays >= provider_replays):
                 break
@@ -706,7 +712,7 @@ async def run_batch(
             # game again.
             logger.warning("game %s (game_index %s) lost to the provider (%s); waiting for it to "
                            "answer again", result.game_id, cell.game_index, result.error_code)
-            probe = functools.partial(_provider_healthy, cell, factory or default_client_factory)
+            probe = functools.partial(_provider_healthy, cell, factory)
             if not await _wait_for_provider(probe, max_wait_s=provider_wait_s):
                 aborted_reason = (
                     f"the provider did not answer for {provider_wait_s / 60:g} min after "

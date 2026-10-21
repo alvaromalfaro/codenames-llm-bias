@@ -73,7 +73,7 @@ class BoardLoader:
         :return: A dictionary mapping board categories to their corresponding Board objects.
         :rtype: dict[str, list[Board]]
         """
-        boards = {}
+        boards: dict[str, list[Board]] = {}
         for file_path in sorted(self.data_path.glob("*.json")):
             if file_path.name in BANK_SIDECARS:
                 continue

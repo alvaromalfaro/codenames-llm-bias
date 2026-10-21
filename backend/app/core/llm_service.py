@@ -2,6 +2,8 @@ import hashlib
 import json
 import logging
 from typing import TYPE_CHECKING, Optional
+
+from pydantic import BaseModel
 from backend.app import config
 from backend.app.paths import PROMPT_TEMPLATES_DIR
 from backend.app.core.llm.client import LLMClient
@@ -25,7 +27,7 @@ def text_digest(text: str) -> str:
 # (Ollama constrains the decoding with it, OpenRouter passes it on), so it is part of what the model
 # is asked, and the template fingerprint covers it. pydantic puts each format's docstring in the
 # schema as its description, so editing one changes the fingerprint too.
-RESPONSE_FORMATS = {
+RESPONSE_FORMATS: dict[str, type[BaseModel]] = {
     "clue": ClueJSONFormat,
     "guess": GuessJSONFormat,
     "measurement": ConfidenceRankingJSONFormat,
@@ -500,6 +502,8 @@ class LLMService:
         """
         # Extract relevant information from the game state
         turn_number = game_state.turn_number
+        if game_state.current_clue is None:
+            raise ValueError("Cannot build a guess request when there is no clue available.")
         clue = game_state.current_clue.clue
         count = game_state.current_clue.count
         previous_clues_history = "\n".join([
@@ -619,6 +623,8 @@ class LLMService:
 
         :return: The LLMRequest for the measurement call.
         """
+        if game_state.current_clue is None:
+            raise ValueError("Cannot build a measurement request when there is no clue available.")
         clue = game_state.current_clue.clue
         count = game_state.current_clue.count
         previous_clues_history = "\n".join([

@@ -2,7 +2,11 @@ import logging
 import os
 import time
 from pydantic import BaseModel
+from typing import cast
+
 from openai import AsyncOpenAI, AuthenticationError, RateLimitError, APITimeoutError, APIConnectionError
+from openai.types.chat import ChatCompletionMessageParam
+from openai.types.chat.completion_create_params import ResponseFormat
 from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
@@ -26,7 +30,8 @@ class LLMClientOpenRouter(LLMClient):
             api_key=os.environ.get("OPENROUTER_API_KEY", ""),
         )
 
-    async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
+    async def generate(self, request: LLMRequest,
+                       expected_format: type[BaseModel] | None = None) -> LLMResponse:
         """Generate a response, retrying retriable errors per ``self.max_retries``.
 
         A cut or malformed answer is drawn again with a new seed, and a transient failure re-sends
@@ -35,10 +40,13 @@ class LLMClientOpenRouter(LLMClient):
             lambda req: self._generate_once(req, expected_format), request,
             max_retries=self.max_retries, provider="openrouter", model=self.model_name)
 
-    async def _generate_once(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
-        messages = [{"role": m.role, "content": m.content}
+    async def _generate_once(self, request: LLMRequest,
+                             expected_format: type[BaseModel] | None = None) -> LLMResponse:
+        # LLMMessage.role is one of the roles the API takes (system, user, assistant).
+        messages = [cast(ChatCompletionMessageParam, {"role": m.role, "content": m.content})
                     for m in request.messages]
 
+        response_format: ResponseFormat
         if expected_format:
             response_format = {
                 "type": "json_schema",

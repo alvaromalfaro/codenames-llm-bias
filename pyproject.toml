@@ -53,6 +53,26 @@ ignore = ["E501"]
 # A migration that was applied stays as it was written, trailing spaces included.
 "backend/migrations/versions/*" = ["W291"]
 
+[tool.mypy]
+python_version = "3.12"
+files = ["backend", "scripts"]
+# backend/ and backend/app/ are namespace packages: modules are named from the repo root.
+explicit_package_bases = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+# These ship without type information.
+module = ["nltk.*", "sentence_transformers.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The analysis reads nullable columns (game_seat.model_ref, board.type) into records typed str, and
+# a fix there changes what the metrics do with a NULL. Its types are put right once it has tests of
+# its own; until then mypy reads it but reports nothing.
+module = ["backend.app.analysis.*", "scripts.diagnose_skill_by_board_type"]
+ignore_errors = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 # board_generator/ is a separate project with its own venv and test suite (it needs scipy, which

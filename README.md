@@ -191,7 +191,7 @@ before it mints its run, and skips whatever is already stored (see
 
 ```sh
 uv sync --frozen                     # the versions of uv.lock, on Python 3.12.13
-uv sync --frozen --extra dev         # + pytest
+uv sync --frozen --extra dev         # + pytest, ruff and mypy
 uv sync --frozen --extra embeddings  # + sentence-transformers 5.5.1, only for the embedding backfill
 ```
 
@@ -821,6 +821,8 @@ pgvector columns and the cascade rules do not always round-trip.
 uv sync --frozen --extra dev
 pytest                       # from the repo root; asyncio_mode = auto
 pytest tests/unit/test_engine.py -q
+ruff check .                 # lint, as pyproject.toml configures it (board_generator/ has its own)
+mypy                         # types of backend/ and scripts/
 ```
 
 The tests that need Postgres are marked `db`. A bare `pytest` gives them a database of their own

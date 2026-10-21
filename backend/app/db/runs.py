@@ -43,7 +43,8 @@ class RunSummary:
 
 def _summaries(session: Session, runs: Sequence[RunModel]) -> list[RunSummary]:
     """Summarise ``runs``, in their order, counting their games in one grouped query."""
-    counts: dict[str, dict[str, int]] = defaultdict(dict)
+    # game.run_id is nullable, though none of these games has it NULL (they are the runs').
+    counts: dict[str | None, dict[str, int]] = defaultdict(dict)
     if runs:
         rows = session.execute(
             select(GameModel.run_id, GameModel.game_status, func.count())

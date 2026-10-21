@@ -122,8 +122,12 @@ async def generate_with_retries(
 
 
 class LLMClient(ABC):
+    # The model this client serves; the service puts it in every request.
+    model_name: str
+
     @abstractmethod
-    async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
+    async def generate(self, request: LLMRequest,
+                       expected_format: type[BaseModel] | None = None) -> LLMResponse:
         """
         Abstract method to generate a response from the LLM based on the given request. This method
         must be implemented by any concrete subclass of LLMClient.

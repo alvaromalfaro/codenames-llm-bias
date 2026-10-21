@@ -44,6 +44,8 @@ def read_segmentations(xlsx: Path) -> tuple[dict[str, str], int]:
         for si in ET.fromstring(book.read("xl/sharedStrings.xml")).findall("m:si", _NS)
     ]
     sheets = ET.fromstring(book.read("xl/workbook.xml")).find("m:sheets", _NS)
+    if sheets is None:
+        raise ValueError(f"{xlsx}: xl/workbook.xml lists no sheets")
     segmentations: dict[str, str] = {}
     dropped = 0
     for index in range(1, len(sheets) + 1):
@@ -51,14 +53,20 @@ def read_segmentations(xlsx: Path) -> tuple[dict[str, str], int]:
         if path not in book.namelist():
             continue
         header = None
-        for row in ET.fromstring(book.read(path)).find("m:sheetData", _NS):
+        sheet_data = ET.fromstring(book.read(path)).find("m:sheetData", _NS)
+        if sheet_data is None:
+            raise ValueError(f"{xlsx}: {path} has no sheetData")
+        for row in sheet_data:
             cells = {}
             for cell in row:
                 value = cell.find("m:v", _NS)
                 if value is None:
                     continue
-                column = re.match(r"[A-Z]+", cell.get("r")).group()
-                cells[column] = shared[int(value.text)] if cell.get("t") == "s" else value.text
+                reference = re.match(r"[A-Z]+", cell.get("r", ""))
+                if reference is None:
+                    raise ValueError(f"{xlsx}: {path} has a cell without a reference")
+                text = value.text or ""
+                cells[reference.group()] = shared[int(text)] if cell.get("t") == "s" else text
             if header is None:
                 header = {name: column for column, name in cells.items()}
                 if "Word" not in header or "MorphoLexSegm" not in header:

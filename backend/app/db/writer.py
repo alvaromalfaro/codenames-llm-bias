@@ -14,7 +14,10 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from typing import Any, cast
+
 from sqlalchemy import delete, func, select
+from sqlalchemy.engine import CursorResult
 
 from backend.app.db.models import (
     LlmCallModel,
@@ -355,10 +358,11 @@ def delete_error_game(game_id: str, run_id: str) -> bool:
         failed).
     """
     with session_scope() as session:
-        deleted = session.execute(delete(GameModel).where(
+        # A DML statement's result is a CursorResult, which carries the rows it touched.
+        result = cast(CursorResult[Any], session.execute(delete(GameModel).where(
             GameModel.id == game_id, GameModel.run_id == run_id,
-            GameModel.game_status == "error")).rowcount
-    return bool(deleted)
+            GameModel.game_status == "error")))
+    return bool(result.rowcount)
 
 
 @dataclass(frozen=True)

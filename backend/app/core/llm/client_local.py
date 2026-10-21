@@ -4,7 +4,7 @@ import logging
 import os
 from json import JSONDecodeError
 import re
-from typing import Any
+from typing import Any, Literal
 import httpx
 from pydantic import BaseModel
 from backend.app import config
@@ -149,7 +149,8 @@ class LLMClientLocal(LLMClient):
                 self._thinking_capable = False
         return self._thinking_capable
 
-    async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
+    async def generate(self, request: LLMRequest,
+                       expected_format: type[BaseModel] | None = None) -> LLMResponse:
         """Generate a response, retrying retriable errors per ``self.max_retries``.
 
         A bad draw (empty, degenerate or cut) is drawn again with a new seed, and a transient
@@ -158,12 +159,14 @@ class LLMClientLocal(LLMClient):
             lambda req: self._generate_once(req, expected_format), request,
             max_retries=self.max_retries, provider="ollama", model=self.model_name)
 
-    async def _generate_once(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
+    async def _generate_once(self, request: LLMRequest,
+                             expected_format: type[BaseModel] | None = None) -> LLMResponse:
         messages = [
             {"role": message.role, "content": message.content} for message in request.messages
         ]
 
-        format = expected_format.model_json_schema() if expected_format else "json"
+        format: dict[str, Any] | Literal["json"] = (
+            expected_format.model_json_schema() if expected_format else "json")
 
         # Ollama ignores sampling settings unless they are passed explicitly via `options`. Always
         # forward the temperature; forward the seed ONLY when set (some ollama-client versions
