@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 from backend.app.models.llm_schemas import LLMMessage, TokenUsage, LLMRequest, LLMResponse, \
-    ClueProposal, GuessProposal, ClueJSONFormat
+    ClueProposal, GuessProposal, ClueJSONFormat, ProposalFormat, RankingFormat
 
 
 def test_llm_message_valid():
@@ -706,6 +706,26 @@ def test_clue_json_format_accepts_targets_and_field_order():
     # Round-trips through JSON preserving the target set.
     reparsed = ClueJSONFormat.model_validate_json(fmt.model_dump_json())
     assert reparsed.targets == ["CROWN", "THRONE"]
+
+
+@pytest.mark.parametrize("fmt", [ProposalFormat, RankingFormat])
+@pytest.mark.parametrize("entry", [
+    '{"word": "OCEAN", "confidence": 95}',      # a percentage
+    '{"word": "OCEAN", "confidence": -0.1}',
+    '{"word": "OCEAN", "confidence": NaN}',     # json.loads and pydantic both read NaN
+    '{"word": "", "confidence": 0.5}',
+])
+def test_a_proposed_or_ranked_word_outside_the_limits_fails_its_format(fmt, entry):
+    with pytest.raises(ValidationError):
+        fmt.model_validate_json(entry)
+
+
+@pytest.mark.parametrize("fmt", [ProposalFormat, RankingFormat])
+def test_the_limits_of_a_proposed_or_ranked_word_are_in_the_schema_sent(fmt):
+    properties = fmt.model_json_schema()["properties"]
+    assert properties["word"]["minLength"] == 1
+    assert (properties["confidence"]["minimum"], properties["confidence"]["maximum"]) == (0, 1)
+    assert fmt.model_validate_json('{"word": "OCEAN", "confidence": 1}').confidence == 1.0
 
 
 def test_clue_json_format_targets_default_empty():

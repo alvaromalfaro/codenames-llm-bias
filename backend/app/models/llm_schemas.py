@@ -295,12 +295,19 @@ class ProposalFormat(BaseModel):
     when it is expected to return a guess proposal in JSON format.
 
     The fields are as follows:
-        - word: A string containing the card word proposed by the LLM for the guess.
-        - confidence: A float representing the confidence score for the proposed card word. This 
+        - word: A string containing the card word proposed by the LLM for the guess. It must not be
+            empty.
+        - confidence: A float representing the confidence score for the proposed card word. This
             must be between 0 and 1.
+
+    Both limits are part of the JSON schema the provider is sent, and of the client's validation of
+    the answer: an answer outside them (a confidence written as a percentage, an empty word) is a
+    malformed draw, drawn again (``LLMMalformedResponseError``). Ollama's constrained decoding
+    (0.40.2) holds the model to the word's limit but not to the number's, so the validation is what
+    catches a confidence of 95. A word of blanks passes both and is caught by ``degenerate_reason``.
     """
-    word: str
-    confidence: float
+    word: str = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class GuessJSONFormat(BaseModel):
@@ -329,11 +336,15 @@ class RankingFormat(BaseModel):
     ``ProposalFormat`` but belongs to the out-of-band measurement call, not to game play.
 
     The fields are as follows:
-        - word: The exact unrevealed board word being scored.
-        - confidence: The confidence score for that word (clamped to [0, 1] when parsed).
+        - word: The exact unrevealed board word being scored. It must not be empty.
+        - confidence: The confidence score for that word, between 0 and 1.
+
+    The limits work as in ``ProposalFormat``: an answer outside them is drawn again, so a confidence
+    written as a percentage is never clamped into a score it was not. A word of blanks is skipped
+    when parsed, like the rest of a ranking's malformations.
     """
-    word: str
-    confidence: float
+    word: str = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
 
 
 class ConfidenceRankingJSONFormat(BaseModel):

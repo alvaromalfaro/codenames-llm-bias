@@ -945,6 +945,52 @@ async def test_degenerate_not_retried_by_default(llm_request_cg):
         assert mock_chat.call_count == 1
 
 
+@pytest.mark.asyncio
+async def test_a_blank_proposed_word_is_degenerate_and_drawn_again(llm_request_cg):
+    """A word of blanks passes the schema's minLength (it is how a model constrained to it writes an
+    empty word) but cannot build a GuessProposal: drawn again, as a degenerate draw."""
+    blank = json.dumps({"reasoning": "r", "stop_reason": "done",
+                        "proposals": [{"word": "OCEAN", "confidence": 0.9},
+                                      {"word": " ", "confidence": 0.5}]})
+    with _patch_ollama() as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = [_mock_empty_ollama_response(blank),
+                                 _mock_empty_ollama_response(_VALID_GUESS_JSON)]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        result = await client.generate(llm_request_cg, expected_format=GuessJSONFormat)
+
+    assert mock_chat.call_count == 2
+    assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 1
+
+
+@pytest.mark.parametrize("fmt, bad", [
+    (GuessJSONFormat, {"reasoning": "r", "stop_reason": "done",
+                       "proposals": [{"word": "OCEAN", "confidence": 95}]}),
+    (ConfidenceRankingJSONFormat, {"reasoning": "r",
+                                   "rankings": [{"word": "OCEAN", "confidence": 90}]}),
+])
+@pytest.mark.asyncio
+async def test_a_confidence_out_of_range_is_malformed_and_drawn_again(llm_request_cg, fmt, bad):
+    """A confidence written as a percentage fails the format (Ollama's decoding does not hold the
+    model to a number's limits): drawn again with a new seed, in play and in measurement alike,
+    instead of ending the game or being clamped into another score."""
+    good = {GuessJSONFormat: _VALID_GUESS_JSON,
+            ConfidenceRankingJSONFormat: json.dumps(
+                {"reasoning": "r", "rankings": [{"word": "OCEAN", "confidence": 0.9}]})}[fmt]
+    with _patch_ollama() as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.side_effect = [_mock_empty_ollama_response(json.dumps(bad)),
+                                 _mock_empty_ollama_response(good)]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=3)
+
+        result = await client.generate(llm_request_cg, expected_format=fmt)
+
+    assert mock_chat.call_count == 2
+    assert result.raw_payload[client_module.MALFORMED_RESAMPLE_KEY] == 1
+    assert json.loads(result.text) == json.loads(good)
+
+
 @pytest.mark.parametrize("bad_clue,label", [
     ({"reasoning": "r", "clue": "   ", "count": 2, "targets": []}, "blank clue"),
     ({"reasoning": "r", "clue": "battle", "count": 0, "targets": []}, "count below 1"),

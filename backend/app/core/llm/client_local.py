@@ -76,10 +76,14 @@ def degenerate_reason(parsed: BaseModel) -> str | None:
     """
     data = parsed.model_dump()
 
-    # Guess path: GuessProposal.proposals / .confidence require at least one item.
+    # Guess path: GuessProposal.proposals / .confidence require at least one item, and no blank
+    # word (the schema's minLength lets a word of blanks through).
     proposals = data.get("proposals")
     if isinstance(proposals, list) and not proposals:
         return "empty proposals list"
+    if isinstance(proposals, list) and any(
+            isinstance(p, dict) and not str(p.get("word") or "").strip() for p in proposals):
+        return "blank proposed word"
 
     # Clue path: ClueProposal rejects a blank clue and requires count >= 1.
     if "clue" in data and not str(data.get("clue") or "").strip():

@@ -659,8 +659,10 @@ class LLMService:
     def _build_confidence_ranking(self, response: LLMResponse) -> ConfidenceRanking:
         """
         Parses an LLMResponse into a ConfidenceRanking. Permissive and record-only: entries with an
-        empty word are skipped, confidence is clamped to [0, 1], and a response that omits some cards
-        simply yields fewer entries (the missing-card malformation is derivable, so no flag fields).
+        empty word are skipped, and a response that omits some cards simply yields fewer entries
+        (the missing-card malformation is derivable, so no flag fields). A confidence outside [0, 1]
+        does not reach here from a client, which draws such an answer again (``RankingFormat``); it
+        is clamped only as a guard.
 
         :param response: The response from the LLM containing the ranking.
 
