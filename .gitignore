@@ -7,7 +7,6 @@ __pycache__/
 # virtual environments
 venv/
 .venv/
-uv.lock
 *.egg-info
 
 # IDE and editor files

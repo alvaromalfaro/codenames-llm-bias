@@ -126,8 +126,9 @@ codenames-llm-bias/
   reserves one GPU device (see the quick start). It needs the NVIDIA Container Toolkit on Linux, or
   just the NVIDIA Windows driver with Docker Desktop. Alternatively, point `OLLAMA_HOST` at an
   external daemon.
-* **Python 3.12+** on the host for the batch and analysis CLIs. [`uv`](https://docs.astral.sh/uv/)
-  is recommended; plain `pip install -e .` works too.
+* **Python 3.12** on the host for the batch and analysis CLIs, the one the `app` image runs
+  (`.python-version` names the exact release, 3.12.13). [`uv`](https://docs.astral.sh/uv/) installs
+  it and the dependencies at the versions of `uv.lock`, which the image installs too.
 * Disk: the four default models are ~35 GB of weights under `docker_volumes/ollama_data/`.
 * An **OpenRouter API key** only if you enable API-hosted seats (the shipped roster is all-local).
 
@@ -189,9 +190,9 @@ before it mints its run, and skips whatever is already stored (see
 **Host-side Python environment**
 
 ```sh
-uv sync                     # or: python -m venv .venv && .venv/bin/pip install -e .
-uv sync --extra dev         # + pytest
-uv sync --extra embeddings  # + sentence-transformers 5.5.1, only for the embedding backfill
+uv sync --frozen                     # the versions of uv.lock, on Python 3.12.13
+uv sync --frozen --extra dev         # + pytest
+uv sync --frozen --extra embeddings  # + sentence-transformers 5.5.1, only for the embedding backfill
 ```
 
 ---
@@ -782,7 +783,7 @@ pgvector columns and the cascade rules do not always round-trip.
 ## Development
 
 ```sh
-uv sync --extra dev
+uv sync --frozen --extra dev
 pytest                       # from the repo root; asyncio_mode = auto
 pytest tests/unit/test_engine.py -q
 ```
@@ -799,6 +800,10 @@ DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localh
 ```
 
 Never point them at the experiment database.
+
+**Dependencies** are pinned by `uv.lock`, which is versioned: the local venv and the `app` image
+(`uv export --frozen` in its Dockerfile) install the same versions. Change one with
+`uv add <package>==<version>` or `uv lock --upgrade-package <package>`, and commit the lock.
 
 **Prompt templates** live in `data/prompt_templates/` — system, user and one-shot templates for the
 clue giver and guesser, plus the sudden-death and out-of-band **measurement** variants. Editing one
