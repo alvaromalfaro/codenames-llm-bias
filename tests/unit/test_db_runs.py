@@ -22,7 +22,9 @@ def test_an_id_that_is_not_a_run_id_finds_no_run(monkeypatch) -> None:
 
 @pytest.fixture
 def two_runs():
-    """Two runs on one board: the first with 2 completed games and 1 error, the second with none."""
+    """Two runs on one board: the first with 2 completed games and 1 error, the second with none.
+    Each run is stored in a transaction of its own: created_at is the transaction's now(), and
+    runs created together would tie."""
     from backend.app.db.models import BoardModel, GameModel, RunModel
     from backend.app.db.session import session_scope
     from backend.app.db.writer import delete_run
@@ -37,11 +39,11 @@ def two_runs():
                        code_version="abc1234", prompt_template_version="tpl",
                        model_registry_snapshot=snapshot, notes="a note"))
         s.flush()
-        s.add(RunModel(id=run_ids[1], temperature=0.4))
-        s.flush()
         for status in ("completed", "completed", "error"):
             s.add(GameModel(id=str(uuid.uuid4()), run_id=run_ids[0], board_id=board_id,
                             game_status=status))
+    with session_scope() as s:
+        s.add(RunModel(id=run_ids[1], temperature=0.4))
     yield run_ids, snapshot
     for run_id in run_ids:
         delete_run(run_id)

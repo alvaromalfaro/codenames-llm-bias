@@ -533,12 +533,10 @@ async def test_dispatch_full_game_persists_two_seats():
         assert (by_seat[0].provider, by_seat[0].model_ref) == ("ollama", "m0")
         assert (by_seat[1].provider, by_seat[1].model_ref) == (
             "openrouter", "m1")
-        # Runner seat sampling: constant temperature on both seats; requested_seed NULL on both
-        # (the runner seeds per (seat, turn), so llm_call.requested_seed is the source of truth).
+        # Runner seat sampling: constant temperature on both seats. The seat records no seed: the
+        # runner seeds per (seat, turn), and each call's is llm_call.requested_seed.
         assert float(by_seat[0].requested_temperature) == 0.4
         assert float(by_seat[1].requested_temperature) == 0.4
-        assert by_seat[0].requested_seed is None
-        assert by_seat[1].requested_seed is None
 
         turns = session.execute(select(TurnModel).where(
             TurnModel.game_id == res.game_id)).scalars().all()
