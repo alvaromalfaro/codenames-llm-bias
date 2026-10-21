@@ -109,6 +109,9 @@ class GameRecorder:
         # Game outcome, set at flush time from engine.state.
         self.result: Optional[str] = None
         self.timer_tokens_final: Optional[int] = None
+        # Why the game failed, set by the runner when it ends in an error; None otherwise.
+        self.error_code: Optional[str] = None
+        self.error_message: Optional[str] = None
         # One-use latch: a second flush of the same game is a no-op.
         self.flushed = False
 
@@ -236,3 +239,9 @@ class GameRecorder:
         """Capture the game-level result and final timer bank (read from engine.state at flush)."""
         self.result = result
         self.timer_tokens_final = timer_tokens_final
+
+    def set_error(self, code: Optional[str], message: str) -> None:
+        """Capture why the game ended in an error: the ``LLMError`` code, or None for any other
+        error, and the error's text."""
+        self.error_code = code
+        self.error_message = message

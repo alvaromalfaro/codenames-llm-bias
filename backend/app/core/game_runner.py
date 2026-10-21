@@ -475,10 +475,11 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
         # Flush the partial game as status='error', then return an error result.
         logger.error("run_single_game failed: game_id=%s run_id=%s error=%s",
                      game_id, run_id, exc, exc_info=True)
-        _error_flush(engine, recorder, game_id, persist=persist)
+        error_code = exc.code if isinstance(exc, LLMError) else None
+        _error_flush(engine, recorder, game_id, exc, error_code, persist=persist)
         return GameRunResult(game_id=game_id, run_id=run_id, seed_game=seed_game,
                              status="error", result=engine.state.result, error=str(exc),
-                             error_code=exc.code if isinstance(exc, LLMError) else None)
+                             error_code=error_code)
     finally:
         for client in clients:
             try:
@@ -488,14 +489,17 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
                              game_id, exc_info=True)
 
 
-def _error_flush(engine: CodenamesDuetEngine, recorder: GameRecorder, game_id: str, *,
-                 persist: bool) -> None:
-    """Hardened partial-game flush as status='error'. Never raises: if the error-flush itself fails
-    it is logged richly so it cannot mask the original error that triggered it."""
+def _error_flush(engine: CodenamesDuetEngine, recorder: GameRecorder, game_id: str,
+                 exc: Exception, error_code: Optional[str], *, persist: bool) -> None:
+    """Hardened partial-game flush as status='error', with why the game failed (``exc``, and its
+    ``LLMError`` code or None). Never raises: if the error-flush itself fails it is logged richly so
+    it cannot mask the original error that triggered it."""
     if recorder.flushed:
         return
     try:
         recorder.set_outcome(engine.state.result, engine.state.timer_tokens)
+        # The type names an error whose text alone does not (a KeyError's is just the key).
+        recorder.set_error(error_code, f"{type(exc).__name__}: {exc}")
         if persist:
             writer.persist_game(recorder, status="error")
     except Exception:

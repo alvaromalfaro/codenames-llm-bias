@@ -35,6 +35,17 @@ from backend.app.db.session import session_scope
 
 logger = logging.getLogger(__name__)
 
+# game.error_message keeps at most this many characters of the error's text; the game log keeps it
+# whole, with its traceback.
+ERROR_MESSAGE_MAX_CHARS = 2000
+
+
+def _truncated(text: str | None, limit: int) -> str | None:
+    """``text`` cut to ``limit`` characters, ending in an ellipsis when it was cut."""
+    if text is None or len(text) <= limit:
+        return text
+    return text[:limit - 1] + "…"
+
 
 def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int) -> LlmCallModel:
     """Map an in-memory ``LLMCallRecord`` to an ``llm_call`` row (rendered_prompt -> JSONB)."""
@@ -304,6 +315,8 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
             # from it (under Docker Desktop, it is a VM's).
             started_at=recorder.started_at,
             completed_at=datetime.now(timezone.utc),
+            error_code=recorder.error_code,
+            error_message=_truncated(recorder.error_message, ERROR_MESSAGE_MAX_CHARS),
         )
         session.add(game)
         session.flush()

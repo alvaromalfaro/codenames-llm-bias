@@ -408,6 +408,35 @@ async def test_transient_failure_records_no_telemetry(monkeypatch):
     assert captured["recorder"].turns == []
 
 
+def _guess_times_out():
+    raise LLMTimeoutError()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("guess, code, message", [
+    (_guess_times_out, "timeout", "LLMTimeoutError: LLMError("),
+    # Off the board: the turn has no guess, which is no LLM error, so it has no code.
+    (lambda: ["NONWORD"], None, "at least one guess"),
+])
+async def test_a_failed_game_is_flushed_with_why_it_failed(monkeypatch, guess, code, message):
+    monkeypatch.setattr(game_runner, "_db_enabled", lambda: True)
+    captured = {}
+    monkeypatch.setattr(game_runner.writer, "persist_game",
+                        lambda rec, status: captured.update(recorder=rec, status=status))
+    clients = {0: _make_client("m0", guess), 1: _make_client("m1", guess)}
+
+    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
+                                temperature=0.4, run_id="fixed-run-id",
+                                client_factory=lambda i, spec: clients[i])
+
+    recorder = captured["recorder"]
+    assert res.status == captured["status"] == "error"
+    assert res.error_code == recorder.error_code == code
+    assert message in recorder.error_message
+    # The type comes first, so an error whose text says little still says what it was.
+    assert recorder.error_message.split(":")[0].endswith("Error")
+
+
 @pytest.mark.asyncio
 async def test_deterministic_error_not_retried(monkeypatch):
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)

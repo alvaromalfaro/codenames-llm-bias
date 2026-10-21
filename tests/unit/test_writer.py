@@ -489,6 +489,31 @@ def test_persist_writes_when_the_game_started_and_ended():
         assert rec.started_at + timedelta(minutes=5) <= game.completed_at <= written
 
 
+def test_persist_writes_why_a_game_failed_and_cuts_a_long_message():
+    from backend.app.db import writer
+    from backend.app.db.models import GameModel
+    from backend.app.db.session import session_scope
+
+    with session_scope() as session:
+        board_id, _ = _insert_board(session)
+
+    failed, completed = _recorder(board_id), _recorder(board_id)
+    failed.set_outcome(None, 9)
+    failed.set_error("timeout", "LLMTimeoutError: " + "x" * 3 * writer.ERROR_MESSAGE_MAX_CHARS)
+    writer.persist_game(failed, status="error")
+    completed.set_outcome("victory", 5)
+    writer.persist_game(completed, status="completed")
+
+    with session_scope() as session:
+        game = session.get(GameModel, failed.game_id)
+        assert game.game_status == "error" and game.error_code == "timeout"
+        assert len(game.error_message) == writer.ERROR_MESSAGE_MAX_CHARS
+        assert game.error_message.startswith("LLMTimeoutError: xxx")
+        assert game.error_message.endswith("…")
+        game = session.get(GameModel, completed.game_id)
+        assert game.error_code is None and game.error_message is None
+
+
 def test_persist_raises_on_missing_board():
     from backend.app.db import writer
 

@@ -217,7 +217,9 @@ class GameModel(Base):
 
     Links to its board (which carries the probe/control type and the measurement frame) and records
     the per-game derived seed and start player. error_code and error_message say why a game
-    recorded as an error failed; both are NULL for a completed game.
+    recorded as an error failed; both are NULL for a completed game. error_code is the code of the
+    LLM error that ended it (models/llm_errors.py), NULL for any other error; error_message is the
+    error's type and text, cut to writer.ERROR_MESSAGE_MAX_CHARS.
 
     started_at is when play began and completed_at when the game was written, both taken by the
     process that played it. In games recorded before the start was kept (the run of exp_data.sql

@@ -281,3 +281,11 @@ def test_set_outcome_and_flushed_latch():
     assert rec.flushed is False
     rec.flushed = True
     assert rec.flushed is True
+
+
+def test_set_error_keeps_why_the_game_failed():
+    rec = _recorder()
+    assert rec.error_code is None and rec.error_message is None
+    rec.set_error("timeout", "LLMTimeoutError: the request timed out")
+    assert rec.error_code == "timeout"
+    assert rec.error_message == "LLMTimeoutError: the request timed out"
