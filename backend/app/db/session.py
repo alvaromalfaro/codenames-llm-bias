@@ -29,7 +29,7 @@ def _database_url() -> str:
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
     if url.startswith("postgresql://"):
-        url = "postgresql+psycopg2://" + url[len("postgresql://"):]
+        url = "postgresql+psycopg2://" + url[len("postgresql://") :]
     return url
 
 
@@ -45,9 +45,7 @@ def get_sessionmaker() -> sessionmaker[Session]:
     """Return a sessionmaker bound to the engine."""
     global _SessionLocal
     if _SessionLocal is None:
-        _SessionLocal = sessionmaker(
-            bind=get_engine(), autoflush=False, expire_on_commit=False
-        )
+        _SessionLocal = sessionmaker(bind=get_engine(), autoflush=False, expire_on_commit=False)
     return _SessionLocal
 
 

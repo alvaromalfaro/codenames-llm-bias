@@ -200,8 +200,7 @@ def cluster_bootstrap(
     index = np.arange(size)
 
     cell_samples: dict[str, list[float]] = {name: [] for name in point_cells}
-    contrast_samples: dict[str, list[float]] = {
-        spec[0]: [] for spec in contrasts}
+    contrast_samples: dict[str, list[float]] = {spec[0]: [] for spec in contrasts}
 
     for _ in range(n_replicates):
         drawn = rng.choice(index, size=size, replace=True)
@@ -219,8 +218,7 @@ def cluster_bootstrap(
             value_b = replicate.get(cell_b)
             # Both terms come from THIS draw, so the difference is paired.
             if _is_usable(value_a) and _is_usable(value_b):
-                contrast_samples[name].append(
-                    float(value_a) - float(value_b))  # type: ignore[arg-type]
+                contrast_samples[name].append(float(value_a) - float(value_b))  # type: ignore[arg-type]
 
     cells: dict[str, CellEstimate] = {}
     for name, values in cell_samples.items():
@@ -231,8 +229,7 @@ def cluster_bootstrap(
             max_dropped_fraction=max_dropped_fraction,
         )
         raw_point = point_cells.get(name)
-        point = float(raw_point) if raw_point is not None and math.isfinite(
-            raw_point) else None
+        point = float(raw_point) if raw_point is not None and math.isfinite(raw_point) else None
         cells[name] = CellEstimate(
             name=name,
             point=point,

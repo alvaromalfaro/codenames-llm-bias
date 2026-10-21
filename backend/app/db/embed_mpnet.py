@@ -80,8 +80,7 @@ def load_encoder_spec(session: Session, frame_id: str) -> EncoderSpec:
         {"frame_id": frame_id},
     ).one_or_none()
     if row is None:
-        raise MissingFrameError(
-            f"no measurement_frame row for frame_id {frame_id!r}")
+        raise MissingFrameError(f"no measurement_frame row for frame_id {frame_id!r}")
     return EncoderSpec(
         frame_id=frame_id,
         name=row.encoder_name,
@@ -99,8 +98,7 @@ class SentenceTransformerEncoder:
         from sentence_transformers import SentenceTransformer
 
         self.spec = spec
-        self._model = SentenceTransformer(
-            spec.name, revision=spec.revision, device="cpu")
+        self._model = SentenceTransformer(spec.name, revision=spec.revision, device="cpu")
         self._model.eval()
         _assert_contract(self._model, spec)
 
@@ -229,14 +227,16 @@ def insert_embeddings(
     candidates = _dedupe([t.lower() for t in texts])
     inserted = 0
     for start in range(0, len(candidates), batch_size):
-        chunk = candidates[start:start + batch_size]
+        chunk = candidates[start : start + batch_size]
         vectors = encoder.encode(chunk)
         stmt = (
             pg_insert(EmbeddingMpnetModel)
-            .values([
-                {"frame_id": frame_id, "text": t, "kind": kind, "embedding": v}
-                for t, v in zip(chunk, vectors, strict=True)
-            ])
+            .values(
+                [
+                    {"frame_id": frame_id, "text": t, "kind": kind, "embedding": v}
+                    for t, v in zip(chunk, vectors, strict=True)
+                ]
+            )
             .on_conflict_do_nothing(constraint="uq_embedding_mpnet_frame_text")
             .returning(EmbeddingMpnetModel.id)
         )
@@ -261,9 +261,10 @@ def backfill_frame(
         (KIND_CLUE, clue_texts(session, frame_id)),
     ):
         inserted, skipped = insert_embeddings(
-            session, frame_id, texts, kind, encoder, batch_size=batch_size)
-        report[kind] = {"candidates": len(
-            texts), "inserted": inserted, "skipped": skipped}
-        logger.info("phase %s: candidates=%d inserted=%d skipped=%d",
-                    kind, len(texts), inserted, skipped)
+            session, frame_id, texts, kind, encoder, batch_size=batch_size
+        )
+        report[kind] = {"candidates": len(texts), "inserted": inserted, "skipped": skipped}
+        logger.info(
+            "phase %s: candidates=%d inserted=%d skipped=%d", kind, len(texts), inserted, skipped
+        )
     return report

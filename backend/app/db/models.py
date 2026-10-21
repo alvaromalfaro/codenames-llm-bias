@@ -49,20 +49,17 @@ class RunModel(Base):
     game.run_id is nullable: a game written outside a batch belongs to no run. The removed web UI
     wrote its human-vs-LLM games that way.
     """
+
     __tablename__ = "run"
 
     id: Mapped[str] = mapped_column(
         postgresql.UUID(as_uuid=False), primary_key=True, default=_uuid_str
     )
-    master_seed: Mapped[Decimal | None] = mapped_column(
-        Numeric(20, 0), nullable=True)
+    master_seed: Mapped[Decimal | None] = mapped_column(Numeric(20, 0), nullable=True)
     temperature: Mapped[float] = mapped_column(Double, nullable=False)
     code_version: Mapped[str | None] = mapped_column(Text, nullable=True)
-    prompt_template_version: Mapped[str |
-                                    None] = mapped_column(Text, nullable=True)
-    model_registry_snapshot: Mapped[dict | None] = mapped_column(
-        postgresql.JSONB, nullable=True
-    )
+    prompt_template_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    model_registry_snapshot: Mapped[dict | None] = mapped_column(postgresql.JSONB, nullable=True)
     stimulus_manifest: Mapped[dict | None] = mapped_column(postgresql.JSONB, nullable=True)
     environment_snapshot: Mapped[dict | None] = mapped_column(postgresql.JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
@@ -80,6 +77,7 @@ class MeasurementFrameModel(Base):
     the measure is changing the experiment. Emitted by the board generator as a sidecar and consumed
     here; the platform never originates it.
     """
+
     __tablename__ = "measurement_frame"
 
     frame_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -87,10 +85,8 @@ class MeasurementFrameModel(Base):
     encoder_revision: Mapped[str] = mapped_column(Text, nullable=False)
     encoder_pooling: Mapped[str] = mapped_column(Text, nullable=False)
     encoder_normalize: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    gender_axis: Mapped[list[float]] = mapped_column(
-        Vector(768), nullable=False)
-    axis_construction: Mapped[dict] = mapped_column(
-        postgresql.JSONB, nullable=False)
+    gender_axis: Mapped[list[float]] = mapped_column(Vector(768), nullable=False)
+    axis_construction: Mapped[dict] = mapped_column(postgresql.JSONB, nullable=False)
     generator_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -105,6 +101,7 @@ class ExtractionRecipeModel(Base):
     two different recipes yield incomparable SEAT/ML-EAT results, so the recipe must gate any
     intrinsic-bias computation.
     """
+
     __tablename__ = "extraction_recipe"
 
     recipe_id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -129,12 +126,9 @@ class BoardModel(Base):
     measurement_frame_id is nullable for now. content_sha256 is the SHA-256 of the board artifact's
     canonical JSON (sorted keys, compact separators).
     """
+
     __tablename__ = "board"
-    __table_args__ = (
-        CheckConstraint(
-            "type IN ('probe','control')", name="ck_board_type"
-        ),
-    )
+    __table_args__ = (CheckConstraint("type IN ('probe','control')", name="ck_board_type"),)
 
     board_id: Mapped[str] = mapped_column(Text, primary_key=True)
     measurement_frame_id: Mapped[str | None] = mapped_column(
@@ -146,12 +140,9 @@ class BoardModel(Base):
     seed: Mapped[Decimal | None] = mapped_column(Numeric(20, 0), nullable=True)
     grid_rows: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     grid_cols: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
-    arbiters: Mapped[dict | None] = mapped_column(
-        postgresql.JSONB, nullable=True)
-    dilemma: Mapped[dict | None] = mapped_column(
-        postgresql.JSONB, nullable=True)
-    keycard_audit: Mapped[dict | None] = mapped_column(
-        postgresql.JSONB, nullable=True)
+    arbiters: Mapped[dict | None] = mapped_column(postgresql.JSONB, nullable=True)
+    dilemma: Mapped[dict | None] = mapped_column(postgresql.JSONB, nullable=True)
+    keycard_audit: Mapped[dict | None] = mapped_column(postgresql.JSONB, nullable=True)
     content_sha256: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
@@ -168,11 +159,10 @@ class WordCardModel(Base):
     instead of nested JSON, because they are the difficulty confounders the analysis must control
     for: flattened, that adjustment is a plain join.
     """
+
     __tablename__ = "word_card"
     __table_args__ = (
-        CheckConstraint(
-            "card_id BETWEEN 0 AND 24", name="ck_word_card_card_id_range"
-        ),
+        CheckConstraint("card_id BETWEEN 0 AND 24", name="ck_word_card_card_id_range"),
         CheckConstraint(
             "llm_perspective_role IN ('agent','assassin','civilian')",
             name="ck_word_card_llm_role",
@@ -181,17 +171,12 @@ class WordCardModel(Base):
             "human_perspective_role IN ('agent','assassin','civilian')",
             name="ck_word_card_human_role",
         ),
-        CheckConstraint(
-            "category IN ('male','female','neutral')", name="ck_word_card_category"
-        ),
-        UniqueConstraint("board_id", "card_id",
-                         name="uq_word_card_board_card"),
+        CheckConstraint("category IN ('male','female','neutral')", name="ck_word_card_category"),
+        UniqueConstraint("board_id", "card_id", name="uq_word_card_board_card"),
         UniqueConstraint("board_id", "text", name="uq_word_card_board_text"),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     board_id: Mapped[str] = mapped_column(
         Text, ForeignKey("board.board_id", ondelete="CASCADE"), nullable=False
     )
@@ -201,13 +186,10 @@ class WordCardModel(Base):
     human_perspective_role: Mapped[str] = mapped_column(Text, nullable=False)
     category: Mapped[str | None] = mapped_column(Text, nullable=True)
     source: Mapped[str | None] = mapped_column(Text, nullable=True)
-    weat_set: Mapped[list[str] | None] = mapped_column(
-        postgresql.ARRAY(Text), nullable=True
-    )
+    weat_set: Mapped[list[str] | None] = mapped_column(postgresql.ARRAY(Text), nullable=True)
     subtlex_freq: Mapped[float | None] = mapped_column(Double, nullable=True)
     length: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    wordnet_polysemy: Mapped[int | None] = mapped_column(
-        Integer, nullable=True)
+    wordnet_polysemy: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class GameModel(Base):
@@ -228,6 +210,7 @@ class GameModel(Base):
     process that played it. In games recorded before the start was kept (the run of exp_data.dump
     among them), started_at is the time of the insert, like completed_at.
     """
+
     __tablename__ = "game"
     __table_args__ = (
         CheckConstraint("start_player IN (0,1)", name="ck_game_start_player"),
@@ -247,25 +230,18 @@ class GameModel(Base):
         ForeignKey("run.id", ondelete="CASCADE"),
         nullable=True,
     )
-    board_id: Mapped[str] = mapped_column(
-        Text, ForeignKey("board.board_id"), nullable=False
-    )
-    derived_seed: Mapped[Decimal | None] = mapped_column(
-        Numeric(20, 0), nullable=True)
-    start_player: Mapped[int | None] = mapped_column(
-        SmallInteger, nullable=True)
+    board_id: Mapped[str] = mapped_column(Text, ForeignKey("board.board_id"), nullable=False)
+    derived_seed: Mapped[Decimal | None] = mapped_column(Numeric(20, 0), nullable=True)
+    start_player: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     game_status: Mapped[str] = mapped_column(
         Text, nullable=False, server_default=sa_text("'in_progress'")
     )
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
-    timer_tokens_final: Mapped[int | None] = mapped_column(
-        SmallInteger, nullable=True)
+    timer_tokens_final: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -279,19 +255,17 @@ class GameSeatModel(Base):
     requested_temperature is constant per game, so it is a seat's. The seed is not: the runner
     derives one per (seat, turn), and llm_call.requested_seed holds the value of each call.
     """
+
     __tablename__ = "game_seat"
     __table_args__ = (
         CheckConstraint("seat_index IN (0,1)", name="ck_game_seat_seat_index"),
         CheckConstraint(
             "provider IN ('ollama','openrouter','human')", name="ck_game_seat_provider"
         ),
-        UniqueConstraint("game_id", "seat_index",
-                         name="uq_game_seat_game_seat"),
+        UniqueConstraint("game_id", "seat_index", name="uq_game_seat_game_seat"),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     game_id: Mapped[str] = mapped_column(
         postgresql.UUID(as_uuid=False),
         ForeignKey("game.id", ondelete="CASCADE"),
@@ -300,8 +274,7 @@ class GameSeatModel(Base):
     seat_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     model_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider: Mapped[str | None] = mapped_column(Text, nullable=True)
-    requested_temperature: Mapped[float |
-                                  None] = mapped_column(Double, nullable=True)
+    requested_temperature: Mapped[float | None] = mapped_column(Double, nullable=True)
 
 
 class TurnModel(Base):
@@ -310,21 +283,15 @@ class TurnModel(Base):
     `phase` discriminates normal play from sudden death, which the sudden-death bias metric needs to
     isolate.
     """
+
     __tablename__ = "turn"
     __table_args__ = (
-        CheckConstraint(
-            "clue_giver_seat IN (0,1)", name="ck_turn_clue_giver_seat"
-        ),
-        CheckConstraint(
-            "phase IN ('normal','sudden_death')", name="ck_turn_phase"
-        ),
-        UniqueConstraint("game_id", "turn_number",
-                         name="uq_turn_game_turn_number"),
+        CheckConstraint("clue_giver_seat IN (0,1)", name="ck_turn_clue_giver_seat"),
+        CheckConstraint("phase IN ('normal','sudden_death')", name="ck_turn_phase"),
+        UniqueConstraint("game_id", "turn_number", name="uq_turn_game_turn_number"),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     game_id: Mapped[str] = mapped_column(
         postgresql.UUID(as_uuid=False),
         ForeignKey("game.id", ondelete="CASCADE"),
@@ -332,9 +299,7 @@ class TurnModel(Base):
     )
     turn_number: Mapped[int] = mapped_column(Integer, nullable=False)
     clue_giver_seat: Mapped[int] = mapped_column(SmallInteger, nullable=False)
-    phase: Mapped[str] = mapped_column(
-        Text, nullable=False, server_default=sa_text("'normal'")
-    )
+    phase: Mapped[str] = mapped_column(Text, nullable=False, server_default=sa_text("'normal'"))
 
 
 class LlmCallModel(Base):
@@ -347,6 +312,7 @@ class LlmCallModel(Base):
     resolved_model and system_fingerprint let us detect after the fact whether an API provider
     silently swapped the model mid-experiment.
     """
+
     __tablename__ = "llm_call"
     __table_args__ = (
         CheckConstraint("seat_index IN (0,1)", name="ck_llm_call_seat_index"),
@@ -359,9 +325,7 @@ class LlmCallModel(Base):
         Index("ix_llm_call_role", "role"),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     game_id: Mapped[str] = mapped_column(
         postgresql.UUID(as_uuid=False),
         ForeignKey("game.id", ondelete="CASCADE"),
@@ -372,27 +336,20 @@ class LlmCallModel(Base):
     )
     seat_index: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     role: Mapped[str] = mapped_column(Text, nullable=False)
-    retry_index: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=sa_text("0")
-    )
+    retry_index: Mapped[int] = mapped_column(Integer, nullable=False, server_default=sa_text("0"))
     provider: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_used: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolved_model: Mapped[str | None] = mapped_column(Text, nullable=True)
     system_fingerprint: Mapped[str | None] = mapped_column(Text, nullable=True)
-    requested_temperature: Mapped[float |
-                                  None] = mapped_column(Double, nullable=True)
-    requested_seed: Mapped[Decimal | None] = mapped_column(
-        Numeric(20, 0), nullable=True)
+    requested_temperature: Mapped[float | None] = mapped_column(Double, nullable=True)
+    requested_seed: Mapped[Decimal | None] = mapped_column(Numeric(20, 0), nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    completion_tokens: Mapped[int | None] = mapped_column(
-        Integer, nullable=True)
+    completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     finish_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     request_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-    raw_payload: Mapped[dict | None] = mapped_column(
-        postgresql.JSONB, nullable=True)
-    rendered_prompt: Mapped[list | None] = mapped_column(
-        postgresql.JSONB, nullable=True)
+    raw_payload: Mapped[dict | None] = mapped_column(postgresql.JSONB, nullable=True)
+    rendered_prompt: Mapped[list | None] = mapped_column(postgresql.JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -408,14 +365,11 @@ class ClueModel(Base):
     invalid_reason is why the clue broke the validity rules, NULL for a valid clue. An invalid clue
     is played anyway and costs a penalty token (rules §8.4).
     """
-    __tablename__ = "clue"
-    __table_args__ = (
-        CheckConstraint("count >= 1", name="ck_clue_count_positive"),
-    )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    __tablename__ = "clue"
+    __table_args__ = (CheckConstraint("count >= 1", name="ck_clue_count_positive"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     turn_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("turn.id", ondelete="CASCADE"),
@@ -442,19 +396,17 @@ class ClueTargetModel(Base):
 
     card_id is null when the target word cannot be mapped to a board card (derivable malformation).
     """
+
     __tablename__ = "clue_target"
     __table_args__ = (
         CheckConstraint(
             "giver_role IN ('agent','assassin','civilian')",
             name="ck_clue_target_giver_role",
         ),
-        UniqueConstraint("clue_id", "position",
-                         name="uq_clue_target_clue_position"),
+        UniqueConstraint("clue_id", "position", name="uq_clue_target_clue_position"),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     clue_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("clue.id", ondelete="CASCADE"), nullable=False
     )
@@ -462,8 +414,7 @@ class ClueTargetModel(Base):
     word: Mapped[str] = mapped_column(Text, nullable=False)
     card_id: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     giver_role: Mapped[str | None] = mapped_column(Text, nullable=True)
-    revealed_at_clue: Mapped[bool | None] = mapped_column(
-        Boolean, nullable=True)
+    revealed_at_clue: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
 
 class RevealEventModel(Base):
@@ -473,23 +424,19 @@ class RevealEventModel(Base):
     reconstructed, so that state is not duplicated. Records whether the reveal ended the turn or the
     game, and the time-token bank level afterwards.
     """
+
     __tablename__ = "reveal_event"
     __table_args__ = (
-        CheckConstraint("acting_seat IN (0,1)",
-                        name="ck_reveal_event_acting_seat"),
+        CheckConstraint("acting_seat IN (0,1)", name="ck_reveal_event_acting_seat"),
         CheckConstraint(
             "result_role IN ('agent','assassin','civilian')",
             name="ck_reveal_event_result_role",
         ),
-        UniqueConstraint(
-            "turn_id", "position_in_turn", name="uq_reveal_event_turn_position"
-        ),
+        UniqueConstraint("turn_id", "position_in_turn", name="uq_reveal_event_turn_position"),
         Index("ix_reveal_event_turn_id", "turn_id"),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     turn_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("turn.id", ondelete="CASCADE"), nullable=False
     )
@@ -503,8 +450,7 @@ class RevealEventModel(Base):
     ended_game: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=sa_text("false")
     )
-    timer_tokens_after: Mapped[int | None] = mapped_column(
-        SmallInteger, nullable=True)
+    timer_tokens_after: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
 
 class GuessProposalModel(Base):
@@ -513,22 +459,17 @@ class GuessProposalModel(Base):
 
     The individual items live in guess_proposal_item.
     """
+
     __tablename__ = "guess_proposal"
     __table_args__ = (
-        CheckConstraint(
-            "guesser_seat IN (0,1)", name="ck_guess_proposal_guesser_seat"
-        ),
-        CheckConstraint(
-            "kind IN ('play','measurement')", name="ck_guess_proposal_kind"
-        ),
+        CheckConstraint("guesser_seat IN (0,1)", name="ck_guess_proposal_guesser_seat"),
+        CheckConstraint("kind IN ('play','measurement')", name="ck_guess_proposal_kind"),
         UniqueConstraint(
             "turn_id", "kind", "guesser_seat", name="uq_guess_proposal_turn_kind_seat"
         ),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     turn_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("turn.id", ondelete="CASCADE"),
@@ -551,21 +492,18 @@ class GuessProposalItemModel(Base):
     the ON DELETE SET NULL would silently null a backfilled link. (b) does not occur today because
     reveals are only deleted via the delete_run cascade, where the item dies immediately after.
     """
+
     __tablename__ = "guess_proposal_item"
     __table_args__ = (
         CheckConstraint(
             "confidence >= 0.0 AND confidence <= 1.0",
             name="ck_guess_proposal_item_confidence",
         ),
-        UniqueConstraint(
-            "guess_proposal_id", "position", name="uq_guess_proposal_item_position"
-        ),
+        UniqueConstraint("guess_proposal_id", "position", name="uq_guess_proposal_item_position"),
         Index("ix_guess_proposal_item_reveal_event_id", "reveal_event_id"),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     guess_proposal_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("guess_proposal.id", ondelete="CASCADE"),
@@ -574,8 +512,7 @@ class GuessProposalItemModel(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     word: Mapped[str] = mapped_column(Text, nullable=False)
     confidence: Mapped[float | None] = mapped_column(Double, nullable=True)
-    resolved_card_id: Mapped[int | None] = mapped_column(
-        SmallInteger, nullable=True)
+    resolved_card_id: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     reveal_event_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("reveal_event.id", ondelete="SET NULL"), nullable=True
     )
@@ -590,18 +527,14 @@ class EmbeddingMpnetModel(Base):
     Storage only, with no approximate-nearest-neighbour index, because all downstream scalars are
     computed offline.
     """
+
     __tablename__ = "embedding_mpnet"
     __table_args__ = (
-        CheckConstraint(
-            "kind IN ('board_word','clue')", name="ck_embedding_mpnet_kind"
-        ),
-        UniqueConstraint("frame_id", "text",
-                         name="uq_embedding_mpnet_frame_text"),
+        CheckConstraint("kind IN ('board_word','clue')", name="ck_embedding_mpnet_kind"),
+        UniqueConstraint("frame_id", "text", name="uq_embedding_mpnet_frame_text"),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     frame_id: Mapped[str] = mapped_column(
         Text, ForeignKey("measurement_frame.frame_id"), nullable=False
     )
@@ -616,21 +549,16 @@ class EmbeddingLlamaModel(Base):
     Uniqueness on (recipe, text) rather than text alone is what prevents a stale-recipe cache hit:
     if the extraction recipe changes, the old vector must not be silently reused.
     """
-    __tablename__ = "embedding_llama"
-    __table_args__ = (
-        UniqueConstraint("recipe_id", "text",
-                         name="uq_embedding_llama_recipe_text"),
-    )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    __tablename__ = "embedding_llama"
+    __table_args__ = (UniqueConstraint("recipe_id", "text", name="uq_embedding_llama_recipe_text"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     recipe_id: Mapped[str] = mapped_column(
         Text, ForeignKey("extraction_recipe.recipe_id"), nullable=False
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(
-        Vector(4096), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(4096), nullable=False)
 
 
 class EmbeddingMistralModel(Base):
@@ -639,22 +567,18 @@ class EmbeddingMistralModel(Base):
 
     Same recipe-scoped caching rule as the Llama table.
     """
+
     __tablename__ = "embedding_mistral"
     __table_args__ = (
-        UniqueConstraint(
-            "recipe_id", "text", name="uq_embedding_mistral_recipe_text"
-        ),
+        UniqueConstraint("recipe_id", "text", name="uq_embedding_mistral_recipe_text"),
     )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     recipe_id: Mapped[str] = mapped_column(
         Text, ForeignKey("extraction_recipe.recipe_id"), nullable=False
     )
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(
-        Vector(5120), nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(5120), nullable=False)
 
 
 class WordLoadModel(Base):
@@ -665,14 +589,11 @@ class WordLoadModel(Base):
 
     These are post-hoc batch products of the metrics pipeline, not written during play.
     """
-    __tablename__ = "word_load"
-    __table_args__ = (
-        UniqueConstraint("frame_id", "text", name="uq_word_load_frame_text"),
-    )
 
-    id: Mapped[int] = mapped_column(
-        BigInteger, Identity(always=True), primary_key=True
-    )
+    __tablename__ = "word_load"
+    __table_args__ = (UniqueConstraint("frame_id", "text", name="uq_word_load_frame_text"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
     frame_id: Mapped[str] = mapped_column(
         Text, ForeignKey("measurement_frame.frame_id"), nullable=False
     )

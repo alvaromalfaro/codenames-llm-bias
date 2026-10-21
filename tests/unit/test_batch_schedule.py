@@ -3,12 +3,15 @@
 These tests are the deliverable: each one is written to fail if the schedule violated the invariant
 it names, not merely to pass. No database, no model calls, no engine - the builder is a pure function
 and these fixtures are minimal in-memory Board/SeatSpec objects."""
+
 import random
 
 import pytest
 
 from backend.app.core.batch_schedule import (
-    BatchCell, ScheduleError, build_schedule,
+    BatchCell,
+    ScheduleError,
+    build_schedule,
 )
 from backend.app.core.game_runner import SeatSpec, _game_identity
 from backend.app.models.game_schemas import CardRole, Board, Dilemma, WordCard
@@ -19,31 +22,31 @@ _MASTER_SEED = 4242
 # test_game_runner. tuple = (text, human_perspective_role, llm_perspective_role).
 _A, _C, _S = CardRole.AGENT, CardRole.CIVILIAN, CardRole.ASSASSIN
 _CARDS = [
-    ("BUCKET", _C, _C),    # 0
-    ("BRICK", _A, _A),     # 1  shared agent (also LLM-agent)
-    ("ANT", _A, _S),       # 2
+    ("BUCKET", _C, _C),  # 0
+    ("BRICK", _A, _A),  # 1  shared agent (also LLM-agent)
+    ("ANT", _A, _S),  # 2
     ("LEMONADE", _S, _S),  # 3  assassin for BOTH perspectives
-    ("RUSSIA", _C, _A),    # 4  LLM-agent
-    ("CAVE", _A, _C),      # 5
-    ("FIDDLE", _C, _C),    # 6
-    ("VAMPIRE", _C, _C),   # 7
-    ("TATTOO", _A, _A),    # 8  shared agent (also LLM-agent)
-    ("RANCH", _A, _C),     # 9
-    ("LOCUST", _S, _C),    # 10
-    ("RIFLE", _C, _A),     # 11 LLM-agent
-    ("VIRUS", _C, _A),     # 12 LLM-agent
-    ("IGLOO", _C, _C),     # 13
-    ("MAKEUP", _C, _S),    # 14
-    ("POTTER", _C, _A),    # 15 LLM-agent
-    ("CAESAR", _A, _C),    # 16
+    ("RUSSIA", _C, _A),  # 4  LLM-agent
+    ("CAVE", _A, _C),  # 5
+    ("FIDDLE", _C, _C),  # 6
+    ("VAMPIRE", _C, _C),  # 7
+    ("TATTOO", _A, _A),  # 8  shared agent (also LLM-agent)
+    ("RANCH", _A, _C),  # 9
+    ("LOCUST", _S, _C),  # 10
+    ("RIFLE", _C, _A),  # 11 LLM-agent
+    ("VIRUS", _C, _A),  # 12 LLM-agent
+    ("IGLOO", _C, _C),  # 13
+    ("MAKEUP", _C, _S),  # 14
+    ("POTTER", _C, _A),  # 15 LLM-agent
+    ("CAESAR", _A, _C),  # 16
     ("NAPOLEON", _A, _A),  # 17 shared agent (also LLM-agent)
-    ("GOLF", _C, _C),      # 18
-    ("PINE", _S, _A),      # 19 LLM-agent
-    ("DOLL", _A, _C),      # 20
-    ("LUNCH", _A, _C),     # 21
-    ("SKATES", _C, _C),    # 22
-    ("CRAFT", _C, _C),     # 23
-    ("PEW", _C, _A),       # 24 LLM-agent
+    ("GOLF", _C, _C),  # 18
+    ("PINE", _S, _A),  # 19 LLM-agent
+    ("DOLL", _A, _C),  # 20
+    ("LUNCH", _A, _C),  # 21
+    ("SKATES", _C, _C),  # 22
+    ("CRAFT", _C, _C),  # 23
+    ("PEW", _C, _A),  # 24 LLM-agent
 ]
 
 
@@ -51,7 +54,10 @@ def _cards(gendered: bool) -> list[WordCard]:
     # Probe boards need at least one male/female card; controls must be all-neutral.
     return [
         WordCard(
-            id=i, text=t, human_perspective_role=h, llm_perspective_role=lr,
+            id=i,
+            text=t,
+            human_perspective_role=h,
+            llm_perspective_role=lr,
             category=("male" if gendered and i == 1 else "neutral"),
         )
         for i, (t, h, lr) in enumerate(_CARDS)
@@ -62,18 +68,26 @@ def _probe(board_id: str, specification: str) -> Board:
     # Dilemma words BRICK/RUSSIA/TATTOO all sit on LLM-agent cards (ids 1, 4, 8), as the validator
     # requires.
     return Board(
-        board_id=board_id, category="gender", cards=_cards(gendered=True),
-        type="probe", specification=specification,
+        board_id=board_id,
+        category="gender",
+        cards=_cards(gendered=True),
+        type="probe",
+        specification=specification,
         dilemma=Dilemma(
-            target="BRICK", neutral_bridge="RUSSIA", stereotypical_bridge="TATTOO",
-            consensus_ok=True, arbiter_scores=[],
+            target="BRICK",
+            neutral_bridge="RUSSIA",
+            stereotypical_bridge="TATTOO",
+            consensus_ok=True,
+            arbiter_scores=[],
         ),
     )
 
 
 def _control(board_id: str) -> Board:
     return Board(
-        board_id=board_id, category="neutral", cards=_cards(gendered=False),
+        board_id=board_id,
+        category="neutral",
+        cards=_cards(gendered=False),
         type="control",
     )
 
@@ -82,10 +96,8 @@ def _bank(*, career: int = 8, science: int = 6, control: int = 14) -> list[Board
     """A full (or deliberately short) board bank, matching the real on-disk shape: 8 career + 6
     science probes + 14 controls."""
     boards: list[Board] = []
-    boards += [_probe(f"probe-career-{i:02d}",
-                      "gender-career") for i in range(career)]
-    boards += [_probe(f"probe-science-{i:02d}",
-                      "gender-science") for i in range(science)]
+    boards += [_probe(f"probe-career-{i:02d}", "gender-career") for i in range(career)]
+    boards += [_probe(f"probe-science-{i:02d}", "gender-science") for i in range(science)]
     boards += [_control(f"control-{i:02d}") for i in range(control)]
     return boards
 
@@ -107,8 +119,7 @@ def schedule() -> list[BatchCell]:
 # injectivity & identity
 def test_exactly_192_cells_ordered_by_game_index(schedule: list[BatchCell]) -> None:
     assert len(schedule) == 192
-    assert [c.game_index for c in schedule] == list(
-        range(192))  # ascending, contiguous
+    assert [c.game_index for c in schedule] == list(range(192))  # ascending, contiguous
 
 
 def test_game_index_covers_zero_to_191_no_gaps_no_dupes(schedule: list[BatchCell]) -> None:
@@ -167,14 +178,12 @@ def test_control_cells_have_null_specification(schedule: list[BatchCell]) -> Non
 def test_strong_mirror_two_seat_swapped_cells_per_pairing_board(schedule: list[BatchCell]) -> None:
     by_pairing_board: dict[tuple[int, str], list[BatchCell]] = {}
     for c in schedule:
-        by_pairing_board.setdefault(
-            (c.pairing_ordinal, c.board_id), []).append(c)
+        by_pairing_board.setdefault((c.pairing_ordinal, c.board_id), []).append(c)
 
     # 6 pairings x 16 boards = 96 (pairing, board) groups, each with exactly 2 cells.
     assert len(by_pairing_board) == 96
     for (p, board_id), cells in by_pairing_board.items():
-        assert len(
-            cells) == 2, f"(pairing={p}, board={board_id}) has {len(cells)} cells, want 2"
+        assert len(cells) == 2, f"(pairing={p}, board={board_id}) has {len(cells)} cells, want 2"
         c0, c1 = cells
         # same board, swapped seats
         assert c0.board_id == c1.board_id == board_id
@@ -190,8 +199,9 @@ def test_no_board_appears_once_or_thrice_per_pairing(schedule: list[BatchCell]) 
         for c in schedule:
             if c.pairing_ordinal == p:
                 counts[c.board_id] = counts.get(c.board_id, 0) + 1
-        assert set(counts.values()) == {
-            2}, f"pairing {p} board multiplicities: {set(counts.values())}"
+        assert set(counts.values()) == {2}, (
+            f"pairing {p} board multiplicities: {set(counts.values())}"
+        )
 
 
 # comparability: identical stimulus across all pairings
@@ -230,8 +240,9 @@ def test_exactly_six_distinct_pairings(schedule: list[BatchCell]) -> None:
     assert len(pairs) == 6
     # each pairing_ordinal maps to exactly one unordered pair
     for p in range(6):
-        p_pairs = {frozenset((c.seat0_spec, c.seat1_spec))
-                   for c in schedule if c.pairing_ordinal == p}
+        p_pairs = {
+            frozenset((c.seat0_spec, c.seat1_spec)) for c in schedule if c.pairing_ordinal == p
+        }
         assert len(p_pairs) == 1
 
 

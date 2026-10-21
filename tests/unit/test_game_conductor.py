@@ -7,15 +7,22 @@ from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.core.llm_service import LLMService
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.game_conductor import (
-    conduct_clue, conduct_guess, conduct_sd_guess,
+    conduct_clue,
+    conduct_guess,
+    conduct_sd_guess,
 )
 from backend.app.db.recorder import GameRecorder, SeatRecord
 from backend.app.models.game_schemas import (
-    Board, WordCard, CardRole, GamePhase, ClueEntry,
+    Board,
+    WordCard,
+    CardRole,
+    GamePhase,
+    ClueEntry,
 )
 from backend.app.models.llm_errors import LLMParseError, LLMTruncatedResponseError
 from backend.app.models.llm_schemas import (
-    GuessJSONFormat, ConfidenceRankingJSONFormat,
+    GuessJSONFormat,
+    ConfidenceRankingJSONFormat,
 )
 
 
@@ -49,13 +56,13 @@ def _mock_client(texts: list[str]) -> MagicMock:
 def _guess_json(words, confidences=None, reasoning="r", stop_reason="done") -> str:
     confidences = confidences or [0.9] * len(words)
     items = ", ".join(
-        f'{{"word": "{w}", "confidence": {c}}}' for w, c in zip(words, confidences, strict=True))
+        f'{{"word": "{w}", "confidence": {c}}}' for w, c in zip(words, confidences, strict=True)
+    )
     return f'{{"reasoning": "{reasoning}", "stop_reason": "{stop_reason}", "proposals": [{items}]}}'
 
 
 def _rankings_json(pairs=(("BRICK", 0.9), ("DESK", 0.1)), reasoning="r") -> str:
-    items = ", ".join(
-        f'{{"word": "{w}", "confidence": {c}}}' for w, c in pairs)
+    items = ", ".join(f'{{"word": "{w}", "confidence": {c}}}' for w, c in pairs)
     return f'{{"reasoning": "{reasoning}", "rankings": [{items}]}}'
 
 
@@ -70,40 +77,48 @@ def _clue_json(clue="OCEAN", count=1, reasoning="r", targets=None) -> str:
 # agents; DESK/BUCKET civilians.
 _A, _C, _S = CardRole.AGENT, CardRole.CIVILIAN, CardRole.ASSASSIN
 _CARDS = [
-    ("BUCKET", _C, _C),    # 0
-    ("BRICK", _A, _A),     # 1  shared agent
-    ("ANT", _A, _S),       # 2
+    ("BUCKET", _C, _C),  # 0
+    ("BRICK", _A, _A),  # 1  shared agent
+    ("ANT", _A, _S),  # 2
     ("LEMONADE", _S, _S),  # 3
-    ("RUSSIA", _C, _A),    # 4  seat-1 agent
-    ("CAVE", _A, _C),      # 5  seat-0 agent
-    ("FIDDLE", _C, _C),    # 6
-    ("VAMPIRE", _C, _C),   # 7
-    ("TATTOO", _A, _A),    # 8  shared agent
-    ("RANCH", _A, _C),     # 9  seat-0 agent
-    ("LOCUST", _S, _C),    # 10
-    ("RIFLE", _C, _A),     # 11 seat-1 agent
-    ("VIRUS", _C, _A),     # 12 seat-1 agent
-    ("IGLOO", _C, _C),     # 13
-    ("MAKEUP", _C, _S),    # 14
-    ("POTTER", _C, _A),    # 15 seat-1 agent
-    ("CAESAR", _A, _C),    # 16 seat-0 agent
+    ("RUSSIA", _C, _A),  # 4  seat-1 agent
+    ("CAVE", _A, _C),  # 5  seat-0 agent
+    ("FIDDLE", _C, _C),  # 6
+    ("VAMPIRE", _C, _C),  # 7
+    ("TATTOO", _A, _A),  # 8  shared agent
+    ("RANCH", _A, _C),  # 9  seat-0 agent
+    ("LOCUST", _S, _C),  # 10
+    ("RIFLE", _C, _A),  # 11 seat-1 agent
+    ("VIRUS", _C, _A),  # 12 seat-1 agent
+    ("IGLOO", _C, _C),  # 13
+    ("MAKEUP", _C, _S),  # 14
+    ("POTTER", _C, _A),  # 15 seat-1 agent
+    ("CAESAR", _A, _C),  # 16 seat-0 agent
     ("NAPOLEON", _A, _A),  # 17 shared agent
-    ("GOLF", _C, _C),      # 18
-    ("PINE", _S, _A),      # 19 seat-1 agent
-    ("DOLL", _A, _C),      # 20 seat-0 agent
-    ("LUNCH", _A, _C),     # 21 seat-0 agent
-    ("SKATES", _C, _C),    # 22
-    ("CRAFT", _C, _C),     # 23
-    ("PEW", _C, _A),       # 24 seat-1 agent
+    ("GOLF", _C, _C),  # 18
+    ("PINE", _S, _A),  # 19 seat-1 agent
+    ("DOLL", _A, _C),  # 20 seat-0 agent
+    ("LUNCH", _A, _C),  # 21 seat-0 agent
+    ("SKATES", _C, _C),  # 22
+    ("CRAFT", _C, _C),  # 23
+    ("PEW", _C, _A),  # 24 seat-1 agent
 ]
 
 
 def _board() -> Board:
     return Board(
-        board_id="tb", category="neutral",
-        cards=[WordCard(id=i, text=text, human_perspective_role=human,
-                        llm_perspective_role=llm, category="neutral")
-               for i, (text, human, llm) in enumerate(_CARDS)],
+        board_id="tb",
+        category="neutral",
+        cards=[
+            WordCard(
+                id=i,
+                text=text,
+                human_perspective_role=human,
+                llm_perspective_role=llm,
+                category="neutral",
+            )
+            for i, (text, human, llm) in enumerate(_CARDS)
+        ],
     )
 
 
@@ -121,8 +136,7 @@ def _guessing_engine(guesser: int, agents=(5, 5)) -> CodenamesDuetEngine:
     st.turn_number = 1
     st.pending_words = list(agents)
     st.guesses_made_this_turn = 0
-    st.current_clue = ClueEntry(clue="OCEAN", count=1,
-                                clue_giver=1 - guesser, turn_number=1)
+    st.current_clue = ClueEntry(clue="OCEAN", count=1, clue_giver=1 - guesser, turn_number=1)
     return eng
 
 
@@ -233,14 +247,15 @@ async def test_conduct_guess_seat0_equivalence():
     turn = rec.turns[-1]
     assert turn.play_proposal.proposals == ["BRICK", "CAVE"]
     assert turn.measurement is not None
-    assert [(rv.proposal_index, rv.acting_seat)
-            for rv in turn.reveals] == [(0, 0), (1, 0)]
+    assert [(rv.proposal_index, rv.acting_seat) for rv in turn.reveals] == [(0, 0), (1, 0)]
 
     # Two LLM calls: the play proposal, then the measurement (before the resolve loop, which makes
     # no LLM calls). This is the measurement-before-resolve ordering.
     assert client.generate.call_count == 2
     assert client.generate.call_args_list[0].kwargs["expected_format"] is GuessJSONFormat
-    assert client.generate.call_args_list[1].kwargs["expected_format"] is ConfidenceRankingJSONFormat
+    assert (
+        client.generate.call_args_list[1].kwargs["expected_format"] is ConfidenceRankingJSONFormat
+    )
 
     # Flush fired once per reveal.
     assert flush.call_count == 2
@@ -256,21 +271,20 @@ async def test_conduct_guess_seat1_drives_seat1_guess_and_measurement():
     """Seat 1 is conducted like seat 0: its guesses and measurement are recorded with
     acting_seat=1."""
     eng = _guessing_engine(guesser=1, agents=(5, 5))
-    client = _mock_client([_guess_json(["RUSSIA", "RIFLE"]),
-                           _rankings_json(pairs=(("RUSSIA", 0.8), ("RIFLE", 0.7)))])
+    client = _mock_client(
+        [_guess_json(["RUSSIA", "RIFLE"]), _rankings_json(pairs=(("RUSSIA", 0.8), ("RIFLE", 0.7)))]
+    )
     rec = _recorder(client)
     rec.record_clue(eng.state.current_clue, proposal=None)
     service = LLMService()
 
-    reveals = await conduct_guess(service, client, eng, rec, player_id=1,
-                                  flush=MagicMock())
+    reveals = await conduct_guess(service, client, eng, rec, player_id=1, flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [(4, "agent"), (11, "agent")]
     turn = rec.turns[-1]
     assert turn.play_proposal.proposals == ["RUSSIA", "RIFLE"]
     assert turn.measurement is not None
-    assert [(rv.proposal_index, rv.acting_seat)
-            for rv in turn.reveals] == [(0, 1), (1, 1)]
+    assert [(rv.proposal_index, rv.acting_seat) for rv in turn.reveals] == [(0, 1), (1, 1)]
 
 
 @pytest.mark.asyncio
@@ -283,11 +297,9 @@ async def test_conduct_guess_flush_sees_game_over_on_terminal_reveal():
     service = LLMService()
 
     flush_states: list[bool] = []
-    flush = MagicMock(side_effect=lambda e,
-                      r: flush_states.append(e.state.is_game_over))
+    flush = MagicMock(side_effect=lambda e, r: flush_states.append(e.state.is_game_over))
 
-    reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                  flush=flush)
+    reveals = await conduct_guess(service, client, eng, rec, player_id=0, flush=flush)
 
     assert [(cid, r) for cid, r, _ in reveals] == [(1, "victory")]
     assert flush.call_count == 1
@@ -312,8 +324,7 @@ async def test_conduct_guess_reraises_proposal_error():
     mock_service.propose_guess = AsyncMock(side_effect=ValueError("boom"))
 
     with pytest.raises(ValueError, match="boom"):
-        await conduct_guess(mock_service, client, eng, rec, player_id=0,
-                            flush=MagicMock())
+        await conduct_guess(mock_service, client, eng, rec, player_id=0, flush=MagicMock())
 
     # The swallow is gone: no play proposal was recorded for this turn.
     assert rec.turns[-1].play_proposal is None
@@ -329,10 +340,10 @@ async def test_conduct_guess_measurement_failure_does_not_propagate():
     rec.record_clue(eng.state.current_clue, proposal=None)
     service = LLMService()
     service.measure_and_attach_confidence_ranking = AsyncMock(
-        side_effect=ValueError("measurement boom"))
+        side_effect=ValueError("measurement boom")
+    )
 
-    reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                  flush=MagicMock())
+    reveals = await conduct_guess(service, client, eng, rec, player_id=0, flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [(1, "agent"), (5, "agent")]
     turn = rec.turns[-1]
@@ -351,10 +362,10 @@ async def test_conduct_guess_measurement_model_failure_does_not_end_the_turn():
     rec.record_clue(eng.state.current_clue, proposal=None)
     service = LLMService()
     service.measure_and_attach_confidence_ranking = AsyncMock(
-        side_effect=LLMTruncatedResponseError(provider="ollama"))
+        side_effect=LLMTruncatedResponseError(provider="ollama")
+    )
 
-    reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                  flush=MagicMock())
+    reveals = await conduct_guess(service, client, eng, rec, player_id=0, flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [(1, "agent"), (5, "agent")]
     assert rec.turns[-1].measurement is None
@@ -368,10 +379,10 @@ async def test_conduct_sd_guess_measurement_model_failure_does_not_end_the_turn(
     rec = _recorder(client)
     service = LLMService()
     service.measure_and_attach_confidence_ranking_sd = AsyncMock(
-        side_effect=LLMParseError(provider="ollama"))
+        side_effect=LLMParseError(provider="ollama")
+    )
 
-    reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0,
-                                     flush=MagicMock())
+    reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0, flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
     sd = rec.turns[-1]
@@ -389,19 +400,16 @@ async def test_conduct_guess_skips_unplayable_item_and_continues(caplog):
     # TATTOO(8) is a seat-0 agent already revealed by seat 0 -> resolve_guess raises "already revealed".
     eng.state.board.cards[8].revealed = True
     eng.state.board.cards[8].revealed_by.append(0)
-    client = _mock_client(
-        [_guess_json(["BRICK", "CAVE", "TATTOO", "RANCH"]), _rankings_json()])
+    client = _mock_client([_guess_json(["BRICK", "CAVE", "TATTOO", "RANCH"]), _rankings_json()])
     rec = _recorder(client)
     rec.record_clue(eng.state.current_clue, proposal=None)
     service = LLMService()
 
     with caplog.at_level("WARNING"):
-        reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                      flush=MagicMock())
+        reveals = await conduct_guess(service, client, eng, rec, player_id=0, flush=MagicMock())
 
     # The unplayable TATTOO is skipped; the trailing valid RANCH(9) still resolves.
-    assert [(cid, r) for cid, r, _ in reveals] == [
-        (1, "agent"), (5, "agent"), (9, "agent")]
+    assert [(cid, r) for cid, r, _ in reveals] == [(1, "agent"), (5, "agent"), (9, "agent")]
     # The phase advanced (all resolved agents -> for/else passed the turn); no re-dispatch.
     assert eng.state.current_phase == GamePhase.GIVING_CLUE
 
@@ -430,8 +438,7 @@ async def test_conduct_guess_stops_when_the_guesser_covers_its_last_pending_word
     service = LLMService()
     flush = MagicMock()
 
-    reveals = await conduct_guess(service, client, eng, rec, player_id=0,
-                                  flush=flush)
+    reveals = await conduct_guess(service, client, eng, rec, player_id=0, flush=flush)
 
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent_turn_end")]
     assert not eng.state.is_game_over
@@ -452,15 +459,13 @@ async def test_conduct_guess_all_unmappable_raises_on_pass(caplog):
     for/else pass_turn raises - the raise now PROPAGATES (no longer swallowed), leaving the phase at
     GUESSING for the caller's error boundary rather than spinning the driver."""
     eng = _guessing_engine(guesser=0, agents=(5, 5))
-    client = _mock_client(
-        [_guess_json(["NONWORD1", "NONWORD2"]), _rankings_json()])
+    client = _mock_client([_guess_json(["NONWORD1", "NONWORD2"]), _rankings_json()])
     rec = _recorder(client)
     rec.record_clue(eng.state.current_clue, proposal=None)
     service = LLMService()
 
     with pytest.raises(ValueError, match="at least one guess"):
-        await conduct_guess(service, client, eng, rec, player_id=0,
-                            flush=MagicMock())
+        await conduct_guess(service, client, eng, rec, player_id=0, flush=MagicMock())
 
     # Nothing was resolved; the phase is untouched (the boundary, not conduct_guess, advances it).
     assert eng.state.current_phase == GamePhase.GUESSING
@@ -475,8 +480,7 @@ async def test_conduct_sd_guess_seat0_records_measurement_and_reveal():
     rec = _recorder(client)
     service = LLMService()
 
-    reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0,
-                                     flush=MagicMock())
+    reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0, flush=MagicMock())
 
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
     sd = rec.turns[-1]
@@ -485,8 +489,7 @@ async def test_conduct_sd_guess_seat0_records_measurement_and_reveal():
     assert sd.clue_giver_seat == 1
     assert 0 in sd.sd_play_by_seat
     assert 0 in sd.sd_measurement_by_seat
-    assert [(rv.proposal_index, rv.acting_seat)
-            for rv in sd.reveals] == [(0, 0)]
+    assert [(rv.proposal_index, rv.acting_seat) for rv in sd.reveals] == [(0, 0)]
     # Per-seat store read (not the mirror): seat 0's ranking was attached and recorded.
     assert eng.state.sudden_death.rankings_by_seat[0] is sd.sd_measurement_by_seat[0]
 
@@ -499,20 +502,16 @@ async def test_conduct_sd_guess_seat1_per_seat_proposal_index():
     eng = _sd_engine(GamePhase.SUDDEN_DEATH_HUMAN, clue_giver=0, agents=(0, 3))
     service = LLMService()
     # Measurement (pending) first, then the SD proposal - the same order as the seat-0 SD test.
-    client = _mock_client(
-        [_rankings_json(), _guess_json(["NONWORD", "RUSSIA"])])
+    client = _mock_client([_rankings_json(), _guess_json(["NONWORD", "RUSSIA"])])
     rec = _recorder(client)
 
-    reveals = await conduct_sd_guess(service, client, eng, rec, player_id=1,
-                                     flush=MagicMock())
+    reveals = await conduct_sd_guess(service, client, eng, rec, player_id=1, flush=MagicMock())
 
-    assert [(cid, r) for cid, r, _ in reveals] == [
-        (4, "agent")]  # RUSSIA, at its own index 1
+    assert [(cid, r) for cid, r, _ in reveals] == [(4, "agent")]  # RUSSIA, at its own index 1
     sd = rec.turns[-1]
     assert 1 in sd.sd_play_by_seat
     assert 1 in sd.sd_measurement_by_seat
-    assert [(rv.proposal_index, rv.acting_seat)
-            for rv in sd.reveals] == [(1, 1)]
+    assert [(rv.proposal_index, rv.acting_seat) for rv in sd.reveals] == [(1, 1)]
     assert eng.state.sudden_death.rankings_by_seat[1] is sd.sd_measurement_by_seat[1]
 
 
@@ -528,24 +527,21 @@ async def test_two_seat_sudden_death_populates_both_seats():
     # SUDDEN_DEATH_HUMAN and re-arms the measurement flag for seat 1.
     client0 = _mock_client([_rankings_json(), _guess_json(["CAVE"])])
     rec = _recorder(client0)
-    await conduct_sd_guess(service, client0, eng, rec, player_id=0,
-                           flush=MagicMock())
+    await conduct_sd_guess(service, client0, eng, rec, player_id=0, flush=MagicMock())
 
     assert eng.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
     assert eng.state.sd_measurement_pending is True
 
     # Seat 1: the real service too (SUDDEN_DEATH_HUMAN), measurement (re-armed) then proposal.
     client1 = _mock_client([_rankings_json(), _guess_json(["RUSSIA"])])
-    await conduct_sd_guess(service, client1, eng, rec, player_id=1,
-                           flush=MagicMock())
+    await conduct_sd_guess(service, client1, eng, rec, player_id=1, flush=MagicMock())
 
     # One collective SD turn carrying BOTH seats' proposals and measurements.
     assert len(rec.turns) == 1
     sd = rec.turns[-1]
     assert set(sd.sd_play_by_seat.keys()) == {0, 1}
     assert set(sd.sd_measurement_by_seat.keys()) == {0, 1}
-    assert [(rv.proposal_index, rv.acting_seat)
-            for rv in sd.reveals] == [(0, 0), (0, 1)]
+    assert [(rv.proposal_index, rv.acting_seat) for rv in sd.reveals] == [(0, 0), (0, 1)]
 
 
 @pytest.mark.asyncio
@@ -562,8 +558,7 @@ async def test_conduct_sd_guess_reraises_proposal_error():
     rec = _recorder(client)
 
     with pytest.raises(ValueError, match="boom"):
-        await conduct_sd_guess(mock_service, client, eng, rec, player_id=1,
-                               flush=MagicMock())
+        await conduct_sd_guess(mock_service, client, eng, rec, player_id=1, flush=MagicMock())
 
 
 @pytest.mark.asyncio
@@ -583,8 +578,7 @@ async def test_conduct_sd_guess_skips_unplayable_item_and_continues(caplog):
     service = LLMService()
 
     with caplog.at_level("WARNING"):
-        reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0,
-                                         flush=MagicMock())
+        reveals = await conduct_sd_guess(service, client, eng, rec, player_id=0, flush=MagicMock())
 
     # The unplayable TATTOO is skipped; the trailing valid CAVE(5) STILL resolves - the turn was not
     # abandoned (a break would have returned an empty list and left that agent unfound).
@@ -611,14 +605,13 @@ async def test_conduct_sd_guess_concedes_when_nothing_is_playable():
     makes no progress. The seat concedes instead of returning in its own SD phase, which used to make
     the driver re-dispatch the same seat with the same seed until _MAX_DISPATCHES (ENG-04)."""
     eng = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=1, agents=(2, 3))
-    eng.state.board.cards[8].revealed = True        # TATTOO, already covered
+    eng.state.board.cards[8].revealed = True  # TATTOO, already covered
     eng.state.board.cards[8].revealed_by = [0, 1]
     client = _mock_client([_rankings_json(), _guess_json(["NONWORD", "TATTOO"])])
     rec = _recorder(client)
     flush = MagicMock()
 
-    reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0,
-                                     flush=flush)
+    reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0, flush=flush)
 
     assert reveals == []
     assert eng.state.current_phase == GamePhase.GAME_OVER
@@ -641,8 +634,7 @@ async def test_conduct_sd_guess_concedes_when_the_proposal_runs_out_with_words_p
     rec = _recorder(client)
     flush = MagicMock()
 
-    reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=1,
-                                     flush=flush)
+    reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=1, flush=flush)
 
     assert [(cid, r) for cid, r, _ in reveals] == [(4, "agent"), (11, "agent")]
     assert eng.state.pending_words == [0, 1]
@@ -651,7 +643,9 @@ async def test_conduct_sd_guess_concedes_when_the_proposal_runs_out_with_words_p
     assert flush.call_count == 3
     sd = rec.turns[-1]
     assert [(rv.proposal_index, rv.result_role, rv.ended_game) for rv in sd.reveals] == [
-        (0, "agent", False), (1, "agent", False)]
+        (0, "agent", False),
+        (1, "agent", False),
+    ]
 
 
 @pytest.mark.asyncio
@@ -664,8 +658,9 @@ async def test_conduct_sd_guess_stops_at_the_handoff_without_conceding(caplog):
     rec = _recorder(client)
 
     with caplog.at_level("WARNING"):
-        reveals = await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0,
-                                         flush=MagicMock())
+        reveals = await conduct_sd_guess(
+            LLMService(), client, eng, rec, player_id=0, flush=MagicMock()
+        )
 
     assert [(cid, r) for cid, r, _ in reveals] == [(5, "agent")]
     assert eng.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN
@@ -679,32 +674,34 @@ async def test_conduct_sd_guess_stops_at_the_handoff_without_conceding(caplog):
 @pytest.mark.asyncio
 async def test_sd_gate_admits_seat0_in_sudden_death_llm():
     """Unchanged behavior: seat 0 is valid in SUDDEN_DEATH_LLM for both SD entry points."""
-    state = _sd_engine(GamePhase.SUDDEN_DEATH_LLM,
-                       clue_giver=1, agents=(2, 3)).state
+    state = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=1, agents=(2, 3)).state
     service = LLMService()
 
     proposal = await service.propose_guess_sd(
-        _mock_client([_guess_json(["CAVE"])]), state, player_id=0)
+        _mock_client([_guess_json(["CAVE"])]), state, player_id=0
+    )
     assert proposal.proposals == ["CAVE"]
 
     ranking = await service.elicit_confidence_ranking_sd(
-        _mock_client([_rankings_json()]), state, player_id=0)
+        _mock_client([_rankings_json()]), state, player_id=0
+    )
     assert ranking.rankings  # parsed a non-empty ranking
 
 
 @pytest.mark.asyncio
 async def test_sd_gate_admits_seat1_in_sudden_death_human():
     """New behavior: seat 1 is valid in SUDDEN_DEATH_HUMAN for both SD entry points."""
-    state = _sd_engine(GamePhase.SUDDEN_DEATH_HUMAN,
-                       clue_giver=0, agents=(0, 3)).state
+    state = _sd_engine(GamePhase.SUDDEN_DEATH_HUMAN, clue_giver=0, agents=(0, 3)).state
     service = LLMService()
 
     proposal = await service.propose_guess_sd(
-        _mock_client([_guess_json(["RUSSIA"])]), state, player_id=1)
+        _mock_client([_guess_json(["RUSSIA"])]), state, player_id=1
+    )
     assert proposal.proposals == ["RUSSIA"]
 
     ranking = await service.elicit_confidence_ranking_sd(
-        _mock_client([_rankings_json()]), state, player_id=1)
+        _mock_client([_rankings_json()]), state, player_id=1
+    )
     assert ranking.rankings
 
 
@@ -716,15 +713,13 @@ async def test_sd_gate_rejects_seat_phase_mismatch():
     client = MagicMock(spec=LLMClient)
     client.model_name = "test_model"
 
-    llm_state = _sd_engine(GamePhase.SUDDEN_DEATH_LLM,
-                           clue_giver=0, agents=(2, 3)).state
+    llm_state = _sd_engine(GamePhase.SUDDEN_DEATH_LLM, clue_giver=0, agents=(2, 3)).state
     with pytest.raises(ValueError):
         await service.propose_guess_sd(client, llm_state, player_id=1)
     with pytest.raises(ValueError):
         await service.elicit_confidence_ranking_sd(client, llm_state, player_id=1)
 
-    human_state = _sd_engine(GamePhase.SUDDEN_DEATH_HUMAN,
-                             clue_giver=1, agents=(2, 3)).state
+    human_state = _sd_engine(GamePhase.SUDDEN_DEATH_HUMAN, clue_giver=1, agents=(2, 3)).state
     with pytest.raises(ValueError):
         await service.propose_guess_sd(client, human_state, player_id=0)
     with pytest.raises(ValueError):
@@ -749,8 +744,9 @@ async def test_sd_gate_rejects_non_sd_phase():
 # distinct play vs measurement seeds must route to their own requests.
 def _seed_by_format(client):
     """Map each captured request's expected_format to the seed it carried."""
-    return {call.kwargs["expected_format"]: call.args[0].seed
-            for call in client.generate.call_args_list}
+    return {
+        call.kwargs["expected_format"]: call.args[0].seed for call in client.generate.call_args_list
+    }
 
 
 @pytest.mark.asyncio
@@ -760,8 +756,16 @@ async def test_conduct_guess_routes_distinct_play_and_measurement_seeds():
     rec = _recorder(client)
     rec.record_clue(eng.state.current_clue, proposal=None)
 
-    await conduct_guess(LLMService(), client, eng, rec, player_id=0,
-                        flush=MagicMock(), seed=111, measurement_seed=222)
+    await conduct_guess(
+        LLMService(),
+        client,
+        eng,
+        rec,
+        player_id=0,
+        flush=MagicMock(),
+        seed=111,
+        measurement_seed=222,
+    )
 
     seeds = _seed_by_format(client)
     # play proposal carries the play seed
@@ -776,8 +780,16 @@ async def test_conduct_sd_guess_routes_distinct_play_and_measurement_seeds():
     client = _mock_client([_rankings_json(), _guess_json(["CAVE"])])
     rec = _recorder(client)
 
-    await conduct_sd_guess(LLMService(), client, eng, rec, player_id=0,
-                           flush=MagicMock(), seed=333, measurement_seed=444)
+    await conduct_sd_guess(
+        LLMService(),
+        client,
+        eng,
+        rec,
+        player_id=0,
+        flush=MagicMock(),
+        seed=333,
+        measurement_seed=444,
+    )
 
     seeds = _seed_by_format(client)
     assert seeds[GuessJSONFormat] == 333
@@ -791,8 +803,6 @@ async def test_conduct_guess_default_none_leaves_all_request_seeds_none():
     rec = _recorder(client)
     rec.record_clue(eng.state.current_clue, proposal=None)
 
-    await conduct_guess(LLMService(), client, eng, rec, player_id=0,
-                        flush=MagicMock())
+    await conduct_guess(LLMService(), client, eng, rec, player_id=0, flush=MagicMock())
 
-    assert all(
-        call.args[0].seed is None for call in client.generate.call_args_list)
+    assert all(call.args[0].seed is None for call in client.generate.call_args_list)

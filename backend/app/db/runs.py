@@ -4,6 +4,7 @@ resumed batch checks.
 A run is one batch: the provenance it was minted with, the notes it gathered (each resume appends
 one), and its games. Reading writes nothing.
 """
+
 from __future__ import annotations
 
 import uuid
@@ -24,6 +25,7 @@ from backend.app.db.session import session_scope
 class RunSummary:
     """A run as it was minted, its notes, and how many of its games are recorded under each
     ``game_status``."""
+
     run_id: str
     created_at: datetime
     master_seed: Optional[int]
@@ -53,23 +55,32 @@ def _summaries(session: Session, runs: Sequence[RunModel]) -> list[RunSummary]:
         ).all()
         for run_id, status, n in rows:
             counts[run_id][status] = int(n)
-    return [RunSummary(
-        run_id=run.id, created_at=run.created_at,
-        master_seed=None if run.master_seed is None else int(run.master_seed),
-        temperature=run.temperature, code_version=run.code_version,
-        prompt_template_version=run.prompt_template_version,
-        model_registry_snapshot=run.model_registry_snapshot,
-        stimulus_manifest=run.stimulus_manifest,
-        environment_snapshot=run.environment_snapshot, notes=run.notes,
-        games_by_status=dict(sorted(counts[run.id].items())),
-    ) for run in runs]
+    return [
+        RunSummary(
+            run_id=run.id,
+            created_at=run.created_at,
+            master_seed=None if run.master_seed is None else int(run.master_seed),
+            temperature=run.temperature,
+            code_version=run.code_version,
+            prompt_template_version=run.prompt_template_version,
+            model_registry_snapshot=run.model_registry_snapshot,
+            stimulus_manifest=run.stimulus_manifest,
+            environment_snapshot=run.environment_snapshot,
+            notes=run.notes,
+            games_by_status=dict(sorted(counts[run.id].items())),
+        )
+        for run in runs
+    ]
 
 
 def list_runs() -> list[RunSummary]:
     """Every run, oldest first."""
     with session_scope() as session:
-        runs = session.execute(
-            select(RunModel).order_by(RunModel.created_at, RunModel.id)).scalars().all()
+        runs = (
+            session.execute(select(RunModel).order_by(RunModel.created_at, RunModel.id))
+            .scalars()
+            .all()
+        )
         return _summaries(session, runs)
 
 

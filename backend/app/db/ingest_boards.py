@@ -34,8 +34,13 @@ logger = logging.getLogger(__name__)
 # The columns a stored row has that ingestion does not take from the file.
 _NOT_FROM_FILE = frozenset({"id", "created_at", "content_sha256"})
 
-__all__ = ["InvalidBoardFileError", "StaleBoardError", "board_artifact_to_orm",
-           "board_content_sha256", "ingest_boards_if_absent"]
+__all__ = [
+    "InvalidBoardFileError",
+    "StaleBoardError",
+    "board_artifact_to_orm",
+    "board_content_sha256",
+    "ingest_boards_if_absent",
+]
 
 
 class StaleBoardError(RuntimeError):
@@ -110,28 +115,35 @@ def _read_board_file(path: Path) -> dict:
 
 def _from_file(row) -> dict:
     """The values of a row that ingestion takes from the artifact, by column."""
-    return {c.key: getattr(row, c.key) for c in row.__table__.columns
-            if c.key not in _NOT_FROM_FILE}
+    return {
+        c.key: getattr(row, c.key) for c in row.__table__.columns if c.key not in _NOT_FROM_FILE
+    }
 
 
 def _differences(session: Session, stored: BoardModel, data: dict) -> list[str]:
     """Where the stored board and its cards differ from the artifact ``data``."""
     board, cards = board_artifact_to_orm(data)
-    diffs = [f"board.{key}" for key, value in _from_file(board).items()
-             if getattr(stored, key) != value]
-    stored_cards = {card.card_id: card for card in session.execute(
-        select(WordCardModel).where(WordCardModel.board_id == stored.board_id)).scalars()}
+    diffs = [
+        f"board.{key}" for key, value in _from_file(board).items() if getattr(stored, key) != value
+    ]
+    stored_cards = {
+        card.card_id: card
+        for card in session.execute(
+            select(WordCardModel).where(WordCardModel.board_id == stored.board_id)
+        ).scalars()
+    }
     if set(stored_cards) != {card.card_id for card in cards}:
         return diffs + ["the card ids"]
     for card in cards:
-        diffs += [f"card {card.card_id}.{key}" for key, value in _from_file(card).items()
-                  if getattr(stored_cards[card.card_id], key) != value]
+        diffs += [
+            f"card {card.card_id}.{key}"
+            for key, value in _from_file(card).items()
+            if getattr(stored_cards[card.card_id], key) != value
+        ]
     return diffs
 
 
-def ingest_boards_if_absent(
-    session: Session, data_path: str | Path = BOARDS_DIR
-) -> int:
+def ingest_boards_if_absent(session: Session, data_path: str | Path = BOARDS_DIR) -> int:
     """Store every board under ``data_path`` not stored yet, and check those that are; return how
     many were stored.
 
@@ -140,8 +152,7 @@ def ingest_boards_if_absent(
     """
     directory = Path(data_path)
     if not directory.exists():
-        logger.warning(
-            "Board data directory %s does not exist; skipping ingestion", directory)
+        logger.warning("Board data directory %s does not exist; skipping ingestion", directory)
         return 0
 
     inserted = 0
@@ -162,12 +173,14 @@ def ingest_boards_if_absent(
             if diffs:
                 raise StaleBoardError(
                     f"board {board_id} is stored with other content than {file_path} holds now "
-                    f"(differences: {diffs[:5]}{' ...' if len(diffs) > 5 else ''}).")
+                    f"(differences: {diffs[:5]}{' ...' if len(diffs) > 5 else ''})."
+                )
             stored.content_sha256 = digest
             logger.info("board %s: recorded the content hash of its stored version", board_id)
         elif stored.content_sha256 != digest:
             raise StaleBoardError(
                 f"board {board_id} is stored with content {stored.content_sha256[:12]}..., but "
                 f"{file_path} now hashes to {digest[:12]}...: the games would play the file while "
-                f"the database keeps the stored board.")
+                f"the database keeps the stored board."
+            )
     return inserted

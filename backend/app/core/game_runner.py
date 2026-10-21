@@ -10,6 +10,7 @@ draw drawn again, the same seeds derived from those), and the same recorder
 turn/reveal/proposal sequence. The engine, service and conductor stay seed-agnostic; all
 derivation lives here (see ``_derive`` and the seed scheme below).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -109,21 +110,23 @@ def _game_identity(master_seed: int, game_index: int) -> tuple[str, int, int]:
 @dataclass(frozen=True)
 class SeatSpec:
     """The identity of one seat's model: provider + model, plus the local-only ``think`` flag."""
-    provider: str          # "ollama" | "openrouter"
+
+    provider: str  # "ollama" | "openrouter"
     model_name: str
-    think: bool = False    # only meaningful for the local (ollama) client
+    think: bool = False  # only meaningful for the local (ollama) client
 
 
 @dataclass
 class GameRunResult:
     """The outcome of one headless game."""
+
     game_id: str
     run_id: str
     seed_game: int
-    status: str                    # "completed" | "error"
+    status: str  # "completed" | "error"
     # engine.state.result (e.g. "victory" / "loss_assassin" / ...)
     result: Optional[str]
-    error: Optional[str] = None    # error message when status == "error"
+    error: Optional[str] = None  # error message when status == "error"
     # The code of the error that ended the game, so the batch can tell a model's behaviour from a
     # provider failure: an LLMError's ("truncated_response", "timeout", ...), or "invariant_broken"
     # for a state that broke the game's rules (GameInvariantError); None for any other error.
@@ -164,7 +167,8 @@ def _enforce_ollama_version(seat_specs, *, enforce: bool) -> None:
             f"{served if served else 'unreachable or reports no version'}, but the batch is "
             f"validated against Ollama {expected} (config.EXPECTED_OLLAMA_VERSION, the image "
             f"docker-compose.yml pins). Point OLLAMA_HOST at that daemon, or run without "
-            f"enforcement.")
+            f"enforcement."
+        )
 
 
 def _normalize_digest(d: str) -> str:
@@ -175,7 +179,7 @@ def _normalize_digest(d: str) -> str:
     d = d.strip().lower()
     for prefix in ("sha256:", "sha256-"):
         if d.startswith(prefix):
-            return d[len(prefix):]
+            return d[len(prefix) :]
     return d
 
 
@@ -202,18 +206,21 @@ def _enforce_local_digests(snapshot: dict, *, enforce: bool) -> None:
             raise ModelDigestMismatchError(
                 f"seat {seat_index}: local model {model_name!r} has no expected digest in "
                 f"config.EXPECTED_LOCAL_DIGESTS; cannot certify reproducibility with digest "
-                f"enforcement on. Add its pinned digest, or run without enforcement.")
+                f"enforcement on. Add its pinned digest, or run without enforcement."
+            )
         served = entry.get("identity")
         if entry.get("identity_kind") != "ollama_digest" or not served:
             raise ModelDigestMismatchError(
                 f"seat {seat_index}: served digest for local model {model_name!r} is unavailable "
                 f"({entry.get('identity_kind')}); cannot certify it matches expected {expected}. "
-                f"Is the ollama daemon reachable and the model pulled?")
+                f"Is the ollama daemon reachable and the model pulled?"
+            )
         if _normalize_digest(served) != _normalize_digest(expected):
             raise ModelDigestMismatchError(
                 f"seat {seat_index}: served digest for local model {model_name!r} is {served}, "
                 f"expected {expected}. The batch is validated against the expected weights; "
-                f"aborting before any game runs.")
+                f"aborting before any game runs."
+            )
 
 
 # client construction / db gating
@@ -222,8 +229,9 @@ def default_client_factory(seat_index: int, spec: SeatSpec) -> LLMClient:
     The batch builds its provider health probes with it too."""
     if spec.provider == "openrouter":
         return LLMClientOpenRouter(model_name=spec.model_name, max_retries=_CLIENT_MAX_RETRIES)
-    return LLMClientLocal(model_name=spec.model_name, think=spec.think,
-                          max_retries=_CLIENT_MAX_RETRIES)
+    return LLMClientLocal(
+        model_name=spec.model_name, think=spec.think, max_retries=_CLIENT_MAX_RETRIES
+    )
 
 
 def _db_enabled() -> bool:
@@ -249,10 +257,16 @@ def served_registry_snapshot(seat_specs, *, enforce_digests: bool) -> dict:
     return snapshot
 
 
-def create_run(*, seat_specs, master_seed: int, temperature: float,
-               template_fingerprint: str, persist: bool = True,
-               enforce_digests: bool = False,
-               stimulus_manifest: Optional[dict] = None) -> tuple[str, Optional[dict]]:
+def create_run(
+    *,
+    seat_specs,
+    master_seed: int,
+    temperature: float,
+    template_fingerprint: str,
+    persist: bool = True,
+    enforce_digests: bool = False,
+    stimulus_manifest: Optional[dict] = None,
+) -> tuple[str, Optional[dict]]:
     """Mint one run: run the digest gate (once), build provenance, create the run row.
 
     ``stimulus_manifest`` (``board_id`` -> content hash of every board the batch schedules) is
@@ -278,9 +292,11 @@ def create_run(*, seat_specs, master_seed: int, temperature: float,
     if persist:
         from backend.app.db.models import RunModel
         from backend.app.db.session import session_scope
+
         with session_scope() as session:
             run = RunModel(
-                master_seed=Decimal(int(master_seed)), temperature=temperature,
+                master_seed=Decimal(int(master_seed)),
+                temperature=temperature,
                 model_registry_snapshot=snapshot,
                 prompt_template_version=template_fingerprint,
                 code_version=provenance.git_code_version(),
@@ -297,8 +313,14 @@ def create_run(*, seat_specs, master_seed: int, temperature: float,
 
 
 # dispatch
-async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
-                          recorder: GameRecorder, seed_game: int, flush) -> None:
+async def _dispatch_phase(
+    svc: LLMService,
+    clients,
+    engine: CodenamesDuetEngine,
+    recorder: GameRecorder,
+    seed_game: int,
+    flush,
+) -> None:
     """Dispatch exactly one turn for the current phase to the acting seat's client, with the
     per-(seat, turn) derived seeds. The engine is the single source of truth for whose turn it is.
 
@@ -311,42 +333,67 @@ async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
     game_id = engine.state.game_id
     if phase == GamePhase.GIVING_CLUE:
         cg = engine.state.clue_giver
-        logger.info("dispatch clue: game_id=%s turn=%s seat=%s",
-                    game_id, turn, cg)
-        await conduct_clue(svc, clients[cg], engine, recorder, player_id=cg,
-                           seed=_seed_play(seed_game, cg, turn))
+        logger.info("dispatch clue: game_id=%s turn=%s seat=%s", game_id, turn, cg)
+        await conduct_clue(
+            svc, clients[cg], engine, recorder, player_id=cg, seed=_seed_play(seed_game, cg, turn)
+        )
     elif phase == GamePhase.GUESSING:
         g = engine.state.guesser
-        logger.info("dispatch guess: game_id=%s turn=%s seat=%s",
-                    game_id, turn, g)
-        await conduct_guess(svc, clients[g], engine, recorder, player_id=g, flush=flush,
-                            seed=_seed_play(seed_game, g, turn),
-                            measurement_seed=_seed_meas(seed_game, g, turn))
+        logger.info("dispatch guess: game_id=%s turn=%s seat=%s", game_id, turn, g)
+        await conduct_guess(
+            svc,
+            clients[g],
+            engine,
+            recorder,
+            player_id=g,
+            flush=flush,
+            seed=_seed_play(seed_game, g, turn),
+            measurement_seed=_seed_meas(seed_game, g, turn),
+        )
     elif phase == GamePhase.SUDDEN_DEATH_LLM:
-        logger.info(
-            "dispatch sudden-death seat0: game_id=%s turn=%s", game_id, turn)
-        await conduct_sd_guess(svc, clients[0], engine, recorder, player_id=0, flush=flush,
-                               seed=_seed_play(seed_game, 0, turn),
-                               measurement_seed=_seed_meas(seed_game, 0, turn))
+        logger.info("dispatch sudden-death seat0: game_id=%s turn=%s", game_id, turn)
+        await conduct_sd_guess(
+            svc,
+            clients[0],
+            engine,
+            recorder,
+            player_id=0,
+            flush=flush,
+            seed=_seed_play(seed_game, 0, turn),
+            measurement_seed=_seed_meas(seed_game, 0, turn),
+        )
     elif phase == GamePhase.SUDDEN_DEATH_HUMAN:
-        logger.info(
-            "dispatch sudden-death seat1: game_id=%s turn=%s", game_id, turn)
-        await conduct_sd_guess(svc, clients[1], engine, recorder, player_id=1, flush=flush,
-                               seed=_seed_play(seed_game, 1, turn),
-                               measurement_seed=_seed_meas(seed_game, 1, turn))
+        logger.info("dispatch sudden-death seat1: game_id=%s turn=%s", game_id, turn)
+        await conduct_sd_guess(
+            svc,
+            clients[1],
+            engine,
+            recorder,
+            player_id=1,
+            flush=flush,
+            seed=_seed_play(seed_game, 1, turn),
+            measurement_seed=_seed_meas(seed_game, 1, turn),
+        )
     else:
-        raise RuntimeError(
-            f"Unexpected non-terminal phase {phase!r} in the dispatch loop.")
+        raise RuntimeError(f"Unexpected non-terminal phase {phase!r} in the dispatch loop.")
 
 
 # entry point
-async def run_single_game(*, board: Board, seat_specs, master_seed: int, temperature: float,
-                          run_id: Optional[str] = None, game_index: int = 0, persist: bool = True,
-                          client_factory: ClientFactory = default_client_factory,
-                          enforce_digests: bool = False,
-                          on_dispatch: Optional[DispatchHook] = None,
-                          service: Optional[LLMService] = None,
-                          strict_invariants: bool = True) -> GameRunResult:
+async def run_single_game(
+    *,
+    board: Board,
+    seat_specs,
+    master_seed: int,
+    temperature: float,
+    run_id: Optional[str] = None,
+    game_index: int = 0,
+    persist: bool = True,
+    client_factory: ClientFactory = default_client_factory,
+    enforce_digests: bool = False,
+    on_dispatch: Optional[DispatchHook] = None,
+    service: Optional[LLMService] = None,
+    strict_invariants: bool = True,
+) -> GameRunResult:
     """Play ONE complete LLM-vs-LLM Codenames Duet game and persist it.
 
     Game identity is deterministic in ``master_seed + game_index`` only (see ``_game_identity``);
@@ -391,17 +438,18 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     # temperature must be explicit; do not fall back to any default.
     if temperature is None:
         raise ValueError(
-            "run_single_game requires an explicit temperature; the 0.7 default is never used.")
+            "run_single_game requires an explicit temperature; the 0.7 default is never used."
+        )
     if len(seat_specs) != 2:
-        raise ValueError(
-            "seat_specs must have exactly two entries (one per seat).")
+        raise ValueError("seat_specs must have exactly two entries (one per seat).")
 
     # fail loud before any client/engine work so a missing DATABASE_URL wastes zero provider calls.
     # persist=False opts out entirely (no DB touched).
     if persist and not _db_enabled():
         raise RuntimeError(
             "run_single_game(persist=True) requires DATABASE_URL; refusing to burn provider calls "
-            "on a game that cannot be persisted. Pass persist=False for a dry run.")
+            "on a game that cannot be persisted. Pass persist=False for a dry run."
+        )
 
     # deterministic game id + game/engine seeds (independent of any DB-minted run_id).
     game_id, seed_game, seed_engine = _game_identity(master_seed, game_index)
@@ -414,7 +462,8 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     elif service.temperature != temperature:
         raise ValueError(
             f"the service samples at temperature {service.temperature}, but this game is played "
-            f"at {temperature}.")
+            f"at {temperature}."
+        )
     else:
         svc = service
 
@@ -425,28 +474,46 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     # record-only: no lookup may abort the game (see backend...provenance).
     if run_id is None:
         run_id, _ = create_run(
-            seat_specs=seat_specs, master_seed=master_seed, temperature=temperature,
-            template_fingerprint=svc.template_fingerprint(), persist=persist,
-            enforce_digests=enforce_digests)
+            seat_specs=seat_specs,
+            master_seed=master_seed,
+            temperature=temperature,
+            template_fingerprint=svc.template_fingerprint(),
+            persist=persist,
+            enforce_digests=enforce_digests,
+        )
 
     logger.info(
         "run_single_game start: run_id=%s game_id=%s master_seed=%s temperature=%s seats=%s",
-        run_id, game_id, master_seed, temperature,
-        [(s.provider, s.model_name, s.think) for s in seat_specs])
+        run_id,
+        game_id,
+        master_seed,
+        temperature,
+        [(s.provider, s.model_name, s.think) for s in seat_specs],
+    )
 
     # two clients, seeded engine (injected game_id), two-seat recorder.
-    clients = [client_factory(0, seat_specs[0]),
-               client_factory(1, seat_specs[1])]
-    engine = CodenamesDuetEngine(
-        board, rng=random.Random(seed_engine), game_id=game_id)
+    clients = [client_factory(0, seat_specs[0]), client_factory(1, seat_specs[1])]
+    engine = CodenamesDuetEngine(board, rng=random.Random(seed_engine), game_id=game_id)
     # Both seats carry the constant per-game temperature; the seed of each call is on its llm_call,
     # since the runner seeds per (seat, turn) - see GameSeatModel.
     recorder = GameRecorder(
-        game_id=game_id, board_id=board.board_id, start_player=engine.state.clue_giver,
-        seats=[SeatRecord(0, seat_specs[0].provider, seat_specs[0].model_name,
-                          requested_temperature=temperature),
-               SeatRecord(1, seat_specs[1].provider, seat_specs[1].model_name,
-                          requested_temperature=temperature)],
+        game_id=game_id,
+        board_id=board.board_id,
+        start_player=engine.state.clue_giver,
+        seats=[
+            SeatRecord(
+                0,
+                seat_specs[0].provider,
+                seat_specs[0].model_name,
+                requested_temperature=temperature,
+            ),
+            SeatRecord(
+                1,
+                seat_specs[1].provider,
+                seat_specs[1].model_name,
+                requested_temperature=temperature,
+            ),
+        ],
     )
     recorder.run_id = run_id
     recorder.derived_seed = seed_game
@@ -472,7 +539,8 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
         while not engine.state.is_game_over:
             if dispatches >= _MAX_DISPATCHES:
                 raise RuntimeError(
-                    f"Game {game_id} exceeded {_MAX_DISPATCHES} dispatches without terminating.")
+                    f"Game {game_id} exceeded {_MAX_DISPATCHES} dispatches without terminating."
+                )
             dispatches += 1
             await _dispatch_phase(svc, clients, engine, recorder, seed_game, _flush_if_over)
             if on_dispatch is not None:
@@ -485,33 +553,55 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
         # re-asserting here (idempotent) guarantees persistence even for terminal transitions that do
         # not end on a reveal.
         _flush_if_over(engine, recorder)
-        logger.info("run_single_game completed: game_id=%s result=%s",
-                    game_id, engine.state.result)
-        return GameRunResult(game_id=game_id, run_id=run_id, seed_game=seed_game,
-                             status="completed", result=engine.state.result,
-                             invariant_violations=list(guard.violations))
+        logger.info("run_single_game completed: game_id=%s result=%s", game_id, engine.state.result)
+        return GameRunResult(
+            game_id=game_id,
+            run_id=run_id,
+            seed_game=seed_game,
+            status="completed",
+            result=engine.state.result,
+            invariant_violations=list(guard.violations),
+        )
     except Exception as exc:
         # Terminal error: either deterministic, or a retriable error whose client-side retry budget
         # was exhausted. The boundary sees only terminals - transient retry lives in the client.
         # Flush the partial game as status='error', then return an error result.
-        logger.error("run_single_game failed: game_id=%s run_id=%s error=%s",
-                     game_id, run_id, exc, exc_info=True)
+        logger.error(
+            "run_single_game failed: game_id=%s run_id=%s error=%s",
+            game_id,
+            run_id,
+            exc,
+            exc_info=True,
+        )
         error_code = exc.code if isinstance(exc, (LLMError, GameInvariantError)) else None
         _error_flush(engine, recorder, game_id, exc, error_code, persist=persist)
-        return GameRunResult(game_id=game_id, run_id=run_id, seed_game=seed_game,
-                             status="error", result=engine.state.result, error=str(exc),
-                             error_code=error_code, invariant_violations=list(guard.violations))
+        return GameRunResult(
+            game_id=game_id,
+            run_id=run_id,
+            seed_game=seed_game,
+            status="error",
+            result=engine.state.result,
+            error=str(exc),
+            error_code=error_code,
+            invariant_violations=list(guard.violations),
+        )
     finally:
         for client in clients:
             try:
                 await client.close()
             except Exception:
-                logger.debug("client close failed for game_id=%s",
-                             game_id, exc_info=True)
+                logger.debug("client close failed for game_id=%s", game_id, exc_info=True)
 
 
-def _error_flush(engine: CodenamesDuetEngine, recorder: GameRecorder, game_id: str,
-                 exc: Exception, error_code: Optional[str], *, persist: bool) -> None:
+def _error_flush(
+    engine: CodenamesDuetEngine,
+    recorder: GameRecorder,
+    game_id: str,
+    exc: Exception,
+    error_code: Optional[str],
+    *,
+    persist: bool,
+) -> None:
     """Hardened partial-game flush as status='error', with why the game failed (``exc``, and its
     code or None; see ``GameRunResult.error_code``). Never raises: if the error-flush itself fails it is logged richly so
     it cannot mask the original error that triggered it."""
@@ -526,4 +616,6 @@ def _error_flush(engine: CodenamesDuetEngine, recorder: GameRecorder, game_id: s
     except Exception:
         logger.error(
             "hardened error-flush failed for game_id=%s; original error is preserved.",
-            game_id, exc_info=True)
+            game_id,
+            exc_info=True,
+        )

@@ -40,11 +40,7 @@ def _unique_column_sets(table) -> set[frozenset[str]]:
 
 
 def _check_texts(table) -> list[str]:
-    return [
-        str(c.sqltext)
-        for c in table.constraints
-        if isinstance(c, sa.CheckConstraint)
-    ]
+    return [str(c.sqltext) for c in table.constraints if isinstance(c, sa.CheckConstraint)]
 
 
 def test_all_expected_tables_present():
@@ -131,8 +127,7 @@ def test_jsonb_columns():
         ("llm_call", "rendered_prompt"),
         ("clue", "targets_raw"),
     ):
-        assert isinstance(tables[tname].c[cname].type,
-                          postgresql.JSONB), (tname, cname)
+        assert isinstance(tables[tname].c[cname].type, postgresql.JSONB), (tname, cname)
 
 
 def test_prompt_capture_columns():
@@ -156,8 +151,11 @@ def test_clue_invalid_reason_column():
 def test_0007_columns():
     """0007: the board's content hash and the game's error, nullable text."""
     tables = Base.metadata.tables
-    for tname, cname in (("board", "content_sha256"), ("game", "error_code"),
-                         ("game", "error_message")):
+    for tname, cname in (
+        ("board", "content_sha256"),
+        ("game", "error_code"),
+        ("game", "error_message"),
+    ):
         col = tables[tname].c[cname]
         assert isinstance(col.type, sa.Text) and col.nullable is True, (tname, cname)
     for cname in ("stimulus_manifest", "environment_snapshot"):
@@ -167,41 +165,29 @@ def test_0007_columns():
 def test_the_columns_nothing_wrote_are_gone():
     """0007 dropped them: their defaults read as data (time_marker_placed was always false)."""
     tables = Base.metadata.tables
-    for tname, cname in (("reveal_event", "time_marker_placed"), ("llm_call", "execution_mode"),
-                         ("run", "regime_label"), ("game_seat", "precision"),
-                         ("game_seat", "requested_seed")):
+    for tname, cname in (
+        ("reveal_event", "time_marker_placed"),
+        ("llm_call", "execution_mode"),
+        ("run", "regime_label"),
+        ("game_seat", "precision"),
+        ("game_seat", "requested_seed"),
+    ):
         assert cname not in tables[tname].c, (tname, cname)
     assert "notes" in tables["run"].c  # written by each resume
 
 
 def test_unique_constraints():
     tables = Base.metadata.tables
-    assert frozenset({"board_id", "card_id"}) in _unique_column_sets(
-        tables["word_card"])
-    assert frozenset({"board_id", "text"}) in _unique_column_sets(
-        tables["word_card"])
-    assert frozenset({"frame_id", "text"}) in _unique_column_sets(
-        tables["embedding_mpnet"]
-    )
-    assert frozenset({"frame_id", "text"}) in _unique_column_sets(
-        tables["word_load"])
-    assert frozenset({"recipe_id", "text"}) in _unique_column_sets(
-        tables["embedding_llama"]
-    )
-    assert frozenset({"recipe_id", "text"}) in _unique_column_sets(
-        tables["embedding_mistral"]
-    )
-    assert frozenset({"game_id", "seat_index"}) in _unique_column_sets(
-        tables["game_seat"]
-    )
-    assert frozenset({"game_id", "turn_number"}
-                     ) in _unique_column_sets(tables["turn"])
-    assert frozenset({"turn_id", "position_in_turn"}) in _unique_column_sets(
-        tables["reveal_event"]
-    )
-    assert frozenset({"clue_id", "position"}) in _unique_column_sets(
-        tables["clue_target"]
-    )
+    assert frozenset({"board_id", "card_id"}) in _unique_column_sets(tables["word_card"])
+    assert frozenset({"board_id", "text"}) in _unique_column_sets(tables["word_card"])
+    assert frozenset({"frame_id", "text"}) in _unique_column_sets(tables["embedding_mpnet"])
+    assert frozenset({"frame_id", "text"}) in _unique_column_sets(tables["word_load"])
+    assert frozenset({"recipe_id", "text"}) in _unique_column_sets(tables["embedding_llama"])
+    assert frozenset({"recipe_id", "text"}) in _unique_column_sets(tables["embedding_mistral"])
+    assert frozenset({"game_id", "seat_index"}) in _unique_column_sets(tables["game_seat"])
+    assert frozenset({"game_id", "turn_number"}) in _unique_column_sets(tables["turn"])
+    assert frozenset({"turn_id", "position_in_turn"}) in _unique_column_sets(tables["reveal_event"])
+    assert frozenset({"clue_id", "position"}) in _unique_column_sets(tables["clue_target"])
     assert frozenset({"guess_proposal_id", "position"}) in _unique_column_sets(
         tables["guess_proposal_item"]
     )
@@ -210,7 +196,8 @@ def test_unique_constraints():
     # so uniqueness there is on (turn_id, kind, guesser_seat).
     assert frozenset({"turn_id"}) in _unique_column_sets(tables["clue"])
     assert frozenset({"turn_id", "kind", "guesser_seat"}) in _unique_column_sets(
-        tables["guess_proposal"])
+        tables["guess_proposal"]
+    )
 
 
 def test_extra_indexes_present():

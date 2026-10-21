@@ -144,7 +144,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Compute clue-giver-role bias metrics (IAE, TAC/TAI). Read-only."
     )
     parser.add_argument(
-        "--frame-id", default=DEFAULT_FRAME_ID, help="measurement frame id (default: the live frame)"
+        "--frame-id",
+        default=DEFAULT_FRAME_ID,
+        help="measurement frame id (default: the live frame)",
     )
     parser.add_argument(
         "--master-seed",
@@ -168,9 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     with session_scope() as session:
-        report = compute_clue_metrics(
-            session, frame_id=args.frame_id, master_seed=args.master_seed
-        )
+        report = compute_clue_metrics(session, frame_id=args.frame_id, master_seed=args.master_seed)
 
     if report.n_turns == 0:
         print(

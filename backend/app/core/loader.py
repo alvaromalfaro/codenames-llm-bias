@@ -40,9 +40,7 @@ class BoardLoader:
         file_path = self.data_path / filename
 
         if not file_path.exists():
-            raise FileNotFoundError(
-                f"Board file '{filename}' not found in '{self.data_path}'."
-            )
+            raise FileNotFoundError(f"Board file '{filename}' not found in '{self.data_path}'.")
 
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -58,9 +56,7 @@ class BoardLoader:
         :rtype: List[str]
         """
         if not self.data_path.exists():
-            raise FileNotFoundError(
-                f"Data directory '{self.data_path}' not found."
-            )
+            raise FileNotFoundError(f"Data directory '{self.data_path}' not found.")
 
         return [f.name for f in self.data_path.glob("*.json")]
 
@@ -81,8 +77,7 @@ class BoardLoader:
                 board = self.load_board(file_path.name)
             except Exception as exc:
                 if self.strict:
-                    raise InvalidBoardFileError(
-                        f"{file_path} is not a valid board: {exc}") from exc
+                    raise InvalidBoardFileError(f"{file_path} is not a valid board: {exc}") from exc
                 logger.error("Error loading board from '%s'", file_path, exc_info=True)
                 continue
             if board.category not in boards:

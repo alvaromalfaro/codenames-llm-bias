@@ -4,8 +4,15 @@ import uuid
 import random
 from pydantic import ValidationError
 from backend.app.models.game_schemas import (
-    Board, GamePhase, GameState, CardRole, ClueEntry, WordCard, ResolvedTarget,
-    ConfidenceRanking, SuddenDeathEntry,
+    Board,
+    GamePhase,
+    GameState,
+    CardRole,
+    ClueEntry,
+    WordCard,
+    ResolvedTarget,
+    ConfidenceRanking,
+    SuddenDeathEntry,
 )
 from backend.app.core.clue_validator import ClueValidator
 
@@ -13,8 +20,7 @@ logger = logging.getLogger(__name__)
 
 # The sudden-death phase in which each seat is the one guessing. Both seats are LLMs; the phase
 # names are from the earlier human-vs-model setup.
-_SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM,
-                     1: GamePhase.SUDDEN_DEATH_HUMAN}
+_SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM, 1: GamePhase.SUDDEN_DEATH_HUMAN}
 
 
 class CodenamesDuetEngine:
@@ -25,8 +31,7 @@ class CodenamesDuetEngine:
     conditions.
     """
 
-    def __init__(self, board: Board, rng: random.Random | None = None,
-                 game_id: str | None = None):
+    def __init__(self, board: Board, rng: random.Random | None = None, game_id: str | None = None):
         """
         Initializes the CodenamesDuetEngine with a given board configuration and player identifiers.
 
@@ -45,20 +50,32 @@ class CodenamesDuetEngine:
             game_id=game_id if game_id is not None else str(uuid.uuid4()),
             board=board.model_copy(deep=True),
             clue_giver=start_player,
-            guesser=1 - start_player
+            guesser=1 - start_player,
         )
         self.clue_validator = ClueValidator(board.cards)
-        logger.info("new game %s on board %s: seat %s gives the first clue",
-                    self.state.game_id, board.board_id, start_player)
+        logger.info(
+            "new game %s on board %s: seat %s gives the first clue",
+            self.state.game_id,
+            board.board_id,
+            start_player,
+        )
 
     def _tokens(self) -> str:
         """The timer tokens, for the log: the reserve and where the spent ones went."""
         s = self.state
-        return (f"reserve={s.timer_tokens} bystander={s.bystander_tokens} check={s.check_tokens} "
-                f"penalty={s.penalty_tokens}")
+        return (
+            f"reserve={s.timer_tokens} bystander={s.bystander_tokens} check={s.check_tokens} "
+            f"penalty={s.penalty_tokens}"
+        )
 
-    def receive_clue(self, clue: str, count: int, player_id: int, raw_payload: Optional[dict] = None,
-                     targets: Optional[list[str]] = None) -> ClueEntry:
+    def receive_clue(
+        self,
+        clue: str,
+        count: int,
+        player_id: int,
+        raw_payload: Optional[dict] = None,
+        targets: Optional[list[str]] = None,
+    ) -> ClueEntry:
         """
         Processes a clue provided by the clue-giving player.
 
@@ -88,8 +105,7 @@ class CodenamesDuetEngine:
         :raises PermissionError: If a player other than the clue giver attempts to provide a clue.
         """
         if self.state.current_phase != GamePhase.GIVING_CLUE:
-            raise ValueError(
-                "Clues can only be given during the GIVING_CLUE phase.")
+            raise ValueError("Clues can only be given during the GIVING_CLUE phase.")
         if player_id != self.state.clue_giver:
             raise PermissionError("Only the clue giver can provide a clue.")
 
@@ -102,16 +118,22 @@ class CodenamesDuetEngine:
                 turn_number=self.state.turn_number,
                 targets=targets,
                 targets_resolved=self._resolve_targets(targets, player_id),
-                raw_payload=raw_payload
+                raw_payload=raw_payload,
             )
         except ValidationError as e:
             raise ValueError(str(e)) from e
         valid, reason = self.clue_validator.is_valid(clue_entry)
         if not valid:
             clue_entry.invalid_reason = reason
-        logger.info("turn %s: seat %s gives the clue %r for %s (targets %s)%s",
-                    self.state.turn_number, player_id, clue_entry.clue, count, targets,
-                    "" if valid else f" - INVALID: {reason}")
+        logger.info(
+            "turn %s: seat %s gives the clue %r for %s (targets %s)%s",
+            self.state.turn_number,
+            player_id,
+            clue_entry.clue,
+            count,
+            targets,
+            "" if valid else f" - INVALID: {reason}",
+        )
 
         # Store the clue
         self.state.current_clue = clue_entry
@@ -153,19 +175,21 @@ class CodenamesDuetEngine:
         board = self.state.board
         resolved: list[ResolvedTarget] = []
         for word in targets:
-            card = next(
-                (c for c in board.cards if c.text.lower() == word.lower()), None)
+            card = next((c for c in board.cards if c.text.lower() == word.lower()), None)
             if card is None:
                 resolved.append(ResolvedTarget(word=word))
                 continue
-            giver_role = (card.llm_perspective_role if player_id == 0
-                          else card.human_perspective_role)
-            resolved.append(ResolvedTarget(
-                word=word,
-                card_id=card.id,
-                giver_role=giver_role,
-                revealed_at_clue=card.revealed,
-            ))
+            giver_role = (
+                card.llm_perspective_role if player_id == 0 else card.human_perspective_role
+            )
+            resolved.append(
+                ResolvedTarget(
+                    word=word,
+                    card_id=card.id,
+                    giver_role=giver_role,
+                    revealed_at_clue=card.revealed,
+                )
+            )
         return resolved
 
     def attach_confidence_ranking(self, ranking: ConfidenceRanking) -> None:
@@ -180,8 +204,7 @@ class CodenamesDuetEngine:
         :raises ValueError: If there is no live current clue to attach the ranking to.
         """
         if self.state.current_clue is None:
-            raise ValueError(
-                "No current clue to attach a confidence ranking to.")
+            raise ValueError("No current clue to attach a confidence ranking to.")
         self.state.current_clue.confidence_ranking = ranking
 
     def attach_sudden_death_ranking(self, ranking: ConfidenceRanking, player_id: int = 0) -> None:
@@ -226,43 +249,39 @@ class CodenamesDuetEngine:
         _sd_phases = [GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]
         if self.state.current_phase not in [GamePhase.GUESSING] + _sd_phases:
             raise PermissionError(
-                "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or SUDDEN_DEATH_LLM phase.")
+                "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or SUDDEN_DEATH_LLM phase."
+            )
 
         if self.state.current_phase == GamePhase.GUESSING and player_id != self.state.guesser:
             raise PermissionError("Only the guesser can make guesses.")
 
         if self.state.current_phase == GamePhase.SUDDEN_DEATH_HUMAN and player_id != 1:
-            raise PermissionError(
-                "Only the human can guess during SUDDEN_DEATH_HUMAN phase.")
+            raise PermissionError("Only the human can guess during SUDDEN_DEATH_HUMAN phase.")
 
         if self.state.current_phase == GamePhase.SUDDEN_DEATH_LLM and player_id != 0:
-            raise PermissionError(
-                "Only the LLM can guess during SUDDEN_DEATH_LLM phase.")
+            raise PermissionError("Only the LLM can guess during SUDDEN_DEATH_LLM phase.")
 
         if self.state.current_phase in _sd_phases and self.state.pending_words[player_id] == 0:
             raise PermissionError(
-                "The player has already revealed all of their agents and cannot make more guesses.")
+                "The player has already revealed all of their agents and cannot make more guesses."
+            )
 
         card = self.state.board.get_card_by_id(card_id)
         if card is None:
-            raise ValueError(
-                f"There is no card with id {card_id} on this board.")
+            raise ValueError(f"There is no card with id {card_id} on this board.")
 
         # Coverage is a property of the word, not of the seat asking: once an agent card - or a
         # second time token - sits on a word, NEITHER player may touch it again. Reading the per-seat
         # bookkeeping (revealed_by) here instead would let the seat that did not cover the word
         # re-guess it and have it resolved against the new clue giver's face.
         if card.revealed:
-            raise ValueError(
-                "This card is covered by an agent card and cannot be guessed.")
+            raise ValueError("This card is covered by an agent card and cannot be guessed.")
 
         if len(card.time_marker_by) == 2:
-            raise ValueError(
-                "This card is covered by two time tokens and cannot be guessed.")
+            raise ValueError("This card is covered by two time tokens and cannot be guessed.")
 
         if player_id in card.time_marker_by:
-            raise ValueError(
-                "This card is currently marked by a time token and cannot be guessed.")
+            raise ValueError("This card is currently marked by a time token and cannot be guessed.")
 
         # Determine the role of the card for the guessing player and update the number of guesses made
         card_role = card.human_perspective_role if player_id == 0 else card.llm_perspective_role
@@ -271,9 +290,16 @@ class CodenamesDuetEngine:
         # Resolve the guess based on the current game phase and return result
         phase = self.state.current_phase
         own_role = card.llm_perspective_role if player_id == 0 else card.human_perspective_role
-        logger.info("%s: seat %s touches %s (card %s): %s on the partner's side, %s on its own%s",
-                    phase.value, player_id, card.text, card.id, card_role.value, own_role.value,
-                    ", under the partner's time token" if card.time_marker_by else "")
+        logger.info(
+            "%s: seat %s touches %s (card %s): %s on the partner's side, %s on its own%s",
+            phase.value,
+            player_id,
+            card.text,
+            card.id,
+            card_role.value,
+            own_role.value,
+            ", under the partner's time token" if card.time_marker_by else "",
+        )
         if phase in [GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]:
             result = self._resolve_guess_sudden_death(card, card_role, player_id)
         else:
@@ -293,20 +319,22 @@ class CodenamesDuetEngine:
             guess.
         """
         if self.state.current_phase != GamePhase.GUESSING:
-            raise PermissionError(
-                "Turns can only be passed during the GUESSING phase.")
+            raise PermissionError("Turns can only be passed during the GUESSING phase.")
         if player_id != self.state.guesser:
             raise PermissionError("Only the guesser can pass the turn.")
         if self.state.guesses_made_this_turn < 1:
-            raise ValueError(
-                "The guesser must make at least one guess before passing.")
+            raise ValueError("The guesser must make at least one guess before passing.")
 
         # The guesser takes a token from the reserve and keeps it, check face up (§6.5)
         self.state.timer_tokens -= 1
         self.state.check_tokens += 1
-        logger.info("turn %s: seat %s stops after %s guess(es) and takes a check token | %s",
-                    self.state.turn_number, player_id, self.state.guesses_made_this_turn,
-                    self._tokens())
+        logger.info(
+            "turn %s: seat %s stops after %s guess(es) and takes a check token | %s",
+            self.state.turn_number,
+            player_id,
+            self.state.guesses_made_this_turn,
+            self._tokens(),
+        )
 
         self._switch_roles()
 
@@ -330,13 +358,16 @@ class CodenamesDuetEngine:
         """
         if self.state.current_phase not in _SD_PHASE_BY_SEAT.values():
             raise PermissionError(
-                "Sudden death can only be conceded during the SUDDEN_DEATH_HUMAN or SUDDEN_DEATH_LLM phase.")
+                "Sudden death can only be conceded during the SUDDEN_DEATH_HUMAN or SUDDEN_DEATH_LLM phase."
+            )
         if self.state.current_phase != _SD_PHASE_BY_SEAT.get(player_id):
-            raise PermissionError(
-                "Only the player guessing in sudden death can concede it.")
+            raise PermissionError("Only the player guessing in sudden death can concede it.")
 
-        logger.info("seat %s stops in sudden death with %s word(s) still pending: it concedes",
-                    player_id, self.state.pending_words[player_id])
+        logger.info(
+            "seat %s stops in sudden death with %s word(s) still pending: it concedes",
+            player_id,
+            self.state.pending_words[player_id],
+        )
         self._finish_game(result="loss_stopped_sd")
         return "loss_stopped_sd"
 
@@ -367,7 +398,9 @@ class CodenamesDuetEngine:
 
             return "civilian"
 
-    def _resolve_guess_sudden_death(self, card: WordCard, card_role: CardRole, player_id: int) -> str:
+    def _resolve_guess_sudden_death(
+        self, card: WordCard, card_role: CardRole, player_id: int
+    ) -> str:
         """
         In the sudden death phase, both players are effectively guessers and make guesses on their
         own cards. If a player guesses an agent, it is revealed as normal. If they guess a civilian
@@ -411,7 +444,9 @@ class CodenamesDuetEngine:
         # Check for win condition
         if self.state.pending_words[0] == 0 and self.state.pending_words[1] == 0:
             in_sd = self.state.current_phase in [
-                GamePhase.SUDDEN_DEATH_HUMAN, GamePhase.SUDDEN_DEATH_LLM]
+                GamePhase.SUDDEN_DEATH_HUMAN,
+                GamePhase.SUDDEN_DEATH_LLM,
+            ]
             # The winning turn also spends a token (§10). The rules do not say whether it counts as
             # a check (§14); here it does, since the turn ends on a hit, just as a voluntary stop.
             # In sudden death the reserve is already empty, so there is nothing to spend.
@@ -426,8 +461,10 @@ class CodenamesDuetEngine:
         # is nothing left, and every word it could still touch is beige or black on the giver's face.
         # The turn ends here as a voluntary stop - one token, exactly as pass_turn - and
         # _switch_roles hands every remaining guess to the partner.
-        if (self.state.current_phase == GamePhase.GUESSING
-                and self.state.pending_words[guessed_by] == 0):
+        if (
+            self.state.current_phase == GamePhase.GUESSING
+            and self.state.pending_words[guessed_by] == 0
+        ):
             self.pass_turn(guessed_by)
             return "agent_turn_end"
 
@@ -435,8 +472,10 @@ class CodenamesDuetEngine:
         # only handoff of the fixed seat 0 -> seat 1 order (see _switch_roles). Re-arm the
         # measurement flag so seat 1's sudden-death confidence ranking is elicited once, at its own
         # pre-first-selection instant (consumed at that seat's SD proposal entry).
-        if (self.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
-                and self.state.pending_words[0] == 0):
+        if (
+            self.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
+            and self.state.pending_words[0] == 0
+        ):
             self.state.current_phase = GamePhase.SUDDEN_DEATH_HUMAN
             if self.state.pending_words[1] > 0:
                 self.state.sd_measurement_pending = True
@@ -456,8 +495,13 @@ class CodenamesDuetEngine:
         self.state.is_game_over = True
         self.state.current_phase = GamePhase.GAME_OVER
         self.state.result = result
-        logger.info("game over: %s after %s turn(s) | %s pending=%s", result,
-                    self.state.turn_number, self._tokens(), self.state.pending_words)
+        logger.info(
+            "game over: %s after %s turn(s) | %s pending=%s",
+            result,
+            self.state.turn_number,
+            self._tokens(),
+            self.state.pending_words,
+        )
 
     def _switch_roles(self):
         """
@@ -499,13 +543,21 @@ class CodenamesDuetEngine:
             # elicited exactly once, before the first sudden-death guess. Detected here; consumed at
             # the LLM's sudden-death proposal entry.
             self.state.sd_measurement_pending = True
-            logger.info("the reserve is empty with words pending %s: sudden death, %s",
-                        self.state.pending_words, self.state.current_phase.value)
+            logger.info(
+                "the reserve is empty with words pending %s: sudden death, %s",
+                self.state.pending_words,
+                self.state.current_phase.value,
+            )
         elif not self.state.is_game_over:
-            logger.info("turn %s: seat %s gives the clue, seat %s guesses%s | %s pending=%s",
-                        self.state.turn_number, next_giver, next_guesser,
-                        " (roles kept: the other seat has nothing pending, §6.8)" if roles_kept
-                        else "", self._tokens(), self.state.pending_words)
+            logger.info(
+                "turn %s: seat %s gives the clue, seat %s guesses%s | %s pending=%s",
+                self.state.turn_number,
+                next_giver,
+                next_guesser,
+                " (roles kept: the other seat has nothing pending, §6.8)" if roles_kept else "",
+                self._tokens(),
+                self.state.pending_words,
+            )
 
     def _any_pending_words(self) -> bool:
         """

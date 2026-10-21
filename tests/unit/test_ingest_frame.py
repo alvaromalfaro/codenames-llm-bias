@@ -65,9 +65,10 @@ def test_frame_row_shape_columns_and_jsonb():
         assert construction["method"] == "mean_difference"
         assert construction["weat_sets"] == [6, 7, 8]
         cref = construction["mu_bar"]["centering_reference"]
-        assert cref["n_reference_items"] == sidecar["mu_bar"]["centering_reference"][
-            "n_reference_items"
-        ]
+        assert (
+            cref["n_reference_items"]
+            == sidecar["mu_bar"]["centering_reference"]["n_reference_items"]
+        )
         assert cref["attribute_counts_by_pole"]["male"] == 19
         assert cref["attribute_counts_by_pole"]["female"] == 19
         assert cref["loaded_counts_by_pole"] == {
@@ -123,11 +124,15 @@ def test_full_startup_order_frame_then_boards_links_all_28():
         ).all()
         assert len(joined) == 28
 
-        distinct = session.execute(
-            select(BoardModel.measurement_frame_id)
-            .where(BoardModel.measurement_frame_id.isnot(None))
-            .distinct()
-        ).scalars().all()
+        distinct = (
+            session.execute(
+                select(BoardModel.measurement_frame_id)
+                .where(BoardModel.measurement_frame_id.isnot(None))
+                .distinct()
+            )
+            .scalars()
+            .all()
+        )
         assert distinct == [target]
 
 

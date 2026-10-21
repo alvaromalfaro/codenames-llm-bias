@@ -97,8 +97,7 @@ def _print_iae(models, iae_results, decidable) -> None:
         result = iae_results[model_ref]
         cell = result.cells.get("iae")
         if cell is None:
-            print(
-                f"  {model_ref:<26} {'-':>8}   (no decidable dilemma in the full data)")
+            print(f"  {model_ref:<26} {'-':>8}   (no decidable dilemma in the full data)")
             continue
         excludes = {True: "yes", False: "no", None: "-"}[cell.excludes_null]
         flag = "" if cell.reliable else "  UNRELIABLE"
@@ -110,8 +109,10 @@ def _print_iae(models, iae_results, decidable) -> None:
 
 
 def _print_tac_tai(model_ref: str, result: BootstrapResult) -> None:
-    print(f"\n  {model_ref}   ({result.n_clusters} games as clusters, "
-          f"{result.n_replicates} replicates, {result.elapsed_seconds:.1f}s)")
+    print(
+        f"\n  {model_ref}   ({result.n_clusters} games as clusters, "
+        f"{result.n_replicates} replicates, {result.elapsed_seconds:.1f}s)"
+    )
     print(
         f"    {'cell':<9} {'value':>8} {'95% CI':>19} {'SE':>8} {'MDE':>8} "
         f"{'dropped':>8}  {'excl 0':>7}"
@@ -121,13 +122,13 @@ def _print_tac_tai(model_ref: str, result: BootstrapResult) -> None:
             cell = result.cells.get(f"{name}_{suffix}")
             if cell is None:
                 print(
-                    f"    {name + '_' + suffix:<9} {'-':>8}   (no eligible pair in the full data)")
+                    f"    {name + '_' + suffix:<9} {'-':>8}   (no eligible pair in the full data)"
+                )
                 continue
             # Only the gap has a meaningful reference point; a rate's distance from 0 is not a
             # finding, so the flag is suppressed rather than printed as if it were one.
             excludes = (
-                {True: "yes", False: "no",
-                    None: "-"}[cell.excludes_null] if name == "gap" else ""
+                {True: "yes", False: "no", None: "-"}[cell.excludes_null] if name == "gap" else ""
             )
             flag = "" if cell.reliable else "  UNRELIABLE"
             print(
@@ -138,8 +139,7 @@ def _print_tac_tai(model_ref: str, result: BootstrapResult) -> None:
 
     contrast = result.contrasts.get(GAP_MONOTONICITY_CONTRAST[0])
     if contrast is not None:
-        excludes = {True: "yes", False: "no",
-                    None: "-"}[contrast.excludes_zero]
+        excludes = {True: "yes", False: "no", None: "-"}[contrast.excludes_zero]
         flag = "" if contrast.reliable else "  UNRELIABLE"
         print(
             f"    {GAP_MONOTONICITY_CONTRAST[0]:<18} diff {_fmt(contrast.point):>8} "
@@ -157,8 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--replicates", type=int, default=DEFAULT_REPLICATES, help="bootstrap replicates B"
     )
-    parser.add_argument("--seed", type=int,
-                        default=DEFAULT_SEED, help="bootstrap RNG seed")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="bootstrap RNG seed")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     return parser
@@ -175,8 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     with session_scope() as session:
         geometry = FrameGeometry.load(session, args.frame_id)
         boards = load_boards(session)
-        turn_states = load_turn_states(
-            session, master_seed=args.master_seed, boards=boards)
+        turn_states = load_turn_states(session, master_seed=args.master_seed, boards=boards)
         observations = collect_dilemma_observations(turn_states, boards)
         raw_pairs = collect_pair_observations(turn_states, boards, geometry)
 
@@ -187,10 +185,7 @@ def main(argv: list[str] | None = None) -> int:
         print("no clue-giver observations; nothing to bootstrap", file=sys.stderr)
         return 1
 
-    models = sorted(
-        {obs.model_ref for obs in observations} | {
-            pair.model_ref for pair in pairs}
-    )
+    models = sorted({obs.model_ref for obs in observations} | {pair.model_ref for pair in pairs})
 
     # The decidable n printed next to each IAE interval, taken from the full data.
     decidable = {
@@ -238,15 +233,12 @@ def main(argv: list[str] | None = None) -> int:
                         model_ref: {
                             "n_clusters": iae_results[model_ref].n_clusters,
                             "n_decidable": decidable.get(model_ref, 0),
-                            "iae": {
-                                n: vars(c) for n, c in iae_results[model_ref].cells.items()
-                            },
+                            "iae": {n: vars(c) for n, c in iae_results[model_ref].cells.items()},
                             "tac_tai": {
                                 n: vars(c) for n, c in tac_tai_results[model_ref].cells.items()
                             },
                             "contrasts": {
-                                n: vars(c)
-                                for n, c in tac_tai_results[model_ref].contrasts.items()
+                                n: vars(c) for n, c in tac_tai_results[model_ref].contrasts.items()
                             },
                         }
                         for model_ref in models
@@ -266,11 +258,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"run seed    : {args.master_seed}")
     print("boards      : probe only, completed games")
     print("clusters    : games in which the model gave clues (shared by both metrics)")
-    print(
-        f"bootstrap   : B={args.replicates}, seed={args.seed}, percentile CI (2.5, 97.5)")
+    print(f"bootstrap   : B={args.replicates}, seed={args.seed}, percentile CI (2.5, 97.5)")
     if cuts:
-        print(
-            f"tercile cuts: c33={cuts[0]:.6f}  c66={cuts[1]:.6f}  (frozen before the bootstrap)")
+        print(f"tercile cuts: c33={cuts[0]:.6f}  c66={cuts[1]:.6f}  (frozen before the bootstrap)")
     print("MDE         : 2.8016 x bootstrap SE, alpha 0.05, power 0.8. No p-values.")
 
     _print_iae(models, iae_results, decidable)

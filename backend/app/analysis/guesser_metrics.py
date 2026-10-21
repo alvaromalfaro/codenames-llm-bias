@@ -110,18 +110,15 @@ class DataGaps:
 
     def merged_with(self, other: DataGaps) -> DataGaps:
         return DataGaps(
-            unmatched_ranking_words=self.unmatched_ranking_words +
-            other.unmatched_ranking_words,
-            ranking_words_not_offered=self.ranking_words_not_offered +
-            other.ranking_words_not_offered,
-            cards_without_embedding=self.cards_without_embedding +
-            other.cards_without_embedding,
+            unmatched_ranking_words=self.unmatched_ranking_words + other.unmatched_ranking_words,
+            ranking_words_not_offered=self.ranking_words_not_offered
+            + other.ranking_words_not_offered,
+            cards_without_embedding=self.cards_without_embedding + other.cards_without_embedding,
             divergent_duplicate_cards=(
                 self.divergent_duplicate_cards + other.divergent_duplicate_cards
             ),
             rankings_with_divergent_duplicates=(
-                self.rankings_with_divergent_duplicates +
-                other.rankings_with_divergent_duplicates
+                self.rankings_with_divergent_duplicates + other.rankings_with_divergent_duplicates
             ),
         )
 
@@ -239,13 +236,13 @@ def resolve_ranking_confidences(
                 divergent |= {key}
             continue
         seen[key] = confidence
-    usable = {word: value for word,
-              value in seen.items() if word not in divergent}
+    usable = {word: value for word, value in seen.items() if word not in divergent}
     return usable, divergent
 
 
-def words_offered(cards: Mapping[int, str], earlier_reveals: Iterable[tuple[int, int, str]],
-                  guesser_seat: int) -> frozenset[str]:
+def words_offered(
+    cards: Mapping[int, str], earlier_reveals: Iterable[tuple[int, int, str]], guesser_seat: int
+) -> frozenset[str]:
     """The board words a guesser could still touch when its turn began. They are the words the
     measurement offered it: its prompt lists exactly those (``LLMService._build_measurement_request``
     uses ``WordCard.is_guessable_by``), so a ranked word outside them was never asked about.
@@ -269,9 +266,12 @@ def words_offered(cards: Mapping[int, str], earlier_reveals: Iterable[tuple[int,
         elif result_role == "civilian":
             tokens[card_id].add(acting_seat)
     return frozenset(
-        word for card_id, word in cards.items()
-        if card_id not in covered and len(tokens[card_id]) < 2
-        and guesser_seat not in tokens[card_id])
+        word
+        for card_id, word in cards.items()
+        if card_id not in covered
+        and len(tokens[card_id]) < 2
+        and guesser_seat not in tokens[card_id]
+    )
 
 
 # Loading
@@ -370,8 +370,7 @@ def load_guesser_turns(session: Session, *, master_seed: int) -> list[TurnRecord
         if confidence is None:
             # Schema-nullable but never produced by the write path; a NULL is not a confidence.
             continue
-        ranking_by_proposal[proposal_id].append(
-            (word.lower(), float(confidence)))
+        ranking_by_proposal[proposal_id].append((word.lower(), float(confidence)))
 
     records: list[TurnRecord] = []
     for (
@@ -400,10 +399,13 @@ def load_guesser_turns(session: Session, *, master_seed: int) -> list[TurnRecord
                 board_words=frozenset(board_words.get(board_id, ())),
                 offered_words=words_offered(
                     board_cards.get(board_id, {}),
-                    [(card_id, seat, role)
-                     for earlier_turn, card_id, seat, role in reveals_by_game.get(game_id, ())
-                     if earlier_turn < turn_number],
-                    guesser_seat),
+                    [
+                        (card_id, seat, role)
+                        for earlier_turn, card_id, seat, role in reveals_by_game.get(game_id, ())
+                        if earlier_turn < turn_number
+                    ],
+                    guesser_seat,
+                ),
                 ranking=tuple(ranking_by_proposal.get(proposal_id, ())),
             )
         )
@@ -529,8 +531,7 @@ def assign_bands_by_board_type(
         cuts_by_type[board_type] = cuts
         c33, c66 = cuts
         banded.extend(
-            CardObservation(
-                **{**vars(card), "band": assign_tercile(card.similarity, c33, c66)})
+            CardObservation(**{**vars(card), "band": assign_tercile(card.similarity, c33, c66)})
             for card in group
         )
     return banded, cuts_by_type
@@ -589,14 +590,11 @@ def _cit_from_pairs(cards: Sequence[CardObservation]) -> CITResult | None:
 
 def compute_cit(cards: Sequence[CardObservation]) -> list[CITResult]:
     """Aggregate banded observations into per-(model, board type, stratum, band) CIT rows."""
-    bands: list[int | None] = [
-        None, *sorted({c.band for c in cards if c.band is not None})]
+    bands: list[int | None] = [None, *sorted({c.band for c in cards if c.band is not None})]
     results: list[CITResult] = []
     for model_ref in sorted({card.model_ref for card in cards}):
         for board_type in sorted({card.board_type for card in cards}):
-            strata = sorted(
-                {card.stratum for card in cards if card.board_type == board_type}
-            )
+            strata = sorted({card.stratum for card in cards if card.board_type == board_type})
             for stratum in [STRATUM_POOLED, *strata]:
                 for band in bands:
                     subset = [
@@ -655,8 +653,7 @@ def compute_guesser_metrics(
         cit=compute_cit(cards),
         diagnostics=[diagnostics[key] for key in sorted(diagnostics)],
         n_turns=len(turns),
-        n_admissible_turns=sum(
-            d.n_admissible_turns for d in diagnostics.values()),
+        n_admissible_turns=sum(d.n_admissible_turns for d in diagnostics.values()),
         n_card_observations=len(cards),
     )
 
@@ -726,7 +723,8 @@ def build_cit_estimator(
                     next_turn_id += 1
                 resampled.append(
                     replace(
-                        card, turn_id=turn_remap[card.turn_id], game_id=f"{game_id}#{copy_index}")
+                        card, turn_id=turn_remap[card.turn_id], game_id=f"{game_id}#{copy_index}"
+                    )
                 )
         return cit_cells(resampled, model_ref=model_ref, variant=variant)
 

@@ -1,6 +1,7 @@
 """Tests for run-provenance helpers (backend.app.core.provenance) and the LLMService template
 fingerprint. These run without a database; the end-to-end persisted-run provenance assertions live in
 test_game_runner.py (DB-gated)."""
+
 import re
 import subprocess
 from types import SimpleNamespace
@@ -12,6 +13,7 @@ from backend.app import config
 from backend.app.core import provenance
 from backend.app.core.game_runner import SeatSpec
 from backend.app.core.llm_service import LLMService
+
 # The real lookup: conftest stands a fixed release in for it in every test, so no test reaches a
 # daemon; the tests of the lookup itself call it here.
 from backend.app.core.provenance import ollama_server_version as _real_ollama_server_version
@@ -75,8 +77,9 @@ def test_template_fingerprint_reflects_default_fallback(monkeypatch):
     assert fallback._system_prompt_cg == fallback._default_system_prompt_cg()
     assert fallback.template_fingerprint() == real
 
-    monkeypatch.setattr(LLMService, "_default_system_prompt_cg",
-                        lambda self: "a default that drifted from its file")
+    monkeypatch.setattr(
+        LLMService, "_default_system_prompt_cg", lambda self: "a default that drifted from its file"
+    )
     drifted = LLMService()
     assert drifted._system_prompt_cg == "a default that drifted from its file"
     assert drifted.template_fingerprint() != real
@@ -88,7 +91,8 @@ def test_snapshot_encodes_strong_vs_best_effort_asymmetry():
     records only the requested model string. Both seats present; the asymmetry is explicit in data."""
     specs = [SeatSpec("ollama", "m0"), SeatSpec("openrouter", "m1")]
     snap = provenance.build_model_registry_snapshot(
-        specs, digest_resolver=lambda m: f"sha256:{m}-digest")
+        specs, digest_resolver=lambda m: f"sha256:{m}-digest"
+    )
 
     assert set(snap) == {"0", "1"}
     local = snap["0"]
@@ -109,8 +113,7 @@ def test_snapshot_digest_failure_records_null_identity_returning_normally():
     """Record-only: a resolver that returns None (daemon unreachable) yields a null identity + note
     without raising - a game must never abort over provenance."""
     specs = [SeatSpec("ollama", "m0"), SeatSpec("openrouter", "m1")]
-    snap = provenance.build_model_registry_snapshot(
-        specs, digest_resolver=lambda m: None)
+    snap = provenance.build_model_registry_snapshot(specs, digest_resolver=lambda m: None)
     local = snap["0"]
     assert local["identity"] is None
     assert local["identity_kind"] == "ollama_digest_unavailable"
@@ -119,12 +122,12 @@ def test_snapshot_digest_failure_records_null_identity_returning_normally():
 
 def test_snapshot_digest_resolver_raising_is_swallowed():
     """Even a resolver that RAISES degrades to a null identity - the builder never propagates."""
+
     def boom(_model):
         raise RuntimeError("daemon down")
 
     specs = [SeatSpec("ollama", "m0")]
-    snap = provenance.build_model_registry_snapshot(
-        specs, digest_resolver=boom)
+    snap = provenance.build_model_registry_snapshot(specs, digest_resolver=boom)
     assert snap["0"]["identity"] is None
     assert snap["0"]["identity_kind"] == "ollama_digest_unavailable"
 
@@ -132,8 +135,7 @@ def test_snapshot_digest_resolver_raising_is_swallowed():
 def test_snapshot_default_resolver_honours_monkeypatch(monkeypatch):
     """With no explicit resolver, the builder resolves the module-level name at call time, so a
     monkeypatch of provenance.resolve_ollama_digest is honoured (the seam the DB path relies on)."""
-    monkeypatch.setattr(provenance, "resolve_ollama_digest",
-                        lambda m, host=None: "sha256:patched")
+    monkeypatch.setattr(provenance, "resolve_ollama_digest", lambda m, host=None: "sha256:patched")
     snap = provenance.build_model_registry_snapshot([SeatSpec("ollama", "m0")])
     assert snap["0"]["identity"] == "sha256:patched"
     assert snap["0"]["identity_kind"] == "ollama_digest"
@@ -161,6 +163,7 @@ def test_digest_lookup_waits_the_configured_time(monkeypatch):
 def test_digest_lookup_that_times_out_records_none(monkeypatch):
     """Record-only: a lookup cut by the limit is a null identity, never an exception (the batch's
     digest gate then refuses to start)."""
+
     class FakeClient:
         def __init__(self, host=None, **kwargs):
             pass
@@ -184,6 +187,7 @@ def test_git_code_version_format():
 
 def test_git_code_version_none_when_git_unavailable(monkeypatch):
     """git absent (e.g. running from a container image) -> None, never an exception."""
+
     def no_git(*args, **kwargs):
         raise FileNotFoundError("git")
 
@@ -193,6 +197,7 @@ def test_git_code_version_none_when_git_unavailable(monkeypatch):
 
 def test_git_code_version_none_on_called_process_error(monkeypatch):
     """A non-repo directory (git returns non-zero) -> None."""
+
     def failing(*args, **kwargs):
         raise subprocess.CalledProcessError(128, args[0])
 
@@ -219,27 +224,34 @@ def test_the_server_version_is_read_from_the_daemon(monkeypatch) -> None:
     def get(url, timeout):
         asked.append(url)
         return _Answer({"version": "0.40.2"})
+
     monkeypatch.setattr(provenance.httpx, "get", get)
     assert _real_ollama_server_version("http://ollama:11434/") == "0.40.2"
     assert asked == ["http://ollama:11434/api/version"]
 
 
-@pytest.mark.parametrize("answer", [
-    httpx.ConnectError("refused"), _Answer({}), _Answer({"version": ""}), _Answer({}, status=500)])
+@pytest.mark.parametrize(
+    "answer",
+    [httpx.ConnectError("refused"), _Answer({}), _Answer({"version": ""}), _Answer({}, status=500)],
+)
 def test_an_unreadable_server_version_is_null(monkeypatch, answer) -> None:
     def get(url, timeout):
         if isinstance(answer, Exception):
             raise answer
         return answer
+
     monkeypatch.setattr(provenance.httpx, "get", get)
     assert _real_ollama_server_version() is None
 
 
-@pytest.mark.parametrize("host, env, url", [
-    ("ollama:11434", None, "http://ollama:11434"),
-    (None, "http://127.0.0.1:11434/", "http://127.0.0.1:11434"),
-    (None, None, "http://localhost:11434"),
-])
+@pytest.mark.parametrize(
+    "host, env, url",
+    [
+        ("ollama:11434", None, "http://ollama:11434"),
+        (None, "http://127.0.0.1:11434/", "http://127.0.0.1:11434"),
+        (None, None, "http://localhost:11434"),
+    ],
+)
 def test_the_daemon_url(monkeypatch, host, env, url) -> None:
     if env is None:
         monkeypatch.delenv("OLLAMA_HOST", raising=False)
@@ -273,14 +285,17 @@ def test_the_environment_snapshot_records_what_the_run_depends_on() -> None:
 def test_a_run_without_a_local_seat_does_not_ask_the_daemon(monkeypatch) -> None:
     def never(host=None):  # pragma: no cover - must never run
         raise AssertionError("no local seat, no daemon")
+
     monkeypatch.setattr(provenance, "ollama_server_version", never)
     assert provenance.build_environment_snapshot([SeatSpec("openrouter", "m1")])["ollama"] is None
 
 
 def test_the_environment_snapshot_never_raises(monkeypatch) -> None:
     """Record-only: without git, nvidia-smi or the MorphoLex file, it records nulls."""
+
     def no_command(*args, **kwargs):
         raise FileNotFoundError(args[0][0])
+
     monkeypatch.setattr(subprocess, "run", no_command)
     monkeypatch.setattr(provenance, "MORPHOLEX_PATH", provenance.Path("no/such/file.tsv"))
 

@@ -7,8 +7,24 @@ from pydantic import BaseModel
 from backend.app import config
 from backend.app.paths import PROMPT_TEMPLATES_DIR
 from backend.app.core.llm.client import LLMClient
-from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMRequest, LLMResponse, LLMMessage, LLMCallRecord, ClueJSONFormat, GuessJSONFormat, ConfidenceRankingJSONFormat
-from backend.app.models.game_schemas import GameState, GamePhase, CardRole, ConfidenceRanking, RankedCard
+from backend.app.models.llm_schemas import (
+    ClueProposal,
+    GuessProposal,
+    LLMRequest,
+    LLMResponse,
+    LLMMessage,
+    LLMCallRecord,
+    ClueJSONFormat,
+    GuessJSONFormat,
+    ConfidenceRankingJSONFormat,
+)
+from backend.app.models.game_schemas import (
+    GameState,
+    GamePhase,
+    CardRole,
+    ConfidenceRanking,
+    RankedCard,
+)
 
 if TYPE_CHECKING:
     from backend.app.core.engine import CodenamesDuetEngine
@@ -35,8 +51,7 @@ RESPONSE_FORMATS: dict[str, type[BaseModel]] = {
 
 # The seat allowed to guess in each sudden-death phase, mirroring the engine's own invariant
 # (resolve_guess raises unless seat 1 acts in SUDDEN_DEATH_HUMAN / seat 0 in SUDDEN_DEATH_LLM).
-_SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM,
-                     1: GamePhase.SUDDEN_DEATH_HUMAN}
+_SD_PHASE_BY_SEAT = {0: GamePhase.SUDDEN_DEATH_LLM, 1: GamePhase.SUDDEN_DEATH_HUMAN}
 
 
 def _require_sd_seat_phase(game_state: GameState, player_id: int, action: str) -> None:
@@ -45,7 +60,8 @@ def _require_sd_seat_phase(game_state: GameState, player_id: int, action: str) -
     if expected is None or game_state.current_phase != expected:
         raise ValueError(
             f"Cannot {action} for seat {player_id} in phase {game_state.current_phase}: "
-            f"seat 0 is valid only in SUDDEN_DEATH_LLM and seat 1 only in SUDDEN_DEATH_HUMAN.")
+            f"seat 0 is valid only in SUDDEN_DEATH_LLM and seat 1 only in SUDDEN_DEATH_HUMAN."
+        )
 
 
 class LLMService:
@@ -64,39 +80,29 @@ class LLMService:
     SYSTEM_TEMP_MEAS_SD_PATH = str(PROMPT_TEMPLATES_DIR / "SYSTEM_TEMPLATE_MEASUREMENT_SD.txt")
     USER_TEMP_MEAS_SD_PATH = str(PROMPT_TEMPLATES_DIR / "USER_TEMPLATE_MEASUREMENT_SD.txt")
 
-    def __init__(self, temperature: float = 0.7, max_tokens: int = config.LLM_MAX_OUTPUT_TOKENS,
-                 timeout_s: int = 30):
+    def __init__(
+        self,
+        temperature: float = 0.7,
+        max_tokens: int = config.LLM_MAX_OUTPUT_TOKENS,
+        timeout_s: int = 30,
+    ):
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.timeout_s = timeout_s
-        self._system_prompt_cg = self._load_prompt_template(
-            self.SYSTEM_TEMP_CG_PATH, 0)
-        self._user_prompt_cg = self._load_prompt_template(
-            self.USER_TEMP_CG_PATH, 1)
-        self._system_prompt_gg = self._load_prompt_template(
-            self.SYSTEM_TEMP_GG_PATH, 2)
-        self._user_prompt_gg = self._load_prompt_template(
-            self.USER_TEMP_GG_PATH, 3)
-        self._system_prompt_sd_gg = self._load_prompt_template(
-            self.SYSTEM_TEMP_SD_GG_PATH, 4)
-        self._user_prompt_sd_gg = self._load_prompt_template(
-            self.USER_TEMP_SD_GG_PATH, 5)
-        self._system_prompt_meas_gg = self._load_prompt_template(
-            self.SYSTEM_TEMP_MEAS_GG_PATH, 6)
-        self._user_prompt_meas_gg = self._load_prompt_template(
-            self.USER_TEMP_MEAS_GG_PATH, 7)
-        self._system_prompt_meas_sd = self._load_prompt_template(
-            self.SYSTEM_TEMP_MEAS_SD_PATH, 8)
-        self._user_prompt_meas_sd = self._load_prompt_template(
-            self.USER_TEMP_MEAS_SD_PATH, 9)
-        self._one_shot_user_cg = self._load_one_shot(
-            self.ONE_SHOT_USER_CG_PATH, 0)
-        self._one_shot_assistant_cg = self._load_one_shot(
-            self.ONE_SHOT_ASSISTANT_CG_PATH, 1)
-        self._one_shot_user_gg = self._load_one_shot(
-            self.ONE_SHOT_USER_GG_PATH, 2)
-        self._one_shot_assistant_gg = self._load_one_shot(
-            self.ONE_SHOT_ASSISTANT_GG_PATH, 3)
+        self._system_prompt_cg = self._load_prompt_template(self.SYSTEM_TEMP_CG_PATH, 0)
+        self._user_prompt_cg = self._load_prompt_template(self.USER_TEMP_CG_PATH, 1)
+        self._system_prompt_gg = self._load_prompt_template(self.SYSTEM_TEMP_GG_PATH, 2)
+        self._user_prompt_gg = self._load_prompt_template(self.USER_TEMP_GG_PATH, 3)
+        self._system_prompt_sd_gg = self._load_prompt_template(self.SYSTEM_TEMP_SD_GG_PATH, 4)
+        self._user_prompt_sd_gg = self._load_prompt_template(self.USER_TEMP_SD_GG_PATH, 5)
+        self._system_prompt_meas_gg = self._load_prompt_template(self.SYSTEM_TEMP_MEAS_GG_PATH, 6)
+        self._user_prompt_meas_gg = self._load_prompt_template(self.USER_TEMP_MEAS_GG_PATH, 7)
+        self._system_prompt_meas_sd = self._load_prompt_template(self.SYSTEM_TEMP_MEAS_SD_PATH, 8)
+        self._user_prompt_meas_sd = self._load_prompt_template(self.USER_TEMP_MEAS_SD_PATH, 9)
+        self._one_shot_user_cg = self._load_one_shot(self.ONE_SHOT_USER_CG_PATH, 0)
+        self._one_shot_assistant_cg = self._load_one_shot(self.ONE_SHOT_ASSISTANT_CG_PATH, 1)
+        self._one_shot_user_gg = self._load_one_shot(self.ONE_SHOT_USER_GG_PATH, 2)
+        self._one_shot_assistant_gg = self._load_one_shot(self.ONE_SHOT_ASSISTANT_GG_PATH, 3)
 
     def _loaded_template_texts(self) -> dict[str, str]:
         """Read-only accessor: stable template key -> the text the service actually holds in memory.
@@ -128,7 +134,8 @@ class LLMService:
         (``RESPONSE_FORMATS``), as canonical JSON: sorted keys, no whitespace."""
         return {
             f"response_schema_{kind}": json.dumps(
-                fmt.model_json_schema(), sort_keys=True, separators=(",", ":"))
+                fmt.model_json_schema(), sort_keys=True, separators=(",", ":")
+            )
             for kind, fmt in RESPONSE_FORMATS.items()
         }
 
@@ -183,8 +190,9 @@ class LLMService:
         )
 
     @staticmethod
-    async def _generate(llm_client: LLMClient, request: LLMRequest, expected_format,
-                        role: str, player_id: int) -> LLMResponse:
+    async def _generate(
+        llm_client: LLMClient, request: LLMRequest, expected_format, role: str, player_id: int
+    ) -> LLMResponse:
         """
         Sends one request and logs the exchange: every model call of the game goes through here.
 
@@ -205,25 +213,49 @@ class LLMService:
         logger.debug(
             "llm request role=%s seat=%s model=%s seed=%s temperature=%s constant_messages=[%s]\n"
             "--- %s message ---\n%s\n--- end of message ---",
-            role, player_id, request.model, request.seed, request.temperature,
-            ", ".join(f"{m.role}:{text_digest(m.content)}" for m in constant), last.role,
-            last.content)
+            role,
+            player_id,
+            request.model,
+            request.seed,
+            request.temperature,
+            ", ".join(f"{m.role}:{text_digest(m.content)}" for m in constant),
+            last.role,
+            last.content,
+        )
         try:
             response = await llm_client.generate(request, expected_format=expected_format)
         except Exception:
-            logger.error("llm call failed role=%s seat=%s model=%s seed=%s",
-                         role, player_id, request.model, request.seed, exc_info=True)
+            logger.error(
+                "llm call failed role=%s seat=%s model=%s seed=%s",
+                role,
+                player_id,
+                request.model,
+                request.seed,
+                exc_info=True,
+            )
             raise
         usage = response.usage
         logger.debug(
             "llm response role=%s seat=%s model=%s latency_ms=%s prompt_tokens=%s "
             "completion_tokens=%s finish_reason=%s\n--- response ---\n%s\n--- end of response ---",
-            role, player_id, response.model_used, response.latency_ms,
-            usage.prompt_tokens if usage else None, usage.completion_tokens if usage else None,
-            response.finish_reason, response.text)
+            role,
+            player_id,
+            response.model_used,
+            response.latency_ms,
+            usage.prompt_tokens if usage else None,
+            usage.completion_tokens if usage else None,
+            response.finish_reason,
+            response.text,
+        )
         return response
 
-    async def propose_clue(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> ClueProposal:
+    async def propose_clue(
+        self,
+        llm_client: LLMClient,
+        game_state: GameState,
+        player_id: int = 0,
+        seed: Optional[int] = None,
+    ) -> ClueProposal:
         """
         Proposes a clue for the current game state. This method checks that the game is in the
         correct phase and that the seat is the clue giver before building the request, sending it to
@@ -239,24 +271,28 @@ class LLMService:
         :return: An instance of ClueProposal containing the proposed clue and count from the LLM.
         """
         if game_state.current_phase != GamePhase.GIVING_CLUE:
-            raise ValueError(
-                "Cannot propose a clue when the game is not in the GIVING_CLUE phase.")
+            raise ValueError("Cannot propose a clue when the game is not in the GIVING_CLUE phase.")
 
         if game_state.clue_giver != player_id:
-            raise ValueError(
-                "The player must be the clue giver to propose a clue.")
+            raise ValueError("The player must be the clue giver to propose a clue.")
 
-        request = self._build_clue_request(
-            game_state, llm_client.model_name, player_id, seed=seed)
+        request = self._build_clue_request(game_state, llm_client.model_name, player_id, seed=seed)
 
         response = await self._generate(
-            llm_client, request, ClueJSONFormat, "clue_giver", player_id)
+            llm_client, request, ClueJSONFormat, "clue_giver", player_id
+        )
         proposal = self._build_clue_proposal(response)
         proposal.llm_calls = [self._call_record(request, response, "clue_giver")]
 
         return proposal
 
-    async def propose_guess(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> GuessProposal:
+    async def propose_guess(
+        self,
+        llm_client: LLMClient,
+        game_state: GameState,
+        player_id: int = 0,
+        seed: Optional[int] = None,
+    ) -> GuessProposal:
         """
         Proposes guesses for the current game state. This method checks that the game is in the
         correct phase and that the seat is the guesser before building the request, sending it to
@@ -269,35 +305,36 @@ class LLMService:
         :return: An instance of GuessProposal containing the proposed guesses from the LLM.
         """
         if game_state.current_phase != GamePhase.GUESSING:
-            raise ValueError(
-                "Cannot propose a guess when the game is not in the GUESSING phase.")
+            raise ValueError("Cannot propose a guess when the game is not in the GUESSING phase.")
 
         if game_state.guesser != player_id:
-            raise ValueError(
-                "The player must be the guesser to propose a guess.")
+            raise ValueError("The player must be the guesser to propose a guess.")
 
-        if (game_state.current_clue is None
-                or game_state.current_clue.turn_number != game_state.turn_number):
-            raise ValueError(
-                "Cannot propose a guess when there is no clue available."
-            )
+        if (
+            game_state.current_clue is None
+            or game_state.current_clue.turn_number != game_state.turn_number
+        ):
+            raise ValueError("Cannot propose a guess when there is no clue available.")
 
         # Build the LLM request for proposing a guess
-        request = self._build_guess_request(
-            game_state, llm_client.model_name, player_id, seed=seed)
+        request = self._build_guess_request(game_state, llm_client.model_name, player_id, seed=seed)
 
         # Send the request to the LLM client and get the response.
-        response = await self._generate(
-            llm_client, request, GuessJSONFormat, "guesser", player_id)
+        response = await self._generate(llm_client, request, GuessJSONFormat, "guesser", player_id)
 
         # Process the response and convert it into a GuessProposal.
         guess_proposal = self._build_guess_proposal(response)
-        guess_proposal.llm_call = self._call_record(
-            request, response, "guesser")
+        guess_proposal.llm_call = self._call_record(request, response, "guesser")
 
         return guess_proposal
 
-    async def propose_guess_sd(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> GuessProposal:
+    async def propose_guess_sd(
+        self,
+        llm_client: LLMClient,
+        game_state: GameState,
+        player_id: int = 0,
+        seed: Optional[int] = None,
+    ) -> GuessProposal:
         """
         Proposes guesses for the SUDDEN_DEATH_LLM phase. No clue is available; the LLM must
         identify its remaining agents from memory of the full game.
@@ -308,19 +345,25 @@ class LLMService:
 
         :return: An instance of GuessProposal containing the proposed guesses from the LLM.
         """
-        _require_sd_seat_phase(game_state, player_id,
-                               "propose a sudden death guess")
+        _require_sd_seat_phase(game_state, player_id, "propose a sudden death guess")
 
         request = self._build_guess_sd_request(
-            game_state, llm_client.model_name, player_id, seed=seed)
+            game_state, llm_client.model_name, player_id, seed=seed
+        )
         response = await self._generate(
-            llm_client, request, GuessJSONFormat, "guesser_sd", player_id)
+            llm_client, request, GuessJSONFormat, "guesser_sd", player_id
+        )
         guess_proposal = self._build_guess_proposal(response)
-        guess_proposal.llm_call = self._call_record(
-            request, response, "guesser_sd")
+        guess_proposal.llm_call = self._call_record(request, response, "guesser_sd")
         return guess_proposal
 
-    async def elicit_confidence_ranking(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> ConfidenceRanking:
+    async def elicit_confidence_ranking(
+        self,
+        llm_client: LLMClient,
+        game_state: GameState,
+        player_id: int = 0,
+        seed: Optional[int] = None,
+    ) -> ConfidenceRanking:
         """
         Elicits an out-of-band confidence ranking over all unrevealed cards for the current clue,
         parallel to propose_guess but for measurement. This is a separate call that does not touch
@@ -337,26 +380,35 @@ class LLMService:
         """
         if game_state.current_phase != GamePhase.GUESSING:
             raise ValueError(
-                "Cannot elicit a confidence ranking when the game is not in the GUESSING phase.")
+                "Cannot elicit a confidence ranking when the game is not in the GUESSING phase."
+            )
 
         if game_state.guesser != player_id:
-            raise ValueError(
-                "The player must be the guesser to elicit a confidence ranking.")
+            raise ValueError("The player must be the guesser to elicit a confidence ranking.")
 
-        if (game_state.current_clue is None
-                or game_state.current_clue.turn_number != game_state.turn_number):
-            raise ValueError(
-                "Cannot elicit a confidence ranking when there is no clue available.")
+        if (
+            game_state.current_clue is None
+            or game_state.current_clue.turn_number != game_state.turn_number
+        ):
+            raise ValueError("Cannot elicit a confidence ranking when there is no clue available.")
 
         request = self._build_measurement_request(
-            game_state, llm_client.model_name, player_id, seed=seed)
+            game_state, llm_client.model_name, player_id, seed=seed
+        )
         response = await self._generate(
-            llm_client, request, ConfidenceRankingJSONFormat, "measurement", player_id)
+            llm_client, request, ConfidenceRankingJSONFormat, "measurement", player_id
+        )
         ranking = self._build_confidence_ranking(response)
         ranking.llm_call = self._call_record(request, response, "measurement")
         return ranking
 
-    async def elicit_confidence_ranking_sd(self, llm_client: LLMClient, game_state: GameState, player_id: int = 0, seed: Optional[int] = None) -> ConfidenceRanking:
+    async def elicit_confidence_ranking_sd(
+        self,
+        llm_client: LLMClient,
+        game_state: GameState,
+        player_id: int = 0,
+        seed: Optional[int] = None,
+    ) -> ConfidenceRanking:
         """
         Elicits the out-of-band sudden-death confidence ranking over all unrevealed cards, parallel
         to propose_guess_sd. Measurement only; never sees S. Elicited on entry to the sudden-death
@@ -368,19 +420,25 @@ class LLMService:
 
         :return: The parsed ConfidenceRanking over the unrevealed cards.
         """
-        _require_sd_seat_phase(
-            game_state, player_id, "elicit a sudden death confidence ranking")
+        _require_sd_seat_phase(game_state, player_id, "elicit a sudden death confidence ranking")
 
         request = self._build_measurement_sd_request(
-            game_state, llm_client.model_name, player_id, seed=seed)
+            game_state, llm_client.model_name, player_id, seed=seed
+        )
         response = await self._generate(
-            llm_client, request, ConfidenceRankingJSONFormat, "measurement_sd", player_id)
+            llm_client, request, ConfidenceRankingJSONFormat, "measurement_sd", player_id
+        )
         ranking = self._build_confidence_ranking(response)
-        ranking.llm_call = self._call_record(
-            request, response, "measurement_sd")
+        ranking.llm_call = self._call_record(request, response, "measurement_sd")
         return ranking
 
-    async def measure_and_attach_confidence_ranking(self, llm_client: LLMClient, engine: "CodenamesDuetEngine", player_id: int = 0, seed: Optional[int] = None) -> ConfidenceRanking:
+    async def measure_and_attach_confidence_ranking(
+        self,
+        llm_client: LLMClient,
+        engine: "CodenamesDuetEngine",
+        player_id: int = 0,
+        seed: Optional[int] = None,
+    ) -> ConfidenceRanking:
         """
         Composed measurement entry point: the service elicits the standard confidence ranking and
         the engine attaches it to the current turn's record.
@@ -392,11 +450,18 @@ class LLMService:
         :return: The parsed ConfidenceRanking that was attached.
         """
         ranking = await self.elicit_confidence_ranking(
-            llm_client, engine.state, player_id, seed=seed)
+            llm_client, engine.state, player_id, seed=seed
+        )
         engine.attach_confidence_ranking(ranking)
         return ranking
 
-    async def measure_and_attach_confidence_ranking_sd(self, llm_client: LLMClient, engine: "CodenamesDuetEngine", player_id: int = 0, seed: Optional[int] = None) -> ConfidenceRanking:
+    async def measure_and_attach_confidence_ranking_sd(
+        self,
+        llm_client: LLMClient,
+        engine: "CodenamesDuetEngine",
+        player_id: int = 0,
+        seed: Optional[int] = None,
+    ) -> ConfidenceRanking:
         """
         Composed sudden-death measurement entry point (headless-invocable): the service elicits the
         sudden-death confidence ranking and the engine attaches it to the per-game SuddenDeathEntry,
@@ -409,11 +474,14 @@ class LLMService:
         :return: The parsed ConfidenceRanking that was attached.
         """
         ranking = await self.elicit_confidence_ranking_sd(
-            llm_client, engine.state, player_id, seed=seed)
+            llm_client, engine.state, player_id, seed=seed
+        )
         engine.attach_sudden_death_ranking(ranking, player_id)
         return ranking
 
-    def _build_clue_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
+    def _build_clue_request(
+        self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None
+    ) -> LLMRequest:
         """
         Builds an LLMRequest for proposing a clue based on the current game state. This method
         extracts relevant information from the game state, formats it into a user prompt, and
@@ -440,8 +508,7 @@ class LLMService:
             assassin_words=listed("assassins"),
             civilian_words=listed("civilians"),
             other_words=listed("other_visible"),
-            revealed_words="\n".join(
-                board["revealed"]) or "No words revealed yet."
+            revealed_words="\n".join(board["revealed"]) or "No words revealed yet.",
         )
 
         # Build the list of messages for the LLM request
@@ -449,13 +516,18 @@ class LLMService:
         if self._one_shot_user_cg and self._one_shot_assistant_cg:
             messages += [
                 LLMMessage(role="user", content=self._one_shot_user_cg),
-                LLMMessage(role="assistant",
-                           content=self._one_shot_assistant_cg),
+                LLMMessage(role="assistant", content=self._one_shot_assistant_cg),
             ]
         messages.append(LLMMessage(role="user", content=user_prompt))
 
-        return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
+        return LLMRequest(
+            messages=messages,
+            model=model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            timeout_s=self.timeout_s,
+            seed=seed,
+        )
 
     def _build_clue_proposal(self, response: LLMResponse) -> ClueProposal:
         """
@@ -478,15 +550,28 @@ class LLMService:
             targets = response_json.get("targets", [])
         except json.JSONDecodeError as e:
             raise ValueError(
-                "LLM response is not valid JSON. Response content: " + response_content) from e
+                "LLM response is not valid JSON. Response content: " + response_content
+            ) from e
 
-        logger.info("clue proposal: clue=%r count=%s targets=%s reasoning=%r",
-                    clue, count, targets, reasoning)
+        logger.info(
+            "clue proposal: clue=%r count=%s targets=%s reasoning=%r",
+            clue,
+            count,
+            targets,
+            reasoning,
+        )
 
-        return ClueProposal(clue=clue.strip(), count=count, reasoning=reasoning.strip(),
-                            targets=targets, raw_payload=response.raw_payload)
+        return ClueProposal(
+            clue=clue.strip(),
+            count=count,
+            reasoning=reasoning.strip(),
+            targets=targets,
+            raw_payload=response.raw_payload,
+        )
 
-    def _build_guess_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
+    def _build_guess_request(
+        self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None
+    ) -> LLMRequest:
         """
         Builds an LLMRequest for proposing guesses based on the current game state. This method
         extracts relevant information from the game state, formats it into a user prompt, and
@@ -506,23 +591,27 @@ class LLMService:
             raise ValueError("Cannot build a guess request when there is no clue available.")
         clue = game_state.current_clue.clue
         count = game_state.current_clue.count
-        previous_clues_history = "\n".join([
-            f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: {clue_entry.count}"
-            for clue_entry in game_state.clue_history if clue_entry.clue_giver != player_id
-        ])
-        words_remaining = "\n".join([
-            f"- {card.text}" for card in game_state.board.cards
-            if card.is_guessable_by(player_id)
-        ])
+        previous_clues_history = "\n".join(
+            [
+                f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: {clue_entry.count}"
+                for clue_entry in game_state.clue_history
+                if clue_entry.clue_giver != player_id
+            ]
+        )
+        words_remaining = "\n".join(
+            [f"- {card.text}" for card in game_state.board.cards if card.is_guessable_by(player_id)]
+        )
 
         # Format the user prompt with the game state information
         user_prompt = self._user_prompt_gg.format(
             turn_number=turn_number,
             clue=clue,
             count=count,
-            previous_clues_history=previous_clues_history if previous_clues_history else "No previous clues.",
+            previous_clues_history=previous_clues_history
+            if previous_clues_history
+            else "No previous clues.",
             own_key=self._format_own_key(game_state, player_id),
-            words_remaining=words_remaining
+            words_remaining=words_remaining,
         )
 
         # Build the list of messages for the LLM request
@@ -530,15 +619,22 @@ class LLMService:
         if self._one_shot_user_gg and self._one_shot_assistant_gg:
             messages += [
                 LLMMessage(role="user", content=self._one_shot_user_gg),
-                LLMMessage(role="assistant",
-                           content=self._one_shot_assistant_gg),
+                LLMMessage(role="assistant", content=self._one_shot_assistant_gg),
             ]
         messages.append(LLMMessage(role="user", content=user_prompt))
 
-        return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
+        return LLMRequest(
+            messages=messages,
+            model=model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            timeout_s=self.timeout_s,
+            seed=seed,
+        )
 
-    def _build_guess_sd_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
+    def _build_guess_sd_request(
+        self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None
+    ) -> LLMRequest:
         """
         Builds an LLMRequest for sudden death guessing. No current clue is available; the LLM
         receives full clue history and must identify all remaining agents from memory. It is not
@@ -552,25 +648,32 @@ class LLMService:
         :param model: The LLM model to use.
         :param player_id: The seat of the guesser (0 or 1).
         """
-        clue_history = "\n".join([
-            f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
-            for e in game_state.clue_history if e.clue_giver != player_id
-        ])
-        words_remaining = "\n".join([
-            f"- {card.text}" for card in game_state.board.cards
-            if card.is_guessable_by(player_id)
-        ])
+        clue_history = "\n".join(
+            [
+                f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
+                for e in game_state.clue_history
+                if e.clue_giver != player_id
+            ]
+        )
+        words_remaining = "\n".join(
+            [f"- {card.text}" for card in game_state.board.cards if card.is_guessable_by(player_id)]
+        )
         user_prompt = self._user_prompt_sd_gg.format(
             clue_history=clue_history or "No clues were given.",
             own_key=self._format_own_key(game_state, player_id),
             words_remaining=words_remaining,
         )
 
-        messages = [LLMMessage(
-            role="system", content=self._system_prompt_sd_gg)]
+        messages = [LLMMessage(role="system", content=self._system_prompt_sd_gg)]
         messages.append(LLMMessage(role="user", content=user_prompt))
-        return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
+        return LLMRequest(
+            messages=messages,
+            model=model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            timeout_s=self.timeout_s,
+            seed=seed,
+        )
 
     def _build_guess_proposal(self, response: LLMResponse) -> GuessProposal:
         """
@@ -591,22 +694,30 @@ class LLMService:
             stop_reason = response_json.get("stop_reason", "")
         except json.JSONDecodeError as e:
             raise ValueError(
-                "LLM response is not valid JSON. Response content: " + response_content) from e
+                "LLM response is not valid JSON. Response content: " + response_content
+            ) from e
 
         confidence = [proposal.get("confidence", 0) for proposal in proposals]
-        proposals = [proposal.get("word", "").strip()
-                     for proposal in proposals]
+        proposals = [proposal.get("word", "").strip() for proposal in proposals]
 
-        logger.info("guess proposal: [%s] reasoning=%r stop_reason=%r",
-                    ", ".join(f"{word} ({conf})" for word, conf in zip(proposals, confidence, strict=True)),
-                    reasoning, stop_reason)
-
-        return GuessProposal(
-            proposals=proposals, confidence=confidence, reasoning=reasoning.strip(),
-            stop_reason=stop_reason.strip(), raw_payload=response.raw_payload
+        logger.info(
+            "guess proposal: [%s] reasoning=%r stop_reason=%r",
+            ", ".join(f"{word} ({conf})" for word, conf in zip(proposals, confidence, strict=True)),
+            reasoning,
+            stop_reason,
         )
 
-    def _build_measurement_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
+        return GuessProposal(
+            proposals=proposals,
+            confidence=confidence,
+            reasoning=reasoning.strip(),
+            stop_reason=stop_reason.strip(),
+            raw_payload=response.raw_payload,
+        )
+
+    def _build_measurement_request(
+        self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None
+    ) -> LLMRequest:
         """
         Builds the out-of-band measurement request for the standard guessing phase. It mirrors
         _build_guess_request exactly for the public inputs the guesser sees - the current clue and
@@ -627,19 +738,23 @@ class LLMService:
             raise ValueError("Cannot build a measurement request when there is no clue available.")
         clue = game_state.current_clue.clue
         count = game_state.current_clue.count
-        previous_clues_history = "\n".join([
-            f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: {clue_entry.count}"
-            for clue_entry in game_state.clue_history if clue_entry.clue_giver != player_id
-        ])
-        words_remaining = "\n".join([
-            f"- {card.text}" for card in game_state.board.cards
-            if card.is_guessable_by(player_id)
-        ])
+        previous_clues_history = "\n".join(
+            [
+                f"- Turn: {clue_entry.turn_number}, Clue: {clue_entry.clue}, Count: {clue_entry.count}"
+                for clue_entry in game_state.clue_history
+                if clue_entry.clue_giver != player_id
+            ]
+        )
+        words_remaining = "\n".join(
+            [f"- {card.text}" for card in game_state.board.cards if card.is_guessable_by(player_id)]
+        )
 
         user_prompt = self._user_prompt_meas_gg.format(
             clue=clue,
             count=count,
-            previous_clues_history=previous_clues_history if previous_clues_history else "No previous clues.",
+            previous_clues_history=previous_clues_history
+            if previous_clues_history
+            else "No previous clues.",
             words_remaining=words_remaining,
         )
 
@@ -648,10 +763,18 @@ class LLMService:
             LLMMessage(role="user", content=user_prompt),
         ]
 
-        return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
+        return LLMRequest(
+            messages=messages,
+            model=model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            timeout_s=self.timeout_s,
+            seed=seed,
+        )
 
-    def _build_measurement_sd_request(self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None) -> LLMRequest:
+    def _build_measurement_sd_request(
+        self, game_state: GameState, model: str, player_id: int, seed: Optional[int] = None
+    ) -> LLMRequest:
         """
         Builds the out-of-band measurement request for the sudden-death phase. Mirrors
         _build_guess_sd_request: it does not say how many agents are left (§9), and it is
@@ -665,14 +788,16 @@ class LLMService:
 
         :return: The LLMRequest for the sudden-death measurement call.
         """
-        clue_history = "\n".join([
-            f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
-            for e in game_state.clue_history if e.clue_giver != player_id
-        ])
-        words_remaining = "\n".join([
-            f"- {card.text}" for card in game_state.board.cards
-            if card.is_guessable_by(player_id)
-        ])
+        clue_history = "\n".join(
+            [
+                f"- Turn {e.turn_number}: Clue '{e.clue}' (count {e.count})"
+                for e in game_state.clue_history
+                if e.clue_giver != player_id
+            ]
+        )
+        words_remaining = "\n".join(
+            [f"- {card.text}" for card in game_state.board.cards if card.is_guessable_by(player_id)]
+        )
         user_prompt = self._user_prompt_meas_sd.format(
             clue_history=clue_history or "No clues were given.",
             words_remaining=words_remaining,
@@ -682,8 +807,14 @@ class LLMService:
             LLMMessage(role="system", content=self._system_prompt_meas_sd),
             LLMMessage(role="user", content=user_prompt),
         ]
-        return LLMRequest(messages=messages, model=model, temperature=self.temperature,
-                          max_tokens=self.max_tokens, timeout_s=self.timeout_s, seed=seed)
+        return LLMRequest(
+            messages=messages,
+            model=model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            timeout_s=self.timeout_s,
+            seed=seed,
+        )
 
     def _build_confidence_ranking(self, response: LLMResponse) -> ConfidenceRanking:
         """
@@ -704,7 +835,8 @@ class LLMService:
             reasoning = response_json.get("reasoning", "")
         except json.JSONDecodeError as e:
             raise ValueError(
-                "LLM response is not valid JSON. Response content: " + response_content) from e
+                "LLM response is not valid JSON. Response content: " + response_content
+            ) from e
 
         ranked: list[RankedCard] = []
         for item in rankings_raw:
@@ -714,11 +846,15 @@ class LLMService:
             confidence = max(0.0, min(1.0, float(item.get("confidence", 0.0))))
             ranked.append(RankedCard(word=word, confidence=confidence))
 
-        logger.debug("confidence ranking: [%s] reasoning=%r",
-                     ", ".join(f"{item.word} ({item.confidence})" for item in ranked), reasoning)
+        logger.debug(
+            "confidence ranking: [%s] reasoning=%r",
+            ", ".join(f"{item.word} ({item.confidence})" for item in ranked),
+            reasoning,
+        )
 
         return ConfidenceRanking(
-            reasoning=reasoning.strip(), rankings=ranked, raw_payload=response.raw_payload)
+            reasoning=reasoning.strip(), rankings=ranked, raw_payload=response.raw_payload
+        )
 
     def _format_own_key(self, game_state: GameState, player_id: int) -> str:
         """
@@ -740,32 +876,48 @@ class LLMService:
 
         :return: The rendered section, without its heading.
         """
+
         def own_role(card) -> CardRole:
             return card.llm_perspective_role if player_id == 0 else card.human_perspective_role
 
         def black_line(card) -> str:
             if card.revealed:
-                return (f"- {card.text} (covered by an agent card: you guessed it, and it was an "
-                        "Agent for you)")
+                return (
+                    f"- {card.text} (covered by an agent card: you guessed it, and it was an "
+                    "Agent for you)"
+                )
             if player_id in card.time_marker_by:
-                return (f"- {card.text} (your time token is on it: you guessed it, and it was a "
-                        "Civilian for you)")
+                return (
+                    f"- {card.text} (your time token is on it: you guessed it, and it was a "
+                    "Civilian for you)"
+                )
             return f"- {card.text}"
 
         def still_guessable(role: CardRole) -> list[str]:
-            words = [f"- {card.text}" for card in game_state.board.cards
-                     if own_role(card) == role and card.is_guessable_by(player_id)]
+            words = [
+                f"- {card.text}"
+                for card in game_state.board.cards
+                if own_role(card) == role and card.is_guessable_by(player_id)
+            ]
             return words or ["None."]
 
-        black = [black_line(card) for card in game_state.board.cards
-                 if own_role(card) == CardRole.ASSASSIN]
-        return "\n".join([
-            "Black on your side (all 3):", *black, "",
-            "Green on your side (only the words you can still guess):",
-            *still_guessable(CardRole.AGENT), "",
-            "Beige on your side (only the words you can still guess):",
-            *still_guessable(CardRole.CIVILIAN),
-        ])
+        black = [
+            black_line(card)
+            for card in game_state.board.cards
+            if own_role(card) == CardRole.ASSASSIN
+        ]
+        return "\n".join(
+            [
+                "Black on your side (all 3):",
+                *black,
+                "",
+                "Green on your side (only the words you can still guess):",
+                *still_guessable(CardRole.AGENT),
+                "",
+                "Beige on your side (only the words you can still guess):",
+                *still_guessable(CardRole.CIVILIAN),
+            ]
+        )
 
     def _clue_giver_board(self, game_state: GameState, player_id: int) -> dict[str, list[str]]:
         """
@@ -790,7 +942,12 @@ class LLMService:
         """
         partner = 1 - player_id
         board: dict[str, list[str]] = {
-            "agents": [], "assassins": [], "civilians": [], "other_visible": [], "revealed": []}
+            "agents": [],
+            "assassins": [],
+            "civilians": [],
+            "other_visible": [],
+            "revealed": [],
+        }
         for card in game_state.board.cards:
             role = card.llm_perspective_role if player_id == 0 else card.human_perspective_role
             line = f"- {card.text}"
@@ -851,7 +1008,8 @@ class LLMService:
                         "4 (system sudden death guesser), 5 (user sudden death guesser), "
                         "6 (system measurement guesser), 7 (user measurement guesser), "
                         "8 (system measurement sudden death), or 9 (user measurement sudden "
-                        "death).") from e
+                        "death)."
+                    ) from e
 
     def _load_one_shot(self, path: str, prompt_type: int) -> str:
         try:
@@ -868,9 +1026,11 @@ class LLMService:
                 case 3:
                     return self._default_os_assistant_gg()
                 case _:
-                    raise ValueError("Invalid prompt type specified. Must be 0 (one-shot user clue "
-                                     "giver), 1 (one-shot assistant clue giver), 2 (one-shot user "
-                                     "guesser), or 3 (one-shot assistant guesser).") from e
+                    raise ValueError(
+                        "Invalid prompt type specified. Must be 0 (one-shot user clue "
+                        "giver), 1 (one-shot assistant clue giver), 2 (one-shot user "
+                        "guesser), or 3 (one-shot assistant guesser)."
+                    ) from e
 
     def _default_system_prompt_cg(self) -> str:
         """
@@ -891,9 +1051,9 @@ class LLMService:
             "AGENTS: the clue must point to them, never be one of them.\n"
             "3. The clue must not be a derivative or spelling variation of a word on the board.\n"
             "4. The clue must not be a part of a compound word on the board, or a compound that "
-            "contains a word on the board (e.g., \"earth\", \"quake\" and \"earthy\" are invalid "
-            "if \"earthquake\" is on the board, and \"rawhide\" is invalid if \"hide\" is; \"ear\" "
-            "and \"hearth\" are valid).\n"
+            'contains a word on the board (e.g., "earth", "quake" and "earthy" are invalid '
+            'if "earthquake" is on the board, and "rawhide" is invalid if "hide" is; "ear" '
+            'and "hearth" are valid).\n'
             "5. The count must be a positive integer indicating exactly how many Agent words your "
             "clue targets.\n"
             "6. SAFETY FIRST: In Codenames Duet, hitting an Assassin word instantly loses the game."
@@ -915,14 +1075,14 @@ class LLMService:
             "You must respond ONLY with a valid JSON object. DO NOT INCLUDE markdown formatting, "
             "conversational text, or any characters outside the JSON structure.\n\n"
             "{\n"
-            "    \"reasoning\": \"Briefly state the semantic link for your target words and confirm "
+            '    "reasoning": "Briefly state the semantic link for your target words and confirm '
             "that safety checks against Assassins/Civilians passed, and that the clue is not a "
-            "listed word or a form of one. Strictly maximum 100 words.\",\n"
-            "    \"clue\": \"your_single_word_clue\",\n"
-            "    \"count\": x,\n"
-            "    \"targets\": [\"exact_board_word\", \"...\"]\n"
+            'listed word or a form of one. Strictly maximum 100 words.",\n'
+            '    "clue": "your_single_word_clue",\n'
+            '    "count": x,\n'
+            '    "targets": ["exact_board_word", "..."]\n'
             "}\n\n"
-            "The \"targets\" field lists the exact board words your clue is meant for."
+            'The "targets" field lists the exact board words your clue is meant for.'
         )
 
     def _default_user_prompt_cg(self) -> str:
@@ -972,7 +1132,7 @@ class LLMService:
             "is green on your partner's side.\n"
             "2. UNLIMITED GUESSES: In Codenames Duet, there is no limit to the number of guesses "
             "you can make in a single turn. \n"
-            "3. The \"count\" provided with the clue is a hint about how many words the clue-giver "
+            '3. The "count" provided with the clue is a hint about how many words the clue-giver '
             "intended to connect. It is a target, not a hard limit.\n"
             "4. You may stop guessing early (proposing fewer than count) if the semantic ambiguity "
             "of the remaining options is too high.\n"
@@ -1008,13 +1168,13 @@ class LLMService:
             "You must respond ONLY with a valid JSON object. Do not include formatting wrappers "
             "like ```json. Start your response immediately with the { character.\n\n"
             "{\n"
-            "    \"reasoning\": \"Briefly state why you chose the proposed words and define your "
-            "safety threshold. Strictly maximum 100 words.\",\n"
-            "    \"stop_reason\": \"Explain the exact logic used to terminate the guess sequence "
-            "(e.g., reached the target count, semantic distance too high, etc.).\",\n"
-            "    \"proposals\": [\n"
-            "        {\"word\": \"exact_board_word\", \"confidence\": 0.95},\n"
-            "        {\"word\": \"another_word\", \"confidence\": 0.88}\n"
+            '    "reasoning": "Briefly state why you chose the proposed words and define your '
+            'safety threshold. Strictly maximum 100 words.",\n'
+            '    "stop_reason": "Explain the exact logic used to terminate the guess sequence '
+            '(e.g., reached the target count, semantic distance too high, etc.).",\n'
+            '    "proposals": [\n'
+            '        {"word": "exact_board_word", "confidence": 0.95},\n'
+            '        {"word": "another_word", "confidence": 0.88}\n'
             "    ]\n"
             "}"
         )
@@ -1081,15 +1241,15 @@ class LLMService:
         the correct JSON format.
         """
         return (
-            "{\"reasoning\": \"Step 1: CROWN, THRONE, CASTLE all relate to monarchy and royalty. "
+            '{"reasoning": "Step 1: CROWN, THRONE, CASTLE all relate to monarchy and royalty. '
             "TOWER and KNIGHT are civilians with medieval connotations — a clue like 'medieval' or "
             "'fortress' risks pulling them in. Step 2: Best candidate cluster is CROWN + THRONE + "
             "CASTLE → clue 'royal'. Step 3: ASSASSIN CHECK — BRIDGE has no meaningful semantic link "
             "to 'royal'. Safe to proceed. Step 4: TOWER could weakly associate with 'royal' (Tower "
             "of London), so I reduce count to 2 targeting CROWN and THRONE, the strongest matches, "
             "to avoid the civilian TOWER. Step 5: 'royal' is not a board word, not a derivative of "
-            "any board word, and not part of a compound board word. Valid.\", \"clue\": \"royal\", "
-            "\"count\": 2, \"targets\": [\"CROWN\", \"THRONE\"]}"
+            'any board word, and not part of a compound board word. Valid.", "clue": "royal", '
+            '"count": 2, "targets": ["CROWN", "THRONE"]}'
         )
 
     def _default_os_user_gg(self) -> str:
@@ -1141,16 +1301,16 @@ class LLMService:
         reason, all formatted in the correct JSON structure.
         """
         return (
-            "{\"reasoning\": \"Current clue is 'cold' (count 2). ICE (0.97) is a direct synonym and "
+            '{"reasoning": "Current clue is \'cold\' (count 2). ICE (0.97) is a direct synonym and '
             "FROST (0.93) a near-synonym: both are above my 0.80 threshold. I pick them for the "
             "clue, not for their colors. WIND (0.55) is ambiguous, DESERT (0.10) is mostly about "
             "heat, and FIRE (0.02) is an antonym. Previous clue 'ocean' (count 2): WAVE (0.91) and "
             "SHIP (0.72) match it, but both are black on my side, and I already found my black "
-            "Agent, CORAL. So WAVE and SHIP are an Assassin and a Civilian for me.\", "
-            "\"stop_reason\": \"Proposed ICE and FROST for 'cold', both above the 0.80 threshold. "
+            'Agent, CORAL. So WAVE and SHIP are an Assassin and a Civilian for me.", '
+            '"stop_reason": "Proposed ICE and FROST for \'cold\', both above the 0.80 threshold. '
             "Did not add WAVE or SHIP for 'ocean': they are my other black words, and my black "
-            "Agent is already found.\", \"proposals\": [{\"word\": \"ICE\", \"confidence\": 0.97}, "
-            "{\"word\": \"FROST\", \"confidence\": 0.93}]}"
+            'Agent is already found.", "proposals": [{"word": "ICE", "confidence": 0.97}, '
+            '{"word": "FROST", "confidence": 0.93}]}'
         )
 
     def _default_system_prompt_sd_gg(self) -> str:
@@ -1186,11 +1346,11 @@ class LLMService:
             "### OUTPUT FORMAT ###\n"
             "Respond ONLY with a valid JSON object. No markdown wrappers.\n\n"
             "{\n"
-            "    \"reasoning\": \"Briefly state which past clues led you to your proposed agents. "
-            "Strictly maximum 100 words.\",\n"
-            "    \"stop_reason\": \"Explain why your list ends where it does.\",\n"
-            "    \"proposals\": [\n"
-            "        {\"word\": \"exact_board_word\", \"confidence\": 0.95}\n"
+            '    "reasoning": "Briefly state which past clues led you to your proposed agents. '
+            'Strictly maximum 100 words.",\n'
+            '    "stop_reason": "Explain why your list ends where it does.",\n'
+            '    "proposals": [\n'
+            '        {"word": "exact_board_word", "confidence": 0.95}\n'
             "    ]\n"
             "}"
         )
@@ -1232,10 +1392,10 @@ class LLMService:
             "Respond ONLY with a valid JSON object. Do not include markdown wrappers like ```json. "
             "Start your response immediately with the { character.\n\n"
             "{\n"
-            "    \"reasoning\": \"Briefly summarize the semantic link. Strictly maximum 250 words.\",\n"
-            "    \"rankings\": [\n"
-            "        {\"word\": \"exact_board_word\", \"confidence\": 0.95},\n"
-            "        {\"word\": \"another_word\", \"confidence\": 0.10}\n"
+            '    "reasoning": "Briefly summarize the semantic link. Strictly maximum 250 words.",\n'
+            '    "rankings": [\n'
+            '        {"word": "exact_board_word", "confidence": 0.95},\n'
+            '        {"word": "another_word", "confidence": 0.10}\n'
             "    ]\n"
             "}\n"
         )
@@ -1278,10 +1438,10 @@ class LLMService:
             "Respond ONLY with a valid JSON object. Do not include markdown wrappers like ```json. "
             "Start your response immediately with the { character.\n\n"
             "{\n"
-            "    \"reasoning\": \"Briefly summarize the semantic link. Strictly maximum 250 words.\",\n"
-            "    \"rankings\": [\n"
-            "        {\"word\": \"exact_board_word\", \"confidence\": 0.95},\n"
-            "        {\"word\": \"another_word\", \"confidence\": 0.10}\n"
+            '    "reasoning": "Briefly summarize the semantic link. Strictly maximum 250 words.",\n'
+            '    "rankings": [\n'
+            '        {"word": "exact_board_word", "confidence": 0.95},\n'
+            '        {"word": "another_word", "confidence": 0.10}\n'
             "    ]\n"
             "}\n"
         )

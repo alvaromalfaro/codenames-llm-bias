@@ -76,9 +76,7 @@ def _encoder_identity(data: dict) -> dict:
     }
 
 
-def ingest_frame_if_absent(
-    session: Session, frame_path: str | Path = DEFAULT_FRAME_PATH
-) -> bool:
+def ingest_frame_if_absent(session: Session, frame_path: str | Path = DEFAULT_FRAME_PATH) -> bool:
     """Insert the measurement frame if its ``frame_id`` is not already stored. Returns True if inserted.
 
     A missing sidecar is a logged no-op (returns False). An existing row with the same frame_id is a
@@ -87,8 +85,7 @@ def ingest_frame_if_absent(
     """
     path = Path(frame_path)
     if not path.exists():
-        logger.warning(
-            "Measurement-frame sidecar %s does not exist; skipping", path)
+        logger.warning("Measurement-frame sidecar %s does not exist; skipping", path)
         return False
 
     with open(path, "r", encoding="utf-8") as f:

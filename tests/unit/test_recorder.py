@@ -2,6 +2,7 @@
 
 These run without a database: the recorder is pure in-memory and imports no DB modules.
 """
+
 from datetime import datetime, timezone
 
 import pytest
@@ -57,7 +58,9 @@ def test_creation_captures_seats_and_start_player():
     assert rec.start_player == 1
     assert rec.flushed is False
     seat0, seat1 = rec.seats
-    assert seat0.seat_index == 0 and seat0.provider == "openrouter" and seat0.model_ref == "or-model"
+    assert (
+        seat0.seat_index == 0 and seat0.provider == "openrouter" and seat0.model_ref == "or-model"
+    )
     assert seat1.seat_index == 1 and seat1.provider == "ollama" and seat1.model_ref == "local-model"
 
 
@@ -70,16 +73,19 @@ def test_creation_takes_the_start_of_the_game_in_utc():
 
 
 # result-role mapping
-@pytest.mark.parametrize("result_str,expected", [
-    ("agent", "agent"),
-    ("agent_turn_end", "agent"),
-    ("victory", "agent"),
-    ("victory_sd", "agent"),
-    ("assassin", "assassin"),
-    ("loss_assassin_sd", "assassin"),
-    ("civilian", "civilian"),
-    ("loss_civilian_sd", "civilian"),
-])
+@pytest.mark.parametrize(
+    "result_str,expected",
+    [
+        ("agent", "agent"),
+        ("agent_turn_end", "agent"),
+        ("victory", "agent"),
+        ("victory_sd", "agent"),
+        ("assassin", "assassin"),
+        ("loss_assassin_sd", "assassin"),
+        ("civilian", "civilian"),
+        ("loss_civilian_sd", "civilian"),
+    ],
+)
 def test_result_role_mapping(result_str, expected):
     assert result_role_of(result_str) == expected
 
@@ -95,10 +101,9 @@ def test_record_clue_with_llm_calls_opens_normal_turn():
     calls = [_call(retry_index=0), _call(retry_index=1)]
     # A ClueProposal-like object carrying attempts + reasoning.
     from backend.app.models.llm_schemas import ClueProposal
-    proposal = ClueProposal(clue="battle", count=2,
-                            reasoning="because", llm_calls=calls)
-    entry = _clue_entry(targets=["ALPHA"], resolved=[
-                        ResolvedTarget(word="ALPHA", card_id=3)])
+
+    proposal = ClueProposal(clue="battle", count=2, reasoning="because", llm_calls=calls)
+    entry = _clue_entry(targets=["ALPHA"], resolved=[ResolvedTarget(word="ALPHA", card_id=3)])
 
     rec.record_clue(entry, proposal=proposal)
 
@@ -141,10 +146,22 @@ def test_play_proposal_and_reveal_index_alignment():
     rec.record_clue(_clue_entry(), proposal=None)
     rec.record_play_proposal(_guess_proposal(_call(role="guesser")))
     # Two reveals from proposal items 0 and 1.
-    rec.record_reveal(card_id=5, result_str="agent", timer_tokens_after=9,
-                      ended_game=False, proposal_index=0, acting_seat=0)
-    rec.record_reveal(card_id=6, result_str="civilian", timer_tokens_after=8,
-                      ended_game=False, proposal_index=1, acting_seat=0)
+    rec.record_reveal(
+        card_id=5,
+        result_str="agent",
+        timer_tokens_after=9,
+        ended_game=False,
+        proposal_index=0,
+        acting_seat=0,
+    )
+    rec.record_reveal(
+        card_id=6,
+        result_str="civilian",
+        timer_tokens_after=8,
+        ended_game=False,
+        proposal_index=1,
+        acting_seat=0,
+    )
     reveals = rec.turns[0].reveals
     assert [r.proposal_index for r in reveals] == [0, 1]
     assert [r.result_role for r in reveals] == ["agent", "civilian"]
@@ -173,16 +190,17 @@ def test_record_measurement_sets_ranking():
 def test_seats_are_not_mutated_by_recording():
     """The runner supplies both seat identities; recording must not overwrite them, even though
     the recorded LLM calls carry a temperature of their own."""
-    seats = [SeatRecord(0, "ollama", "m0", requested_temperature=0.4),
-             SeatRecord(1, "openrouter", "m1", requested_temperature=0.4)]
+    seats = [
+        SeatRecord(0, "ollama", "m0", requested_temperature=0.4),
+        SeatRecord(1, "openrouter", "m1", requested_temperature=0.4),
+    ]
     rec = GameRecorder(game_id="g", board_id="b", start_player=0, seats=seats)
     from backend.app.models.llm_schemas import ClueProposal
+
     # Recorded calls carrying a concrete seed and temperature of their own.
-    proposal = ClueProposal(clue="battle", count=2,
-                            llm_calls=[_call(temperature=0.9, seed=12345)])
+    proposal = ClueProposal(clue="battle", count=2, llm_calls=[_call(temperature=0.9, seed=12345)])
     rec.record_clue(_clue_entry(), proposal=proposal)
-    rec.record_play_proposal(_guess_proposal(
-        _call(role="guesser", temperature=0.9, seed=999)))
+    rec.record_play_proposal(_guess_proposal(_call(role="guesser", temperature=0.9, seed=999)))
 
     # Seat identities are untouched: temperature stays the explicit T for both.
     assert rec.seats[0].requested_temperature == 0.4
@@ -192,13 +210,22 @@ def test_seats_are_not_mutated_by_recording():
 # sudden death
 def test_sudden_death_single_turn_no_clue():
     rec = _recorder()
-    ranking = ConfidenceRanking(rankings=[RankedCard(word="X", confidence=0.5)],
-                                llm_call=_call(role="measurement_sd"))
+    ranking = ConfidenceRanking(
+        rankings=[RankedCard(word="X", confidence=0.5)], llm_call=_call(role="measurement_sd")
+    )
     rec.record_sd_measurement(ranking, clue_giver_seat=0, guesser_seat=0)
-    rec.record_sd_play_proposal(_guess_proposal(
-        _call(role="guesser_sd")), clue_giver_seat=0, guesser_seat=0)
-    rec.record_sd_reveal(clue_giver_seat=0, card_id=7, result_str="victory_sd",
-                         timer_tokens_after=0, ended_game=True, proposal_index=0, acting_seat=0)
+    rec.record_sd_play_proposal(
+        _guess_proposal(_call(role="guesser_sd")), clue_giver_seat=0, guesser_seat=0
+    )
+    rec.record_sd_reveal(
+        clue_giver_seat=0,
+        card_id=7,
+        result_str="victory_sd",
+        timer_tokens_after=0,
+        ended_game=True,
+        proposal_index=0,
+        acting_seat=0,
+    )
     # Exactly one sudden-death turn, no clue, with measurement + proposal + reveal.
     sd_turns = [t for t in rec.turns if t.phase == "sudden_death"]
     assert len(sd_turns) == 1
@@ -224,8 +251,9 @@ def test_sd_records_key_by_explicit_guesser_seat():
     """The SD record methods key play/measurement by guesser seat (in SD both seats guess, so it is
     not derivable from clue_giver_seat and must be carried explicitly)."""
     rec = _recorder()
-    ranking = ConfidenceRanking(rankings=[RankedCard(word="X", confidence=0.5)],
-                                llm_call=_call(role="measurement_sd"))
+    ranking = ConfidenceRanking(
+        rankings=[RankedCard(word="X", confidence=0.5)], llm_call=_call(role="measurement_sd")
+    )
     proposal = _guess_proposal(_call(role="guesser_sd"))
     rec.record_sd_measurement(ranking, clue_giver_seat=0, guesser_seat=1)
     rec.record_sd_play_proposal(proposal, clue_giver_seat=0, guesser_seat=1)
@@ -243,10 +271,12 @@ def test_sd_records_accumulate_both_seats_without_overwrite():
     rec = _recorder()
     play0 = _guess_proposal(_call(role="guesser_sd"))
     play1 = _guess_proposal(_call(role="guesser_sd"))
-    meas0 = ConfidenceRanking(rankings=[RankedCard(word="A", confidence=0.5)],
-                              llm_call=_call(role="measurement_sd"))
-    meas1 = ConfidenceRanking(rankings=[RankedCard(word="B", confidence=0.5)],
-                              llm_call=_call(role="measurement_sd"))
+    meas0 = ConfidenceRanking(
+        rankings=[RankedCard(word="A", confidence=0.5)], llm_call=_call(role="measurement_sd")
+    )
+    meas1 = ConfidenceRanking(
+        rankings=[RankedCard(word="B", confidence=0.5)], llm_call=_call(role="measurement_sd")
+    )
     rec.record_sd_play_proposal(play0, clue_giver_seat=0, guesser_seat=0)
     rec.record_sd_play_proposal(play1, clue_giver_seat=0, guesser_seat=1)
     rec.record_sd_measurement(meas0, clue_giver_seat=0, guesser_seat=0)
@@ -265,11 +295,13 @@ def test_sd_records_need_the_guesser_seat():
         rec.record_sd_play_proposal(_guess_proposal(_call(role="guesser_sd")), clue_giver_seat=1)
     with pytest.raises(TypeError):
         rec.record_sd_measurement(
-            ConfidenceRanking(rankings=[RankedCard(word="X", confidence=0.5)]), clue_giver_seat=1)
+            ConfidenceRanking(rankings=[RankedCard(word="X", confidence=0.5)]), clue_giver_seat=1
+        )
     assert rec.turns == []
 
 
 # outcome / flushed latch
+
 
 def test_set_outcome_and_flushed_latch():
     rec = _recorder()

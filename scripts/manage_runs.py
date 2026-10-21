@@ -18,6 +18,7 @@ Examples:
     python scripts/manage_runs.py delete <RUN_ID>          # shows the run and asks first
     python scripts/manage_runs.py delete <RUN_ID> --yes    # does not ask
 """
+
 from __future__ import annotations
 
 import argparse
@@ -73,9 +74,11 @@ def _print_list(runs: list[RunSummary]) -> None:
         return
     print(f"{'RUN_ID':<36}  {'CREATED (UTC)':<16}  {'SEED':>6}  {'TEMP':>5}  {'CODE':<14}  GAMES")
     for run in runs:
-        print(f"{run.run_id:<36}  {_created(run, '%Y-%m-%d %H:%M'):<16}  "
-              f"{_dash(run.master_seed):>6}  {run.temperature:>5g}  "
-              f"{_dash(run.code_version):<14}  {_games(run)}")
+        print(
+            f"{run.run_id:<36}  {_created(run, '%Y-%m-%d %H:%M'):<16}  "
+            f"{_dash(run.master_seed):>6}  {run.temperature:>5g}  "
+            f"{_dash(run.code_version):<14}  {_games(run)}"
+        )
 
 
 def _print_run(run: RunSummary) -> None:
@@ -86,8 +89,12 @@ def _print_run(run: RunSummary) -> None:
         ("temperature", f"{run.temperature:g}"),
         ("code_version", _dash(run.code_version)),
         ("prompt templates", _dash(run.prompt_template_version)),
-        ("boards", f"{len(run.stimulus_manifest)} in its stimulus manifest"
-                   if run.stimulus_manifest else "-"),
+        (
+            "boards",
+            f"{len(run.stimulus_manifest)} in its stimulus manifest"
+            if run.stimulus_manifest
+            else "-",
+        ),
         ("environment", _environment(run.environment_snapshot)),
         ("games", f"{run.games} ({_games(run)})" if run.games else "none"),
     ]
@@ -97,16 +104,20 @@ def _print_run(run: RunSummary) -> None:
     print("  models" + ("" if snapshot else "            -"))
     for seat in sorted(snapshot, key=int):
         entry = snapshot[seat]
-        print(f"    {entry.get('provider')}:{entry.get('model_name')}  "
-              f"{entry.get('identity_kind')}  {_dash(entry.get('identity'))}")
+        print(
+            f"    {entry.get('provider')}:{entry.get('model_name')}  "
+            f"{entry.get('identity_kind')}  {_dash(entry.get('identity'))}"
+        )
     if run.notes:
         print("  notes")
         for line in run.notes.splitlines():
             print(f"    {line}")
     errors = run.games_by_status.get("error", 0)
     if errors:
-        print(f"\n{errors} game(s) ended in error; play them again with:\n"
-              f"  python scripts/run_batch.py --resume {run.run_id} --retry-errors")
+        print(
+            f"\n{errors} game(s) ended in error; play them again with:\n"
+            f"  python scripts/run_batch.py --resume {run.run_id} --retry-errors"
+        )
 
 
 def _confirm(question: str) -> bool:
@@ -126,7 +137,8 @@ def _delete(run_id: str, *, yes: bool) -> int:
     _print_run(run)
     print()
     if not yes and not _confirm(
-            f"Delete run {run_id} and its {run.games} game(s)? This cannot be undone. [y/N] "):
+        f"Delete run {run_id} and its {run.games} game(s)? This cannot be undone. [y/N] "
+    ):
         print("not deleted")
         return 1
     result = delete_run(run_id)

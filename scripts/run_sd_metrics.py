@@ -75,7 +75,9 @@ def _print_header(report: SdReport, *, replicates: int, seed: int) -> None:
     print(f"run seed   : {report.master_seed}")
     print("clusters   : games (a game's per-seat SD states are one cluster)")
     print(f"bootstrap  : B={replicates}, seed={seed}, percentile CI (2.5, 97.5)")
-    print("null       : conc-SD = 0.5 means no association. No p-values: effect, interval, MDE only.")
+    print(
+        "null       : conc-SD = 0.5 means no association. No p-values: effect, interval, MDE only."
+    )
     print(f"observations: {report.n_observations} classified non-agent cards")
 
 

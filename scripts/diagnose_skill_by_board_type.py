@@ -130,8 +130,7 @@ def load_stratified_skill_data(session: Session, *, master_seed: int) -> Stratif
     restriction and plus the per-game board stratum needed to split the results afterwards.
     """
     game_rows = session.execute(
-        select(GameModel.id, GameModel.result,
-               BoardModel.type, BoardModel.specification)
+        select(GameModel.id, GameModel.result, BoardModel.type, BoardModel.specification)
         .join(RunModel, RunModel.id == GameModel.run_id)
         .join(BoardModel, BoardModel.board_id == GameModel.board_id)
         .where(
@@ -145,8 +144,7 @@ def load_stratified_skill_data(session: Session, *, master_seed: int) -> Stratif
 
     game_ids = [row[0] for row in game_rows]
     strata = {
-        game_id: BoardStratum(board_type=board_type,
-                              specification=specification)
+        game_id: BoardStratum(board_type=board_type, specification=specification)
         for game_id, _result, board_type, specification in game_rows
     }
 
@@ -159,18 +157,15 @@ def load_stratified_skill_data(session: Session, *, master_seed: int) -> Stratif
         seats_by_game[game_id][seat_index] = model_ref
 
     games = [
-        GameRecord(game_id=game_id, result=result,
-                   seat_models=dict(seats_by_game.get(game_id, {})))
+        GameRecord(game_id=game_id, result=result, seat_models=dict(seats_by_game.get(game_id, {})))
         for game_id, result, _board_type, _specification in game_rows
     ]
 
     # PA: play-kind items that resolved into a reveal, on normal turns.
     played = [
-        PlayedCard(game_id=game_id, model_ref=model_ref,
-                   result_role=result_role)
+        PlayedCard(game_id=game_id, model_ref=model_ref, result_role=result_role)
         for game_id, model_ref, result_role in session.execute(
-            select(TurnModel.game_id, GameSeatModel.model_ref,
-                   RevealEventModel.result_role)
+            select(TurnModel.game_id, GameSeatModel.model_ref, RevealEventModel.result_role)
             .join(GuessProposalModel, GuessProposalModel.turn_id == TurnModel.id)
             .join(
                 GuessProposalItemModel,
@@ -370,8 +365,7 @@ def _stratum_cell(
     seed: int,
 ) -> CellEstimate | None:
     """One metric on one stratum: its own games are its cluster universe."""
-    game_ids = sorted({record.game_id for record in records}
-                      )  # type: ignore[attr-defined]
+    game_ids = sorted({record.game_id for record in records})  # type: ignore[attr-defined]
     return _bootstrap_cell(
         records, statistic, game_ids, cell=cell, n_replicates=n_replicates, seed=seed
     )
@@ -393,8 +387,7 @@ def _paired_contrast(
     difference inside the replicate is what keeps the correlation between the arms - differencing
     two separately-bootstrapped intervals would inflate the width.
     """
-    cluster_ids = sorted({record.game_id for record in records}
-                         )  # type: ignore[attr-defined]
+    cluster_ids = sorted({record.game_id for record in records})  # type: ignore[attr-defined]
     if not cluster_ids:
         return None
 
@@ -403,8 +396,7 @@ def _paired_contrast(
     cell_control = f"{prefix}_control"
 
     def estimator(subset: Sequence[str]) -> dict[str, float]:
-        drawn: dict[str, list[object]] = {
-            CONTROL_BOARD_TYPE: [], PROBE_BOARD_TYPE: []}
+        drawn: dict[str, list[object]] = {CONTROL_BOARD_TYPE: [], PROBE_BOARD_TYPE: []}
         for game_id in subset:
             stratum = strata.get(game_id)
             if stratum is None:
@@ -414,7 +406,10 @@ def _paired_contrast(
                 continue
             bucket.extend(grouped.get(game_id, ()))
         out: dict[str, float] = {}
-        for board_type, name in ((PROBE_BOARD_TYPE, cell_probe), (CONTROL_BOARD_TYPE, cell_control)):
+        for board_type, name in (
+            (PROBE_BOARD_TYPE, cell_probe),
+            (CONTROL_BOARD_TYPE, cell_control),
+        ):
             value = statistic(drawn[board_type])
             if value is not None:
                 out[name] = value
@@ -488,8 +483,7 @@ def compute_board_type_diagnostic(
     data = load_stratified_skill_data(session, master_seed=master_seed)
     games, played, clues, strata = data.games, data.played, data.clues, data.strata
 
-    models = sorted(
-        {model for game in games for model in game.seat_models.values()})
+    models = sorted({model for game in games for model in game.seat_models.values()})
     specifications = sorted(
         {
             stratum.specification
@@ -513,8 +507,7 @@ def compute_board_type_diagnostic(
     # --- TV, per board type: by pairing (the honest unit) and by model (marginal over partners) ---
     tv_by_board_type: dict[str, dict[str, dict[str, TvCell]]] = {}
     for board_type in BOARD_TYPES:
-        type_games: list[GameRecord] = list(
-            games_by_type.get(board_type, []))  # type: ignore[arg-type]
+        type_games: list[GameRecord] = list(games_by_type.get(board_type, []))  # type: ignore[arg-type]
 
         by_pairing: dict[str, TvCell] = {}
         pairings: dict[str, list[GameRecord]] = defaultdict(list)
@@ -532,8 +525,7 @@ def compute_board_type_diagnostic(
 
         by_model: dict[str, TvCell] = {}
         for model_ref in models:
-            model_games = [
-                g for g in type_games if model_ref in g.seat_models.values()]
+            model_games = [g for g in type_games if model_ref in g.seat_models.values()]
             cell = _stratum_cell(
                 model_games,  # type: ignore[arg-type]
                 win_rate,  # type: ignore[arg-type]
@@ -543,17 +535,14 @@ def compute_board_type_diagnostic(
             )
             by_model[model_ref] = _tv_cell(cell, n_games=len(model_games))
 
-        tv_by_board_type[board_type] = {
-            "by_pairing": by_pairing, "by_model": by_model}
+        tv_by_board_type[board_type] = {"by_pairing": by_pairing, "by_model": by_model}
 
     # --- PA and EP, per board type x model ---
     pa_by_board_type: dict[str, dict[str, PaCell]] = {}
     ep_by_board_type: dict[str, dict[str, EpCell]] = {}
     for board_type in BOARD_TYPES:
-        type_played: list[PlayedCard] = list(
-            played_by_type.get(board_type, []))  # type: ignore[arg-type]
-        type_clues: list[ClueGiven] = list(clues_by_type.get(
-            board_type, []))  # type: ignore[arg-type]
+        type_played: list[PlayedCard] = list(played_by_type.get(board_type, []))  # type: ignore[arg-type]
+        type_clues: list[ClueGiven] = list(clues_by_type.get(board_type, []))  # type: ignore[arg-type]
 
         pa_cells: dict[str, PaCell] = {}
         ep_cells: dict[str, EpCell] = {}
@@ -569,8 +558,7 @@ def compute_board_type_diagnostic(
                 ),
                 cards,
             )
-            model_clues = [
-                clue for clue in type_clues if clue.model_ref == model_ref]
+            model_clues = [clue for clue in type_clues if clue.model_ref == model_ref]
             ep_cells[model_ref] = _ep_cell(
                 _stratum_cell(
                     model_clues,  # type: ignore[arg-type]
@@ -620,10 +608,8 @@ def compute_board_type_diagnostic(
     pa_by_specification: dict[str, dict[str, PaCell]] = {}
     ep_by_specification: dict[str, dict[str, EpCell]] = {}
     for specification in specifications:
-        spec_played: list[PlayedCard] = list(played_by_spec.get(
-            specification, []))  # type: ignore[arg-type]
-        spec_clues: list[ClueGiven] = list(clues_by_spec.get(
-            specification, []))  # type: ignore[arg-type]
+        spec_played: list[PlayedCard] = list(played_by_spec.get(specification, []))  # type: ignore[arg-type]
+        spec_clues: list[ClueGiven] = list(clues_by_spec.get(specification, []))  # type: ignore[arg-type]
 
         pa_cells = {}
         ep_cells = {}
@@ -639,8 +625,7 @@ def compute_board_type_diagnostic(
                 ),
                 cards,
             )
-            model_clues = [
-                clue for clue in spec_clues if clue.model_ref == model_ref]
+            model_clues = [clue for clue in spec_clues if clue.model_ref == model_ref]
             ep_cells[model_ref] = _ep_cell(
                 _stratum_cell(
                     model_clues,  # type: ignore[arg-type]
@@ -657,8 +642,7 @@ def compute_board_type_diagnostic(
     logger.info(
         "board-type diagnostic: %d games (%s), %d played cards, %d clues",
         len(games),
-        ", ".join(
-            f"{bt}={len(games_by_type.get(bt, []))}" for bt in BOARD_TYPES),
+        ", ".join(f"{bt}={len(games_by_type.get(bt, []))}" for bt in BOARD_TYPES),
         len(played),
         len(clues),
     )
@@ -671,8 +655,7 @@ def compute_board_type_diagnostic(
         models=models,
         board_types=list(BOARD_TYPES),
         specifications=specifications,
-        n_games_by_board_type={
-            bt: len(games_by_type.get(bt, [])) for bt in BOARD_TYPES},
+        n_games_by_board_type={bt: len(games_by_type.get(bt, [])) for bt in BOARD_TYPES},
         tv_by_board_type=tv_by_board_type,
         pa_by_board_type=pa_by_board_type,
         ep_by_board_type=ep_by_board_type,
@@ -713,8 +696,7 @@ def _print_tv(report: BoardTypeReport) -> None:
 
         print()
         print(_RULE)
-        print(
-            f"TV - win rate per MODEL  (marginal over partners)  [{board_type.upper()} boards]")
+        print(f"TV - win rate per MODEL  (marginal over partners)  [{board_type.upper()} boards]")
         print(_RULE)
         print("  CAVEAT: cooperative game. A per-model win rate conflates the model's own skill")
         print("          with its partners' - it is not an attribution to the model.")
@@ -731,7 +713,9 @@ def _print_pa_table(title: str, cells: Mapping[str, PaCell]) -> None:
     print(_RULE)
     print(title)
     print(_RULE)
-    print(f"  {'model':<30} {'PA':>8} {'95% CI':>21} {'SE':>8} {'MDE':>8} {'agents':>8} {'played':>8}")
+    print(
+        f"  {'model':<30} {'PA':>8} {'95% CI':>21} {'SE':>8} {'MDE':>8} {'agents':>8} {'played':>8}"
+    )
     for model_ref, cell in cells.items():
         print(
             f"  {model_ref:<30} {_fmt(cell.point):>8} {_interval(cell):>21} "
@@ -745,7 +729,9 @@ def _print_ep_table(title: str, cells: Mapping[str, EpCell]) -> None:
     print(_RULE)
     print(title)
     print(_RULE)
-    print(f"  {'model':<30} {'EP':>8} {'95% CI':>21} {'SE':>8} {'MDE':>8} {'agents':>8} {'clues':>8}")
+    print(
+        f"  {'model':<30} {'EP':>8} {'95% CI':>21} {'SE':>8} {'MDE':>8} {'agents':>8} {'clues':>8}"
+    )
     for model_ref, cell in cells.items():
         print(
             f"  {model_ref:<30} {_fmt(cell.point):>8} {_interval(cell):>21} "
@@ -784,7 +770,9 @@ def print_report(report: BoardTypeReport) -> None:
     print(_RULE)
     print("DIAGNOSTIC - strategic metrics BY BOARD TYPE  (auxiliary, not a redefinition)")
     print(_RULE)
-    print("Chapter 4 defines TV, PA and EP on the CONTROL boards; those definitions and the numbers")
+    print(
+        "Chapter 4 defines TV, PA and EP on the CONTROL boards; those definitions and the numbers"
+    )
     print("in run_skill_metrics.py are unchanged. This report recomputes the same metrics on the")
     print("probe boards as well, to test whether the probe boards are intrinsically harder - if")
     print("they are, skill homogeneity established on control does not transfer automatically.")
@@ -799,7 +787,9 @@ def print_report(report: BoardTypeReport) -> None:
         f"bootstrap  : B={report.n_replicates}, seed={report.seed}, games as clusters, "
         "percentile CI (2.5, 97.5)"
     )
-    print("scope      : normal-phase turns (sudden death carries no clues, so EP is undefined there")
+    print(
+        "scope      : normal-phase turns (sudden death carries no clues, so EP is undefined there"
+    )
     print("             and PA is restricted the same way to keep both metrics in one regime)")
     print("empty cells: reported empty, never imputed; thin cells are flagged (unreliable)")
 

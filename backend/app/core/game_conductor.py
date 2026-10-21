@@ -4,6 +4,7 @@ This layer orchestrates the engine, service and recorder for one LLM turn, and p
 persistence: ``flush(engine, recorder)`` is invoked at each post-reveal point, and the caller (the
 game runner) persists the game there once it is over.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,21 +25,25 @@ Reveal = tuple[int, str, WordCard]
 FlushHook = Callable[[object, object], None]
 
 
-async def conduct_clue(service, client, engine, recorder, *, player_id: int,
-                       seed: Optional[int] = None) -> ClueEntry:
+async def conduct_clue(
+    service, client, engine, recorder, *, player_id: int, seed: Optional[int] = None
+) -> ClueEntry:
     """Conduct one LLM clue-giving turn for ``player_id``.
 
     Returns the ``ClueEntry`` the engine accepted. Callers should read the clue from it, not from
     ``engine.state.current_clue``: when an invalid clue's penalty takes the last token, the engine
     starts sudden death and the clue is already archived.
     """
-    proposal = await service.propose_clue(
-        client, engine.state, player_id=player_id, seed=seed)
+    proposal = await service.propose_clue(client, engine.state, player_id=player_id, seed=seed)
 
     # An invalid clue is accepted with a penalty token (§8.4).
-    clue_entry = engine.receive_clue(proposal.clue, proposal.count,
-                                     player_id=player_id, raw_payload=proposal.raw_payload,
-                                     targets=proposal.targets)
+    clue_entry = engine.receive_clue(
+        proposal.clue,
+        proposal.count,
+        player_id=player_id,
+        raw_payload=proposal.raw_payload,
+        targets=proposal.targets,
+    )
 
     # Record the clue with its model call from the proposal.
     recorder.record_clue(clue_entry, proposal=proposal)
@@ -46,9 +51,17 @@ async def conduct_clue(service, client, engine, recorder, *, player_id: int,
     return clue_entry
 
 
-async def conduct_guess(service, client, engine, recorder, *, player_id: int,
-                        flush: FlushHook, seed: Optional[int] = None,
-                        measurement_seed: Optional[int] = None) -> list[Reveal]:
+async def conduct_guess(
+    service,
+    client,
+    engine,
+    recorder,
+    *,
+    player_id: int,
+    flush: FlushHook,
+    seed: Optional[int] = None,
+    measurement_seed: Optional[int] = None,
+) -> list[Reveal]:
     """Conduct one LLM normal-play guessing turn for ``player_id``.
 
     Returns the ordered list of resolved ``(card_id, result, card)`` reveals.
@@ -68,10 +81,14 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
     # Strictly additive and side-effect-free; a failure here must never break game play.
     try:
         await service.measure_and_attach_confidence_ranking(
-            client, engine, player_id=player_id, seed=measurement_seed)
+            client, engine, player_id=player_id, seed=measurement_seed
+        )
     except _MEASUREMENT_ERRORS:
-        logger.error("confidence-ranking measurement failed (seat %s); the game goes on",
-                     player_id, exc_info=True)
+        logger.error(
+            "confidence-ranking measurement failed (seat %s); the game goes on",
+            player_id,
+            exc_info=True,
+        )
 
     # Record the measurement (no-op if it failed above).
     recorder.record_measurement(engine.state.current_clue.confidence_ranking)
@@ -93,8 +110,7 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
             # so a malformed item never costs the turn and never leaves the loop before the for/else
             # passes the turn. Breaking here would return with the phase still GUESSING and let the
             # driver re-dispatch the same turn, silently overwriting this turn's proposal record.
-            logger.warning(
-                "Skipping unplayable guess %r (seat %s): %s", word, player_id, e)
+            logger.warning("Skipping unplayable guess %r (seat %s): %s", word, player_id, e)
             continue
 
         # Index-aligned reveal capture: idx is the position in the play proposal's items.
@@ -122,16 +138,27 @@ async def conduct_guess(service, client, engine, recorder, *, player_id: int,
         # error propagate to the runner's boundary (the game is flushed with status='error') rather
         # than swallow it, which would leave the phase at GUESSING and spin the driver.
         if engine.state.guesses_made_this_turn == 0:
-            logger.error("seat %s proposed no playable card this turn, and a turn needs at least one "
-                         "guess (§6.5)", player_id)
+            logger.error(
+                "seat %s proposed no playable card this turn, and a turn needs at least one "
+                "guess (§6.5)",
+                player_id,
+            )
         engine.pass_turn(player_id)
 
     return reveals
 
 
-async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
-                           flush: FlushHook, seed: Optional[int] = None,
-                           measurement_seed: Optional[int] = None) -> list[Reveal]:
+async def conduct_sd_guess(
+    service,
+    client,
+    engine,
+    recorder,
+    *,
+    player_id: int,
+    flush: FlushHook,
+    seed: Optional[int] = None,
+    measurement_seed: Optional[int] = None,
+) -> list[Reveal]:
     """Conduct one sudden-death guessing turn for ``player_id`` (either SD seat).
 
     Returns the ordered list of resolved ``(card_id, result, card)`` reveals.
@@ -154,41 +181,48 @@ async def conduct_sd_guess(service, client, engine, recorder, *, player_id: int,
     if engine.state.sd_measurement_pending:
         try:
             await service.measure_and_attach_confidence_ranking_sd(
-                client, engine, player_id=player_id, seed=measurement_seed)
+                client, engine, player_id=player_id, seed=measurement_seed
+            )
         except _MEASUREMENT_ERRORS:
-            logger.error("sudden-death confidence-ranking measurement failed (seat %s); the game "
-                         "goes on", player_id, exc_info=True)
+            logger.error(
+                "sudden-death confidence-ranking measurement failed (seat %s); the game goes on",
+                player_id,
+                exc_info=True,
+            )
 
     # Record the SD measurement (no-op if it failed or was already taken this game). Read the
     # authoritative per-seat store; for seat 0 this is the same object as the scalar mirror.
     if engine.state.sudden_death is not None:
         recorder.record_sd_measurement(
             engine.state.sudden_death.rankings_by_seat.get(player_id),
-            sd_clue_giver, guesser_seat=player_id)
+            sd_clue_giver,
+            guesser_seat=player_id,
+        )
 
     try:
-        proposal = await service.propose_guess_sd(client, engine.state, player_id=player_id, seed=seed)
+        proposal = await service.propose_guess_sd(
+            client, engine.state, player_id=player_id, seed=seed
+        )
     except (ValueError, PermissionError):
         logger.error("sudden-death guess proposal failed (seat %s)", player_id, exc_info=True)
         raise
 
     # Record the SD play proposal (kind='play') on the sudden-death turn.
-    recorder.record_sd_play_proposal(
-        proposal, sd_clue_giver, guesser_seat=player_id)
+    recorder.record_sd_play_proposal(proposal, sd_clue_giver, guesser_seat=player_id)
 
     reveals: list[Reveal] = []
     for idx, word in enumerate(proposal.proposals):
         card_id = engine.state.board.get_card_id_by_word(word)
         if card_id is None:
-            logger.warning("Skipping SD guess %r (seat %s): not a word on the board",
-                           word, player_id)
+            logger.warning(
+                "Skipping SD guess %r (seat %s): not a word on the board", word, player_id
+            )
             continue
 
         try:
             result = engine.resolve_guess(card_id, player_id)
         except (ValueError, PermissionError) as e:
-            logger.warning(
-                "Skipping unplayable SD guess %r (seat %s): %s", word, player_id, e)
+            logger.warning("Skipping unplayable SD guess %r (seat %s): %s", word, player_id, e)
             continue
 
         # Per-seat proposal_index: idx is 0-based within THIS seat's own SD proposal (each seat

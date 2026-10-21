@@ -8,6 +8,7 @@ means the game never completed.
 The writer RAISES on failure and does not swallow; the game runner lets the error end the game.
 ``recorder.flushed`` is set only after the transaction commits successfully.
 """
+
 from __future__ import annotations
 
 import logging
@@ -47,7 +48,7 @@ def _truncated(text: str | None, limit: int) -> str | None:
     """``text`` cut to ``limit`` characters, ending in an ellipsis when it was cut."""
     if text is None or len(text) <= limit:
         return text
-    return text[:limit - 1] + "…"
+    return text[: limit - 1] + "…"
 
 
 def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int) -> LlmCallModel:
@@ -74,16 +75,16 @@ def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int) -> Llm
     )
 
 
-def _write_play(session, gp, *, game_id: str, turn_id: int, guesser_seat: int,
-                word_map: dict[str, int]) -> list[GuessProposalItemModel]:
+def _write_play(
+    session, gp, *, game_id: str, turn_id: int, guesser_seat: int, word_map: dict[str, int]
+) -> list[GuessProposalItemModel]:
     """Insert one ``kind='play'`` guess_proposal (+ its llm_call and ordered items) for ``guesser_seat``.
 
     Returns the item rows in position order so the caller can index-align reveal backfill.
     """
     play_call_id = None
     if gp.llm_call is not None:
-        call = _new_llm_call(gp.llm_call, game_id=game_id,
-                             turn_id=turn_id, seat_index=guesser_seat)
+        call = _new_llm_call(gp.llm_call, game_id=game_id, turn_id=turn_id, seat_index=guesser_seat)
         session.add(call)
         session.flush()
         play_call_id = call.id
@@ -112,16 +113,16 @@ def _write_play(session, gp, *, game_id: str, turn_id: int, guesser_seat: int,
     return items
 
 
-def _write_measurement(session, cr, *, game_id: str, turn_id: int, guesser_seat: int,
-                       word_map: dict[str, int]) -> None:
+def _write_measurement(
+    session, cr, *, game_id: str, turn_id: int, guesser_seat: int, word_map: dict[str, int]
+) -> None:
     """Insert one ``kind='measurement'`` guess_proposal (+ its llm_call and items) for ``guesser_seat``.
 
     Measurement items never reference a reveal (they are an out-of-band ranking, not plays).
     """
     meas_call_id = None
     if cr.llm_call is not None:
-        call = _new_llm_call(cr.llm_call, game_id=game_id,
-                             turn_id=turn_id, seat_index=guesser_seat)
+        call = _new_llm_call(cr.llm_call, game_id=game_id, turn_id=turn_id, seat_index=guesser_seat)
         session.add(call)
         session.flush()
         meas_call_id = call.id
@@ -184,8 +185,9 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
     # clue (+ its llm_call attempts)
     if turn.clue is not None:
         clue_calls = [
-            _new_llm_call(rec, game_id=game_id, turn_id=turn_row.id,
-                          seat_index=turn.clue_giver_seat)
+            _new_llm_call(
+                rec, game_id=game_id, turn_id=turn_row.id, seat_index=turn.clue_giver_seat
+            )
             for rec in turn.clue.llm_calls
         ]
         if clue_calls:
@@ -225,14 +227,24 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
         play_items_by_seat: dict[int, list[GuessProposalItemModel]] = {}
         for seat, gp in sorted(turn.sd_play_by_seat.items()):
             play_items_by_seat[seat] = _write_play(
-                session, gp, game_id=game_id, turn_id=turn_row.id,
-                guesser_seat=seat, word_map=word_map)
+                session,
+                gp,
+                game_id=game_id,
+                turn_id=turn_row.id,
+                guesser_seat=seat,
+                word_map=word_map,
+            )
         for seat, cr in sorted(turn.sd_measurement_by_seat.items()):
-            _write_measurement(session, cr, game_id=game_id, turn_id=turn_row.id,
-                               guesser_seat=seat, word_map=word_map)
+            _write_measurement(
+                session,
+                cr,
+                game_id=game_id,
+                turn_id=turn_row.id,
+                guesser_seat=seat,
+                word_map=word_map,
+            )
 
-        reveal_rows = _write_reveals(
-            session, turn.reveals, turn_id=turn_row.id)
+        reveal_rows = _write_reveals(session, turn.reveals, turn_id=turn_row.id)
         # Per-seat index-aligned backfill: a reveal by seat s indexes seat s's play items only.
         # CONTRACT: reveal.proposal_index is 0-based relative to acting_seat's own SD play proposal,
         # never a global index over turn.reveals - the SD conductor resets it per seat. A global
@@ -250,8 +262,11 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
                 logger.warning(
                     "SD reveal proposal_index %d out of range for game %s turn %d seat %d "
                     "(%d play items); reveal_event backfill skipped",
-                    idx, game_id, turn.turn_number, reveal.acting_seat, len(
-                        items),
+                    idx,
+                    game_id,
+                    turn.turn_number,
+                    reveal.acting_seat,
+                    len(items),
                 )
         if backfilled:
             session.flush()
@@ -261,14 +276,24 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
         play_items: list[GuessProposalItemModel] = []
         if turn.play_proposal is not None:
             play_items = _write_play(
-                session, turn.play_proposal, game_id=game_id, turn_id=turn_row.id,
-                guesser_seat=guesser_seat, word_map=word_map)
+                session,
+                turn.play_proposal,
+                game_id=game_id,
+                turn_id=turn_row.id,
+                guesser_seat=guesser_seat,
+                word_map=word_map,
+            )
         if turn.measurement is not None:
-            _write_measurement(session, turn.measurement, game_id=game_id, turn_id=turn_row.id,
-                               guesser_seat=guesser_seat, word_map=word_map)
+            _write_measurement(
+                session,
+                turn.measurement,
+                game_id=game_id,
+                turn_id=turn_row.id,
+                guesser_seat=guesser_seat,
+                word_map=word_map,
+            )
 
-        reveal_rows = _write_reveals(
-            session, turn.reveals, turn_id=turn_row.id)
+        reveal_rows = _write_reveals(session, turn.reveals, turn_id=turn_row.id)
         # index-aligned backfill of play items' reveal_event_id; the unreached / off-board tail
         # (items with no reveal) keeps reveal_event_id NULL.
         for reveal, row in zip(turn.reveals, reveal_rows, strict=True):
@@ -288,8 +313,7 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
     """
     with session_scope() as session:
         board_present = session.execute(
-            select(BoardModel.board_id).where(
-                BoardModel.board_id == recorder.board_id)
+            select(BoardModel.board_id).where(BoardModel.board_id == recorder.board_id)
         ).first()
         if board_present is None:
             raise ValueError(
@@ -300,7 +324,8 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
         # Case-insensitive word -> card_id map (mirrors Board.get_card_id_by_word).
         word_rows = session.execute(
             select(WordCardModel.text, WordCardModel.card_id).where(
-                WordCardModel.board_id == recorder.board_id)
+                WordCardModel.board_id == recorder.board_id
+            )
         ).all()
         word_map = {text.lower(): card_id for text, card_id in word_rows}
 
@@ -359,9 +384,16 @@ def delete_error_game(game_id: str, run_id: str) -> bool:
     """
     with session_scope() as session:
         # A DML statement's result is a CursorResult, which carries the rows it touched.
-        result = cast(CursorResult[Any], session.execute(delete(GameModel).where(
-            GameModel.id == game_id, GameModel.run_id == run_id,
-            GameModel.game_status == "error")))
+        result = cast(
+            CursorResult[Any],
+            session.execute(
+                delete(GameModel).where(
+                    GameModel.id == game_id,
+                    GameModel.run_id == run_id,
+                    GameModel.game_status == "error",
+                )
+            ),
+        )
     return bool(result.rowcount)
 
 
@@ -397,15 +429,12 @@ def delete_run(run_id: str) -> DeleteRunResult:
     :returns: a :class:`DeleteRunResult` with ``found`` and the ``games_deleted`` count.
     """
     with session_scope() as session:
-        run_present = session.execute(
-            select(RunModel.id).where(RunModel.id == run_id)
-        ).first()
+        run_present = session.execute(select(RunModel.id).where(RunModel.id == run_id)).first()
         if run_present is None:
             return DeleteRunResult(found=False, games_deleted=0)
 
         games_deleted = session.execute(
-            select(func.count()).select_from(GameModel).where(
-                GameModel.run_id == run_id)
+            select(func.count()).select_from(GameModel).where(GameModel.run_id == run_id)
         ).scalar_one()
 
         session.execute(delete(RunModel).where(RunModel.id == run_id))

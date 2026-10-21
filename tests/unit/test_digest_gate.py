@@ -6,6 +6,7 @@ config.EXPECTED_LOCAL_DIGESTS stops the run before any game is dispatched. All t
 hermetic - the served digest is supplied by monkeypatching provenance.resolve_ollama_digest, so no
 ollama daemon and no database is touched.
 """
+
 import re
 
 import pytest
@@ -14,7 +15,10 @@ from unittest.mock import MagicMock
 from backend.app import config
 from backend.app.core import game_runner, provenance
 from backend.app.core.game_runner import (
-    ModelDigestMismatchError, SeatSpec, _enforce_local_digests, run_single_game,
+    ModelDigestMismatchError,
+    SeatSpec,
+    _enforce_local_digests,
+    run_single_game,
 )
 
 # Reuse the validated 25-card board and mock-client helpers from the runner test module (same
@@ -41,8 +45,7 @@ def test_expected_digests_cover_every_local_roster_model_and_are_wellformed():
     # The pinned map must cover exactly the local roster in config.llm_models, keyed by the same tag
     # that is actually played - a tag that drifts from the roster (e.g. a stale `:latest`) makes the
     # gate abort the batch at run-row creation.
-    assert set(config.EXPECTED_LOCAL_DIGESTS) == set(
-        config.llm_models["Ollama"])
+    assert set(config.EXPECTED_LOCAL_DIGESTS) == set(config.llm_models["Ollama"])
     for tag, digest in config.EXPECTED_LOCAL_DIGESTS.items():
         assert re.fullmatch(r"sha256:[0-9a-f]{64}", digest), (tag, digest)
 
@@ -51,10 +54,20 @@ def test_expected_digests_cover_every_local_roster_model_and_are_wellformed():
 def _snapshot(*, served, identity_kind="ollama_digest", model=_LOCAL_MODEL):
     """A one-local-seat-plus-one-api-seat snapshot in the shape build_model_registry_snapshot emits."""
     return {
-        "0": {"provider": "ollama", "model_name": model,
-              "identity_kind": identity_kind, "identity": served, "note": "x"},
-        "1": {"provider": "openrouter", "model_name": "m1",
-              "identity_kind": "requested_model_string", "identity": "m1", "note": "x"},
+        "0": {
+            "provider": "ollama",
+            "model_name": model,
+            "identity_kind": identity_kind,
+            "identity": served,
+            "note": "x",
+        },
+        "1": {
+            "provider": "openrouter",
+            "model_name": "m1",
+            "identity_kind": "requested_model_string",
+            "identity": "m1",
+            "note": "x",
+        },
     }
 
 
@@ -85,13 +98,20 @@ def test_gate_is_noop_when_not_enforcing():
     # A mismatch and an unavailable digest both pass silently when enforcement is off (record-only).
     _enforce_local_digests(_snapshot(served=_SERVED_WRONG), enforce=False)
     _enforce_local_digests(
-        _snapshot(served=None, identity_kind="ollama_digest_unavailable"), enforce=False)
+        _snapshot(served=None, identity_kind="ollama_digest_unavailable"), enforce=False
+    )
 
 
 def test_gate_skips_api_seats():
     # An openrouter-only snapshot has no local digest to certify -> passes even under enforcement.
-    api_only = {"0": {"provider": "openrouter", "model_name": "x-ai/grok-4.3",
-                      "identity_kind": "requested_model_string", "identity": "x-ai/grok-4.3"}}
+    api_only = {
+        "0": {
+            "provider": "openrouter",
+            "model_name": "x-ai/grok-4.3",
+            "identity_kind": "requested_model_string",
+            "identity": "x-ai/grok-4.3",
+        }
+    }
     _enforce_local_digests(api_only, enforce=True)
 
 
@@ -101,17 +121,23 @@ async def test_run_aborts_on_mismatch_no_game_dispatched(monkeypatch):
     """enforce_digests=True with a served digest that differs: run_single_game raises before any
     client is built (no game dispatched) and before the writer is ever called (no run row)."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
-    monkeypatch.setattr(provenance, "resolve_ollama_digest",
-                        lambda model_name, host=None: _SERVED_WRONG)
-    factory = MagicMock(side_effect=AssertionError(
-        "no client may be built when the gate aborts"))
-    persist_game = MagicMock(side_effect=AssertionError(
-        "writer must not be called on abort"))
+    monkeypatch.setattr(
+        provenance, "resolve_ollama_digest", lambda model_name, host=None: _SERVED_WRONG
+    )
+    factory = MagicMock(side_effect=AssertionError("no client may be built when the gate aborts"))
+    persist_game = MagicMock(side_effect=AssertionError("writer must not be called on abort"))
     monkeypatch.setattr(game_runner.writer, "persist_game", persist_game)
 
     with pytest.raises(ModelDigestMismatchError):
-        await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=1, temperature=0.4,
-                              persist=False, enforce_digests=True, client_factory=factory)
+        await run_single_game(
+            board=_board(),
+            seat_specs=_SPECS,
+            master_seed=1,
+            temperature=0.4,
+            persist=False,
+            enforce_digests=True,
+            client_factory=factory,
+        )
     factory.assert_not_called()
     persist_game.assert_not_called()
 
@@ -120,9 +146,13 @@ async def test_run_aborts_on_mismatch_no_game_dispatched(monkeypatch):
 def test_the_gate_stops_on_another_ollama_release(monkeypatch, served) -> None:
     """Another release may serve another digest, or the same weights another way."""
     from backend.app.core.game_runner import OllamaVersionMismatchError, served_registry_snapshot
+
     monkeypatch.setattr(provenance, "ollama_server_version", lambda host=None: served)
-    monkeypatch.setattr(provenance, "build_model_registry_snapshot", MagicMock(
-        side_effect=AssertionError("the release is checked before the digests")))
+    monkeypatch.setattr(
+        provenance,
+        "build_model_registry_snapshot",
+        MagicMock(side_effect=AssertionError("the release is checked before the digests")),
+    )
     with pytest.raises(OllamaVersionMismatchError, match=config.EXPECTED_OLLAMA_VERSION):
         served_registry_snapshot([SeatSpec("ollama", "llama3.1:8b")], enforce_digests=True)
 
@@ -130,18 +160,27 @@ def test_the_gate_stops_on_another_ollama_release(monkeypatch, served) -> None:
 def test_another_ollama_release_is_a_digest_mismatch_for_its_callers() -> None:
     """The batch CLI and the resume catch ModelDigestMismatchError; the release gate is one."""
     from backend.app.core.game_runner import OllamaVersionMismatchError
+
     assert issubclass(OllamaVersionMismatchError, ModelDigestMismatchError)
 
 
-@pytest.mark.parametrize("specs, enforce", [
-    ([SeatSpec("ollama", "llama3.1:8b")], False),        # test games only record
-    ([SeatSpec("openrouter", "m1")], True),              # no local seat, no daemon
-])
-def test_the_release_is_not_asked_without_enforcement_or_a_local_seat(monkeypatch, specs,
-                                                                       enforce) -> None:
+@pytest.mark.parametrize(
+    "specs, enforce",
+    [
+        ([SeatSpec("ollama", "llama3.1:8b")], False),  # test games only record
+        ([SeatSpec("openrouter", "m1")], True),  # no local seat, no daemon
+    ],
+)
+def test_the_release_is_not_asked_without_enforcement_or_a_local_seat(
+    monkeypatch, specs, enforce
+) -> None:
     from backend.app.core import game_runner
-    monkeypatch.setattr(provenance, "ollama_server_version", MagicMock(
-        side_effect=AssertionError("the daemon must not be asked")))
+
+    monkeypatch.setattr(
+        provenance,
+        "ollama_server_version",
+        MagicMock(side_effect=AssertionError("the daemon must not be asked")),
+    )
     game_runner._enforce_ollama_version(specs, enforce=enforce)
 
 
@@ -149,13 +188,18 @@ def test_the_release_is_not_asked_without_enforcement_or_a_local_seat(monkeypatc
 async def test_run_aborts_on_unavailable_digest_when_enforcing(monkeypatch):
     """enforce_digests=True with an unavailable digest (daemon unreachable) aborts the run."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
-    monkeypatch.setattr(provenance, "resolve_ollama_digest",
-                        lambda model_name, host=None: None)
-    factory = MagicMock(side_effect=AssertionError(
-        "no client may be built when the gate aborts"))
+    monkeypatch.setattr(provenance, "resolve_ollama_digest", lambda model_name, host=None: None)
+    factory = MagicMock(side_effect=AssertionError("no client may be built when the gate aborts"))
     with pytest.raises(ModelDigestMismatchError, match="unavailable"):
-        await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=1, temperature=0.4,
-                              persist=False, enforce_digests=True, client_factory=factory)
+        await run_single_game(
+            board=_board(),
+            seat_specs=_SPECS,
+            master_seed=1,
+            temperature=0.4,
+            persist=False,
+            enforce_digests=True,
+            client_factory=factory,
+        )
     factory.assert_not_called()
 
 
@@ -164,13 +208,22 @@ async def test_run_proceeds_on_matching_digest_when_enforcing(monkeypatch):
     """enforce_digests=True with a matching served digest lets the game play to completion - the gate
     passes (and prefix-normalisation holds: bare-hex served vs sha256:-prefixed config)."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
-    monkeypatch.setattr(provenance, "resolve_ollama_digest",
-                        lambda model_name, host=None: _SERVED_OK)
-    clients = {0: _make_client("m0", lambda: ["LEMONADE"]),
-               1: _make_client("m1", lambda: ["LEMONADE"])}
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=777, temperature=0.4,
-                                persist=False, enforce_digests=True,
-                                client_factory=lambda i, spec: clients[i])
+    monkeypatch.setattr(
+        provenance, "resolve_ollama_digest", lambda model_name, host=None: _SERVED_OK
+    )
+    clients = {
+        0: _make_client("m0", lambda: ["LEMONADE"]),
+        1: _make_client("m1", lambda: ["LEMONADE"]),
+    }
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=777,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=True,
+        client_factory=lambda i, spec: clients[i],
+    )
     assert res.status == "completed" and res.result == "loss_assassin"
 
 
@@ -179,11 +232,18 @@ async def test_run_proceeds_on_unavailable_digest_when_not_enforcing(monkeypatch
     """enforce_digests=False (the default, used by test games) leaves the snapshot record-only, so
     an unavailable digest does NOT abort - the game still plays."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
-    monkeypatch.setattr(provenance, "resolve_ollama_digest",
-                        lambda model_name, host=None: None)
-    clients = {0: _make_client("m0", lambda: ["LEMONADE"]),
-               1: _make_client("m1", lambda: ["LEMONADE"])}
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=777, temperature=0.4,
-                                persist=False, enforce_digests=False,
-                                client_factory=lambda i, spec: clients[i])
+    monkeypatch.setattr(provenance, "resolve_ollama_digest", lambda model_name, host=None: None)
+    clients = {
+        0: _make_client("m0", lambda: ["LEMONADE"]),
+        1: _make_client("m1", lambda: ["LEMONADE"]),
+    }
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=777,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+        client_factory=lambda i, spec: clients[i],
+    )
     assert res.status == "completed" and res.result == "loss_assassin"

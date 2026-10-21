@@ -38,5 +38,4 @@ def perspective_column(seat: int) -> str:
     try:
         return _SEAT_COLUMNS[seat]
     except KeyError:
-        raise ValueError(
-            f"seat must be {LLM_SEAT} or {HUMAN_SEAT}, got {seat!r}") from None
+        raise ValueError(f"seat must be {LLM_SEAT} or {HUMAN_SEAT}, got {seat!r}") from None

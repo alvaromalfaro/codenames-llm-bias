@@ -8,6 +8,7 @@ end-to-end test plays all 192 games with deterministic mock clients (no DB, no d
 The threshold reset test is the discriminating one: 4 errors + 1 completion + 4 errors must not
 abort, proving the counter is consecutive, not cumulative.
 """
+
 import json
 from pathlib import Path
 
@@ -15,7 +16,9 @@ import pytest
 
 from backend.app.core import batch_runner
 from backend.app.core.batch_runner import (
-    BatchPreconditionError, dry_run_client_factory, run_batch,
+    BatchPreconditionError,
+    dry_run_client_factory,
+    run_batch,
 )
 from backend.app.core.batch_schedule import ScheduleError, build_schedule
 from backend.app.core.game_runner import GameRunResult, SeatSpec
@@ -33,18 +36,26 @@ def _fake_runner(outcome):
     ``outcome(game_index) -> (status, error)``. It records nothing and touches no DB - it stands in
     for the runner so the loop's count-and-continue / threshold logic is what the test exercises.
     """
+
     async def fake(**kwargs):
         gi = kwargs["game_index"]
         status, error = outcome(gi)
-        return GameRunResult(game_id=f"g{gi}", run_id=kwargs["run_id"], seed_game=0,
-                             status=status, result=None, error=error)
+        return GameRunResult(
+            game_id=f"g{gi}",
+            run_id=kwargs["run_id"],
+            seed_game=0,
+            status=status,
+            result=None,
+            error=error,
+        )
+
     return fake
 
 
 def _spy_never_called():
     async def spy(**kwargs):  # pragma: no cover - must never run
-        raise AssertionError(
-            "run_single_game must not be called after a Level-1 abort")
+        raise AssertionError("run_single_game must not be called after a Level-1 abort")
+
     return spy
 
 
@@ -52,8 +63,14 @@ def _spy_never_called():
 async def test_bank_shortfall_aborts_before_any_game(monkeypatch) -> None:
     monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
     with pytest.raises(ScheduleError, match="science"):
-        await run_batch(models=_models(), boards=_bank(science=3), master_seed=_MASTER_SEED,
-                        temperature=0.4, persist=False, enforce_digests=False)
+        await run_batch(
+            models=_models(),
+            boards=_bank(science=3),
+            master_seed=_MASTER_SEED,
+            temperature=0.4,
+            persist=False,
+            enforce_digests=False,
+        )
 
 
 @pytest.mark.db
@@ -72,11 +89,16 @@ async def test_collision_check_aborts_before_any_game(monkeypatch) -> None:
         s.flush()
         s.add(GameModel(id=colliding_id, board_id=board_id))
     try:
-        monkeypatch.setattr(batch_runner, "run_single_game",
-                            _spy_never_called())
+        monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
         with pytest.raises(BatchPreconditionError, match="already recorded"):
-            await run_batch(models=_models(), boards=_bank(), master_seed=seed,
-                            temperature=0.4, persist=True, enforce_digests=False)
+            await run_batch(
+                models=_models(),
+                boards=_bank(),
+                master_seed=seed,
+                temperature=0.4,
+                persist=True,
+                enforce_digests=False,
+            )
     finally:
         with session_scope() as s:
             s.query(GameModel).filter_by(id=colliding_id).delete()
@@ -85,35 +107,52 @@ async def test_collision_check_aborts_before_any_game(monkeypatch) -> None:
 
 # Level 1d: the bank goes into the database before the run is minted
 async def test_persisted_batch_ingests_the_bank_after_the_collision_check_and_before_minting(
-        monkeypatch) -> None:
+    monkeypatch,
+) -> None:
     """With persistence, the batch stores the frame and the boards it schedules, from the directory
     it was given, before the run row exists; no database is touched here (the steps are stubbed)."""
     steps = []
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
     monkeypatch.setattr(batch_runner, "_check_schema_at_head", lambda: steps.append("schema"))
-    monkeypatch.setattr(batch_runner, "_check_no_collisions",
-                        lambda game_ids, master_seed: steps.append("collisions"))
+    monkeypatch.setattr(
+        batch_runner,
+        "_check_no_collisions",
+        lambda game_ids, master_seed: steps.append("collisions"),
+    )
     manifest = {"control-00": "a" * 64}
 
     def fake_ingest(bank_dir, board_ids):
         steps.append(("ingest", bank_dir, board_ids))
         return manifest
+
     monkeypatch.setattr(batch_runner, "_ingest_bank", fake_ingest)
 
     def fake_create_run(**kwargs):
         steps.append("mint")
         assert kwargs["stimulus_manifest"] is manifest  # the run records what was ingested
         return "run-1", None
-    monkeypatch.setattr(batch_runner, "create_run", fake_create_run)
-    monkeypatch.setattr(batch_runner, "run_single_game",
-                        _fake_runner(lambda gi: ("completed", None)))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=True, enforce_digests=False,
-                             bank_dir="some/bank")
+    monkeypatch.setattr(batch_runner, "create_run", fake_create_run)
+    monkeypatch.setattr(
+        batch_runner, "run_single_game", _fake_runner(lambda gi: ("completed", None))
+    )
+
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=True,
+        enforce_digests=False,
+        bank_dir="some/bank",
+    )
 
     assert [s if isinstance(s, str) else s[0] for s in steps] == [
-        "schema", "collisions", "ingest", "mint"]
+        "schema",
+        "collisions",
+        "ingest",
+        "mint",
+    ]
     _, bank_dir, board_ids = steps[2]
     assert bank_dir == Path("some/bank")
     scheduled = {c.board_id for c in build_schedule(_models(), _bank(), _MASTER_SEED)}
@@ -123,7 +162,8 @@ async def test_persisted_batch_ingests_the_bank_after_the_collision_check_and_be
 
 # one service for the whole batch
 async def test_every_game_plays_with_the_one_service_whose_fingerprint_the_run_records(
-        monkeypatch) -> None:
+    monkeypatch,
+) -> None:
     """The templates are read once: editing a file while the batch runs cannot change what the
     games send, nor make it differ from the fingerprint on the run."""
     minted, services = [], []
@@ -131,16 +171,25 @@ async def test_every_game_plays_with_the_one_service_whose_fingerprint_the_run_r
     def fake_create_run(**kwargs):
         minted.append(kwargs["template_fingerprint"])
         return "run-1", None
+
     monkeypatch.setattr(batch_runner, "create_run", fake_create_run)
 
     async def fake(**kwargs):
         services.append(kwargs["service"])
-        return GameRunResult(game_id="g", run_id=kwargs["run_id"], seed_game=0,
-                             status="completed", result=None)
+        return GameRunResult(
+            game_id="g", run_id=kwargs["run_id"], seed_game=0, status="completed", result=None
+        )
+
     monkeypatch.setattr(batch_runner, "run_single_game", fake)
 
-    await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                    temperature=0.4, persist=False, enforce_digests=False)
+    await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+    )
 
     assert len(services) == 192 and len({id(s) for s in services}) == 1
     assert services[0].temperature == 0.4
@@ -158,8 +207,14 @@ async def test_a_schema_behind_the_migrations_aborts_before_any_game(monkeypatch
         monkeypatch.setattr(batch_runner, step, _spy_never_called())
 
     with pytest.raises(BatchPreconditionError, match="upgrade head"):
-        await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                        temperature=0.4, persist=True, enforce_digests=False)
+        await run_batch(
+            models=_models(),
+            boards=_bank(),
+            master_seed=_MASTER_SEED,
+            temperature=0.4,
+            persist=True,
+            enforce_digests=False,
+        )
 
 
 def test_the_migrations_have_a_single_head_and_it_is_their_newest_file() -> None:
@@ -176,21 +231,32 @@ def test_a_database_at_head_passes_the_schema_check() -> None:
 async def test_dry_run_never_ingests(monkeypatch) -> None:
     def spy(bank_dir, board_ids):  # pragma: no cover - must never run
         raise AssertionError("a batch that does not persist must not touch the database")
+
     monkeypatch.setattr(batch_runner, "_ingest_bank", spy)
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False,
-                             make_client_factory=dry_run_client_factory)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+        make_client_factory=dry_run_client_factory,
+    )
 
     assert report.completed == 192
 
 
-@pytest.mark.parametrize("error, message", [
-    ("InvalidBoardFileError", "cannot be read whole"),
-    ("StaleBoardError", "Restore the file"),
-])
-def test_a_bank_the_ingestion_refuses_stops_the_batch(monkeypatch, tmp_path, error,
-                                                      message) -> None:
+@pytest.mark.parametrize(
+    "error, message",
+    [
+        ("InvalidBoardFileError", "cannot be read whole"),
+        ("StaleBoardError", "Restore the file"),
+    ],
+)
+def test_a_bank_the_ingestion_refuses_stops_the_batch(
+    monkeypatch, tmp_path, error, message
+) -> None:
     """A file that is not a board, or a stored board whose file changed: the batch must not play
     what the database does not hold. The database is stubbed."""
     import contextlib
@@ -203,6 +269,7 @@ def test_a_bank_the_ingestion_refuses_stops_the_batch(monkeypatch, tmp_path, err
 
     def refuse(s, bank_dir):
         raise getattr(ingest_boards, error)("board-x: refused")
+
     monkeypatch.setattr(ingest_boards, "ingest_boards_if_absent", refuse)
 
     with pytest.raises(BatchPreconditionError, match=message):
@@ -227,8 +294,9 @@ def test_ingest_bank_stores_the_frame_and_the_boards_once() -> None:
     from backend.app.db.models import BoardModel, MeasurementFrameModel
     from backend.app.db.session import session_scope
 
-    board_ids = sorted(b.board_id for group in BoardLoader(str(_BOARDS_DIR)).boards.values()
-                       for b in group)
+    board_ids = sorted(
+        b.board_id for group in BoardLoader(str(_BOARDS_DIR)).boards.values() for b in group
+    )
     frame_id = json.loads((_BOARDS_DIR / "measurement_frame.json").read_text("utf-8"))["frame_id"]
 
     manifest = batch_runner._ingest_bank(_BOARDS_DIR, board_ids)
@@ -238,8 +306,11 @@ def test_ingest_bank_stores_the_frame_and_the_boards_once() -> None:
 
     with session_scope() as session:
         assert session.get(MeasurementFrameModel, frame_id) is not None
-        stored = set(session.execute(select(BoardModel.board_id).where(
-            BoardModel.board_id.in_(board_ids))).scalars().all())
+        stored = set(
+            session.execute(select(BoardModel.board_id).where(BoardModel.board_id.in_(board_ids)))
+            .scalars()
+            .all()
+        )
     assert stored == set(board_ids)
 
 
@@ -268,10 +339,17 @@ async def test_count_and_continue_plays_all_cells(monkeypatch) -> None:
     # and every one of the 192 cells is attempted.
     def outcome(gi):
         return ("error", "provider timeout") if gi % 2 == 0 else ("completed", None)
+
     monkeypatch.setattr(batch_runner, "run_single_game", _fake_runner(outcome))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+    )
 
     assert report.attempted == 192
     assert report.completed == 96
@@ -286,9 +364,14 @@ async def test_count_and_continue_plays_all_cells(monkeypatch) -> None:
 
 def _llm_error_classes():
     from backend.app.models import llm_errors
-    return [cls for cls in vars(llm_errors).values()
-            if isinstance(cls, type) and issubclass(cls, llm_errors.LLMError)
-            and cls is not llm_errors.LLMError]
+
+    return [
+        cls
+        for cls in vars(llm_errors).values()
+        if isinstance(cls, type)
+        and issubclass(cls, llm_errors.LLMError)
+        and cls is not llm_errors.LLMError
+    ]
 
 
 @pytest.mark.parametrize("cls", _llm_error_classes(), ids=lambda cls: cls.__name__)
@@ -301,38 +384,67 @@ def test_every_llm_error_code_has_a_kind(cls) -> None:
     assert batch_runner._classify_error(str(exc), exc.code) in {"provider", "model"}
 
 
-@pytest.mark.parametrize("code, kind", [
-    ("truncated_response", "model"), ("degenerate_response", "model"), ("empty_response", "model"),
-    ("malformed_response", "model"), ("parse_error", "model"), ("refused", "model"),
-    ("timeout", "provider"), ("rate_limit", "provider"), ("provider_unavailable", "provider"),
-    ("model_not_found", "provider"), ("invalid_request", "provider"),
-])
+@pytest.mark.parametrize(
+    "code, kind",
+    [
+        ("truncated_response", "model"),
+        ("degenerate_response", "model"),
+        ("empty_response", "model"),
+        ("malformed_response", "model"),
+        ("parse_error", "model"),
+        ("refused", "model"),
+        ("timeout", "provider"),
+        ("rate_limit", "provider"),
+        ("provider_unavailable", "provider"),
+        ("model_not_found", "provider"),
+        ("invalid_request", "provider"),
+    ],
+)
 def test_an_llm_error_is_classified_by_its_code(code, kind) -> None:
-    assert batch_runner._classify_error(
-        f"LLMError(code={code}, message=..., provider=ollama)", code) == kind
+    assert (
+        batch_runner._classify_error(f"LLMError(code={code}, message=..., provider=ollama)", code)
+        == kind
+    )
 
 
 async def test_the_report_counts_a_model_that_loops_as_a_model_error(monkeypatch) -> None:
     from backend.app.models.llm_errors import LLMTruncatedResponseError
+
     exc = LLMTruncatedResponseError(provider="ollama")
 
     async def fake(**kwargs):
         gi = kwargs["game_index"]
         if gi == 0:
-            return GameRunResult(game_id="g0", run_id=kwargs["run_id"], seed_game=0,
-                                 status="error", result=None, error=str(exc), error_code=exc.code)
-        return GameRunResult(game_id=f"g{gi}", run_id=kwargs["run_id"], seed_game=0,
-                             status="completed", result=None)
+            return GameRunResult(
+                game_id="g0",
+                run_id=kwargs["run_id"],
+                seed_game=0,
+                status="error",
+                result=None,
+                error=str(exc),
+                error_code=exc.code,
+            )
+        return GameRunResult(
+            game_id=f"g{gi}", run_id=kwargs["run_id"], seed_game=0, status="completed", result=None
+        )
+
     monkeypatch.setattr(batch_runner, "run_single_game", fake)
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+    )
 
     assert report.pairings[0].error_kinds == {"model": 1}
 
 
 async def test_the_batch_plays_strict_and_counts_a_broken_invariant_apart(monkeypatch) -> None:
     from backend.app.core.invariants import GameInvariantError
+
     exc = GameInvariantError(["tokens do not add up to 9"])
     strict = []
 
@@ -340,15 +452,30 @@ async def test_the_batch_plays_strict_and_counts_a_broken_invariant_apart(monkey
         strict.append(kwargs.get("strict_invariants", True))
         gi = kwargs["game_index"]
         if gi == 0:
-            return GameRunResult(game_id="g0", run_id=kwargs["run_id"], seed_game=0,
-                                 status="error", result=None, error=str(exc), error_code=exc.code,
-                                 invariant_violations=exc.problems)
-        return GameRunResult(game_id=f"g{gi}", run_id=kwargs["run_id"], seed_game=0,
-                             status="completed", result=None)
+            return GameRunResult(
+                game_id="g0",
+                run_id=kwargs["run_id"],
+                seed_game=0,
+                status="error",
+                result=None,
+                error=str(exc),
+                error_code=exc.code,
+                invariant_violations=exc.problems,
+            )
+        return GameRunResult(
+            game_id=f"g{gi}", run_id=kwargs["run_id"], seed_game=0, status="completed", result=None
+        )
+
     monkeypatch.setattr(batch_runner, "run_single_game", fake)
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+    )
 
     assert report.pairings[0].error_kinds == {"invariant": 1}
     assert all(strict)
@@ -360,11 +487,18 @@ async def test_threshold_aborts_pairing_and_next_pairing_still_runs(monkeypatch)
     # are skipped. Everything else completes, so pairing 1+ run normally.
     def outcome(gi):
         return ("error", "boom") if gi < 5 else ("completed", None)
+
     monkeypatch.setattr(batch_runner, "run_single_game", _fake_runner(outcome))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False,
-                             consecutive_failure_threshold=5)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+        consecutive_failure_threshold=5,
+    )
 
     p0 = report.pairings[0]
     assert p0.aborted is True
@@ -384,11 +518,18 @@ async def test_threshold_counter_is_consecutive_not_cumulative(monkeypatch) -> N
 
     def outcome(gi):
         return ("error", "boom") if gi in erroring else ("completed", None)
+
     monkeypatch.setattr(batch_runner, "run_single_game", _fake_runner(outcome))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False,
-                             consecutive_failure_threshold=5)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+        consecutive_failure_threshold=5,
+    )
 
     p0 = report.pairings[0]
     assert p0.aborted is False  # the discriminating assertion: consecutive, not cumulative
@@ -402,36 +543,54 @@ def _scripted_runner(script, calls):
     """A fake run_single_game playing each game as ``script`` says: ``script[game_index]`` is the
     list of ``(status, error_code)`` outcomes of its first, second, ... play; a game past its script
     (or without one) completes. Every play's game_index is appended to ``calls``."""
+
     async def fake(**kwargs):
         gi = kwargs["game_index"]
         calls.append(gi)
         outcomes = script.get(gi, [])
         nth = calls.count(gi) - 1
         status, code = outcomes[nth] if nth < len(outcomes) else ("completed", None)
-        return GameRunResult(game_id=f"g{gi}", run_id=kwargs["run_id"], seed_game=0,
-                             status=status, result=None,
-                             error=None if code is None else f"LLMError(code={code})",
-                             error_code=code)
+        return GameRunResult(
+            game_id=f"g{gi}",
+            run_id=kwargs["run_id"],
+            seed_game=0,
+            status=status,
+            result=None,
+            error=None if code is None else f"LLMError(code={code})",
+            error_code=code,
+        )
+
     return fake
 
 
 def _provider(healthy: bool, probes: list):
     """A fake _provider_healthy that always answers ``healthy``, recording the game_index of each
     probe in ``probes``."""
+
     async def fake(cell, factory):
         probes.append(cell.game_index)
         return healthy
+
     return fake
 
 
 async def test_a_game_lost_to_the_provider_is_played_again(monkeypatch) -> None:
     calls, probes = [], []
-    monkeypatch.setattr(batch_runner, "run_single_game",
-                        _scripted_runner({3: [("error", "provider_unavailable")]}, calls))
+    monkeypatch.setattr(
+        batch_runner,
+        "run_single_game",
+        _scripted_runner({3: [("error", "provider_unavailable")]}, calls),
+    )
     monkeypatch.setattr(batch_runner, "_provider_healthy", _provider(True, probes))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+    )
 
     assert calls.count(3) == 2 and probes == [3]
     assert report.attempted == 192 and report.completed == 192 and report.errored == 0
@@ -445,14 +604,24 @@ async def test_the_error_row_goes_before_the_replay(monkeypatch) -> None:
     for step in ("_check_schema_at_head", "_check_no_collisions", "_ingest_bank"):
         monkeypatch.setattr(batch_runner, step, lambda *args, **kwargs: None)
     monkeypatch.setattr(batch_runner, "create_run", lambda **kwargs: ("run-1", None))
-    monkeypatch.setattr(batch_runner, "run_single_game",
-                        _scripted_runner({3: [("error", "timeout")]}, calls))
+    monkeypatch.setattr(
+        batch_runner, "run_single_game", _scripted_runner({3: [("error", "timeout")]}, calls)
+    )
     monkeypatch.setattr(batch_runner, "_provider_healthy", _provider(True, []))
-    monkeypatch.setattr(batch_runner, "_forget_error_game",
-                        lambda game_id, run_id: forgotten.append((game_id, run_id, len(calls))))
+    monkeypatch.setattr(
+        batch_runner,
+        "_forget_error_game",
+        lambda game_id, run_id: forgotten.append((game_id, run_id, len(calls))),
+    )
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=True, enforce_digests=False)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=True,
+        enforce_digests=False,
+    )
 
     # deleted once, after the first play of game 3 and before its replay
     assert forgotten == [("g3", "run-1", calls.index(3) + 1)]
@@ -463,26 +632,44 @@ async def test_an_outage_does_not_abort_the_pairing(monkeypatch) -> None:
     """Six games in a row lost to the provider and then replayed: none of them counts towards the
     threshold of five, which is for games the model loses."""
     calls = []
-    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner(
-        {gi: [("error", "timeout")] for gi in range(6)}, calls))
+    monkeypatch.setattr(
+        batch_runner,
+        "run_single_game",
+        _scripted_runner({gi: [("error", "timeout")] for gi in range(6)}, calls),
+    )
     monkeypatch.setattr(batch_runner, "_provider_healthy", _provider(True, []))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False,
-                             consecutive_failure_threshold=5)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+        consecutive_failure_threshold=5,
+    )
 
     assert report.pairings_aborted == 0 and report.completed == 192
 
 
 async def test_a_provider_that_does_not_come_back_stops_the_batch(monkeypatch) -> None:
     calls, probes = [], []
-    monkeypatch.setattr(batch_runner, "run_single_game",
-                        _scripted_runner({40: [("error", "provider_unavailable")]}, calls))
+    monkeypatch.setattr(
+        batch_runner,
+        "run_single_game",
+        _scripted_runner({40: [("error", "provider_unavailable")]}, calls),
+    )
     monkeypatch.setattr(batch_runner, "_provider_healthy", _provider(False, probes))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False,
-                             provider_wait_s=0)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+        provider_wait_s=0,
+    )
 
     # game 40 (pairing 1) is played once and not again; nothing after it is played
     assert calls == list(range(41)) and probes == [40]
@@ -499,13 +686,23 @@ async def test_a_game_the_provider_keeps_failing_is_an_error_after_its_replays(m
     """The provider answers its health check but fails the same game every time: after two replays
     the game stays an error, and five of them in a row abort the pairing like any other error."""
     calls = []
-    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner(
-        {gi: [("error", "timeout")] * 3 for gi in range(5)}, calls))
+    monkeypatch.setattr(
+        batch_runner,
+        "run_single_game",
+        _scripted_runner({gi: [("error", "timeout")] * 3 for gi in range(5)}, calls),
+    )
     monkeypatch.setattr(batch_runner, "_provider_healthy", _provider(True, []))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False,
-                             provider_replays=2, consecutive_failure_threshold=5)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+        provider_replays=2,
+        consecutive_failure_threshold=5,
+    )
 
     assert [calls.count(gi) for gi in range(5)] == [3] * 5
     p0 = report.pairings[0]
@@ -513,17 +710,26 @@ async def test_a_game_the_provider_keeps_failing_is_an_error_after_its_replays(m
     assert report.aborted_reason is None
 
 
-@pytest.mark.parametrize("code", [
-    "model_not_found", "invalid_request", "auth", "truncated_response", "parse_error", None])
+@pytest.mark.parametrize(
+    "code",
+    ["model_not_found", "invalid_request", "auth", "truncated_response", "parse_error", None],
+)
 async def test_only_a_game_lost_to_the_provider_is_played_again(monkeypatch, code) -> None:
     """A setup error would fail the replay the same way, and a model's error is data."""
     calls, probes = [], []
-    monkeypatch.setattr(batch_runner, "run_single_game",
-                        _scripted_runner({0: [("error", code)]}, calls))
+    monkeypatch.setattr(
+        batch_runner, "run_single_game", _scripted_runner({0: [("error", code)]}, calls)
+    )
     monkeypatch.setattr(batch_runner, "_provider_healthy", _provider(True, probes))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+    )
 
     assert calls.count(0) == 1 and probes == []
     assert report.errored == 1
@@ -533,7 +739,8 @@ async def test_only_a_game_lost_to_the_provider_is_played_again(monkeypatch, cod
 def test_the_games_played_again_are_those_lost_to_a_retriable_provider_error(cls) -> None:
     exc = cls(provider="ollama")
     assert (exc.code in batch_runner._TRANSIENT_PROVIDER_CODES) == (
-        exc.code in batch_runner._PROVIDER_ERROR_CODES and exc.retriable)
+        exc.code in batch_runner._PROVIDER_ERROR_CODES and exc.retriable
+    )
 
 
 async def _wait(answers, max_wait_s):
@@ -583,8 +790,9 @@ class _ProbeClient:
         self.closed = True
 
 
-@pytest.mark.parametrize("seat0, seat1, expected", [
-    (True, True, True), (True, False, False), (False, True, False)])
+@pytest.mark.parametrize(
+    "seat0, seat1, expected", [(True, True, True), (True, False, False), (False, True, False)]
+)
 async def test_the_provider_is_healthy_when_both_seats_answer(seat0, seat1, expected) -> None:
     cell = build_schedule(_models(), _bank(), _MASTER_SEED)[0]
     built = []
@@ -614,10 +822,17 @@ async def test_report_shape_and_provenance(monkeypatch) -> None:
     def outcome(gi):
         # make exactly pairing 2 abort (its first 5 games error); the rest complete.
         return ("error", "model produced no legal play") if 64 <= gi < 69 else ("completed", None)
+
     monkeypatch.setattr(batch_runner, "run_single_game", _fake_runner(outcome))
 
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+    )
 
     # provenance of the batch is on the report.
     assert report.master_seed == _MASTER_SEED
@@ -639,9 +854,15 @@ async def test_dry_run_plays_all_games_to_completion() -> None:
     # Exercises the whole wiring: build_schedule -> create_run(persist=False) -> the loop ->
     # run_single_game -> the engine -> DryRunClient (guessing each board's shared assassin) via the
     # make_client_factory seam. Every game completes; nothing errors or aborts.
-    report = await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                             temperature=0.4, persist=False, enforce_digests=False,
-                             make_client_factory=dry_run_client_factory)
+    report = await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=False,
+        enforce_digests=False,
+        make_client_factory=dry_run_client_factory,
+    )
 
     assert report.attempted == 192
     assert report.completed == 192
@@ -656,9 +877,15 @@ _RUN_ID = "11111111-1111-4111-8111-111111111111"
 
 def _snapshot(models, identity=lambda spec: f"digest-{spec.model_name}"):
     """A model_registry_snapshot of ``models``, keyed by seat index as create_run stores it."""
-    return {str(i): {"provider": spec.provider, "model_name": spec.model_name,
-                     "identity_kind": "test", "identity": identity(spec)}
-            for i, spec in enumerate(models)}
+    return {
+        str(i): {
+            "provider": spec.provider,
+            "model_name": spec.model_name,
+            "identity_kind": "test",
+            "identity": identity(spec),
+        }
+        for i, spec in enumerate(models)
+    }
 
 
 def _manifest():
@@ -670,10 +897,16 @@ def _manifest():
 def _stored_run(**changes):
     """The run this test batch would mint, with ``changes``."""
     from backend.app.core.llm_service import LLMService
-    run = dict(run_id=_RUN_ID, master_seed=_MASTER_SEED, temperature=0.4,
-               prompt_template_version=LLMService(temperature=0.4).template_fingerprint(),
-               code_version="abc1234", model_registry_snapshot=_snapshot(_models()),
-               stimulus_manifest=_manifest())
+
+    run = dict(
+        run_id=_RUN_ID,
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        prompt_template_version=LLMService(temperature=0.4).template_fingerprint(),
+        code_version="abc1234",
+        model_registry_snapshot=_snapshot(_models()),
+        stimulus_manifest=_manifest(),
+    )
     return batch_runner.StoredRun(**{**run, **changes})
 
 
@@ -685,18 +918,22 @@ def _recorded(statuses, *, run_id=_RUN_ID):
     """The games the run recorded, from ``{game_index: game_status}``, each on its scheduled
     board."""
     cells = _cells()
-    return {cells[gi].game_id: batch_runner.RecordedGame(run_id, cells[gi].board_id, status)
-            for gi, status in statuses.items()}
+    return {
+        cells[gi].game_id: batch_runner.RecordedGame(run_id, cells[gi].board_id, status)
+        for gi, status in statuses.items()
+    }
 
 
 def _never(name):
     def spy(*args, **kwargs):  # pragma: no cover - must never run
         raise AssertionError(f"{name} must not be called")
+
     return spy
 
 
-def _resume_env(monkeypatch, *, run=None, recorded=None, served=None, code_version="abc1234",
-                manifest=None):
+def _resume_env(
+    monkeypatch, *, run=None, recorded=None, served=None, code_version="abc1234", manifest=None
+):
     """Stub the database and the daemon around a resume of ``run`` (by default the run this batch
     would mint) whose games ``recorded`` are in the database. Returns what the batch did to them:
     the notes it appended to the run, the error rows it deleted, and the gate runs."""
@@ -704,43 +941,66 @@ def _resume_env(monkeypatch, *, run=None, recorded=None, served=None, code_versi
     seen = {"notes": [], "forgotten": [], "gate": []}
     monkeypatch.setenv("DATABASE_URL", "postgresql://unused")
     monkeypatch.setattr(batch_runner, "_check_schema_at_head", lambda: None)
-    monkeypatch.setattr(batch_runner, "_ingest_bank",
-                        lambda bank_dir, board_ids: manifest if manifest is not None else _manifest())
+    monkeypatch.setattr(
+        batch_runner,
+        "_ingest_bank",
+        lambda bank_dir, board_ids: manifest if manifest is not None else _manifest(),
+    )
     monkeypatch.setattr(batch_runner, "_check_no_collisions", _never("the collision check"))
     monkeypatch.setattr(batch_runner, "create_run", _never("create_run"))
-    monkeypatch.setattr(batch_runner, "load_run",
-                        lambda run_id: run if run_id == run.run_id else None)
+    monkeypatch.setattr(
+        batch_runner, "load_run", lambda run_id: run if run_id == run.run_id else None
+    )
     monkeypatch.setattr(batch_runner, "_recorded_games", lambda game_ids: dict(recorded or {}))
 
     def served_snapshot(specs, *, enforce_digests):
         seen["gate"].append(enforce_digests)
         return served if served is not None else _snapshot(_models())
+
     monkeypatch.setattr(batch_runner, "served_registry_snapshot", served_snapshot)
     monkeypatch.setattr(batch_runner.provenance, "git_code_version", lambda: code_version)
-    monkeypatch.setattr(batch_runner, "_record_resume",
-                        lambda run_id, note: seen["notes"].append((run_id, note)))
-    monkeypatch.setattr(batch_runner, "_forget_error_game",
-                        lambda game_id, run_id: seen["forgotten"].append((game_id, run_id)))
+    monkeypatch.setattr(
+        batch_runner, "_record_resume", lambda run_id, note: seen["notes"].append((run_id, note))
+    )
+    monkeypatch.setattr(
+        batch_runner,
+        "_forget_error_game",
+        lambda game_id, run_id: seen["forgotten"].append((game_id, run_id)),
+    )
     return seen
 
 
 async def _resume(**kwargs):
     kwargs = {"enforce_digests": False, **kwargs}
-    return await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                           temperature=0.4, persist=True, resume_run_id=_RUN_ID, **kwargs)
+    return await run_batch(
+        models=_models(),
+        boards=_bank(),
+        master_seed=_MASTER_SEED,
+        temperature=0.4,
+        persist=True,
+        resume_run_id=_RUN_ID,
+        **kwargs,
+    )
 
 
 async def test_a_resume_plays_only_the_games_its_run_has_not_recorded(monkeypatch) -> None:
     """The batch stopped at game 40, lost to the provider: the 40 games before it and its error
     stay, and the resume plays the rest under the same run."""
-    seen = _resume_env(monkeypatch, recorded=_recorded(
-        {**{gi: "completed" for gi in range(40)}, 40: "error"}))
+    seen = _resume_env(
+        monkeypatch, recorded=_recorded({**{gi: "completed" for gi in range(40)}, 40: "error"})
+    )
     played = []
 
     async def fake(**kwargs):
         played.append((kwargs["game_index"], kwargs["run_id"]))
-        return GameRunResult(game_id=f"g{kwargs['game_index']}", run_id=kwargs["run_id"],
-                             seed_game=0, status="completed", result=None)
+        return GameRunResult(
+            game_id=f"g{kwargs['game_index']}",
+            run_id=kwargs["run_id"],
+            seed_game=0,
+            status="completed",
+            result=None,
+        )
+
     monkeypatch.setattr(batch_runner, "run_single_game", fake)
 
     report = await _resume()
@@ -761,14 +1021,19 @@ async def test_a_resume_plays_only_the_games_its_run_has_not_recorded(monkeypatc
 
 
 async def test_retry_errors_plays_the_recorded_errors_again_once_their_rows_are_gone(
-        monkeypatch) -> None:
-    seen = _resume_env(monkeypatch, recorded=_recorded(
-        {**{gi: "completed" for gi in range(40)}, 40: "error"}))
+    monkeypatch,
+) -> None:
+    seen = _resume_env(
+        monkeypatch, recorded=_recorded({**{gi: "completed" for gi in range(40)}, 40: "error"})
+    )
     calls = []
     monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner({}, calls))
     events = seen["forgotten"]
-    monkeypatch.setattr(batch_runner, "_forget_error_game",
-                        lambda game_id, run_id: events.append((game_id, run_id, len(calls))))
+    monkeypatch.setattr(
+        batch_runner,
+        "_forget_error_game",
+        lambda game_id, run_id: events.append((game_id, run_id, len(calls))),
+    )
 
     report = await _resume(retry_errors=True)
 
@@ -784,11 +1049,18 @@ async def test_a_recorded_completion_resets_the_consecutive_failure_counter(monk
     """Five errors of pairing 0, each between completions, played again and failing again: in the
     schedule they are not consecutive, so the pairing must not abort."""
     errors = (0, 2, 4, 6, 8)
-    _resume_env(monkeypatch, recorded=_recorded(
-        {**{gi: "error" for gi in errors}, **{gi: "completed" for gi in (1, 3, 5, 7)}}))
+    _resume_env(
+        monkeypatch,
+        recorded=_recorded(
+            {**{gi: "error" for gi in errors}, **{gi: "completed" for gi in (1, 3, 5, 7)}}
+        ),
+    )
     calls = []
-    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner(
-        {gi: [("error", "parse_error")] for gi in errors}, calls))
+    monkeypatch.setattr(
+        batch_runner,
+        "run_single_game",
+        _scripted_runner({gi: [("error", "parse_error")] for gi in errors}, calls),
+    )
 
     report = await _resume(retry_errors=True, consecutive_failure_threshold=5)
 
@@ -802,8 +1074,9 @@ async def test_a_resume_plays_the_games_an_aborted_pairing_skipped(monkeypatch) 
     they are played; the recorded errors do not count towards the threshold again."""
     _resume_env(monkeypatch, recorded=_recorded({gi: "error" for gi in range(5)}))
     calls = []
-    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner(
-        {5: [("error", "parse_error")]}, calls))
+    monkeypatch.setattr(
+        batch_runner, "run_single_game", _scripted_runner({5: [("error", "parse_error")]}, calls)
+    )
 
     report = await _resume(consecutive_failure_threshold=5)
 
@@ -814,11 +1087,15 @@ async def test_a_resume_plays_the_games_an_aborted_pairing_skipped(monkeypatch) 
 
 
 async def test_a_pairing_that_aborts_on_a_resume_counts_only_its_unplayed_games_as_skipped(
-        monkeypatch) -> None:
+    monkeypatch,
+) -> None:
     _resume_env(monkeypatch, recorded=_recorded({gi: "completed" for gi in range(10, 32)}))
     calls = []
-    monkeypatch.setattr(batch_runner, "run_single_game", _scripted_runner(
-        {gi: [("error", "parse_error")] for gi in range(5)}, calls))
+    monkeypatch.setattr(
+        batch_runner,
+        "run_single_game",
+        _scripted_runner({gi: [("error", "parse_error")] for gi in range(5)}, calls),
+    )
 
     report = await _resume(consecutive_failure_threshold=5)
 
@@ -828,20 +1105,29 @@ async def test_a_pairing_that_aborts_on_a_resume_counts_only_its_unplayed_games_
     assert 5 not in calls and 32 in calls
 
 
-@pytest.mark.parametrize("changes, reason", [
-    ({"master_seed": 1}, "master_seed"),
-    ({"temperature": 0.7}, "temperature"),
-    ({"prompt_template_version": "templates@other"}, "prompt templates"),
-    ({"model_registry_snapshot": _snapshot(_models()[:3] + [SeatSpec("ollama", "mistral")])},
-     "models"),
-    ({"model_registry_snapshot": None}, "models"),
-])
-async def test_a_run_minted_for_another_batch_cannot_be_resumed(monkeypatch, changes,
-                                                                reason) -> None:
+@pytest.mark.parametrize(
+    "changes, reason",
+    [
+        ({"master_seed": 1}, "master_seed"),
+        ({"temperature": 0.7}, "temperature"),
+        ({"prompt_template_version": "templates@other"}, "prompt templates"),
+        (
+            {"model_registry_snapshot": _snapshot(_models()[:3] + [SeatSpec("ollama", "mistral")])},
+            "models",
+        ),
+        ({"model_registry_snapshot": None}, "models"),
+    ],
+)
+async def test_a_run_minted_for_another_batch_cannot_be_resumed(
+    monkeypatch, changes, reason
+) -> None:
     seen = _resume_env(monkeypatch, run=_stored_run(**changes))
     monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
-    monkeypatch.setattr(batch_runner, "served_registry_snapshot",
-                        _never("the daemon, before the run's own checks pass,"))
+    monkeypatch.setattr(
+        batch_runner,
+        "served_registry_snapshot",
+        _never("the daemon, before the run's own checks pass,"),
+    )
 
     with pytest.raises(BatchPreconditionError, match=reason):
         await _resume()
@@ -859,8 +1145,10 @@ async def test_every_reason_a_run_cannot_be_resumed_is_listed(monkeypatch) -> No
 
 async def test_a_recorded_game_on_another_board_means_the_bank_changed(monkeypatch) -> None:
     game_id = _cells()[3].game_id
-    _resume_env(monkeypatch, recorded={
-        game_id: batch_runner.RecordedGame(_RUN_ID, "probe-career-99", "completed")})
+    _resume_env(
+        monkeypatch,
+        recorded={game_id: batch_runner.RecordedGame(_RUN_ID, "probe-career-99", "completed")},
+    )
     monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
 
     with pytest.raises(BatchPreconditionError, match="board bank changed"):
@@ -876,9 +1164,15 @@ async def test_a_scheduled_game_recorded_under_another_run_blocks_the_resume(mon
 
 
 async def test_a_resume_needs_the_weights_its_run_was_minted_on(monkeypatch) -> None:
-    seen = _resume_env(monkeypatch, served=_snapshot(
-        _models(), identity=lambda spec: "f" * 64 if spec.model_name == "qwen2.5"
-        else f"digest-{spec.model_name}"))
+    seen = _resume_env(
+        monkeypatch,
+        served=_snapshot(
+            _models(),
+            identity=lambda spec: (
+                "f" * 64 if spec.model_name == "qwen2.5" else f"digest-{spec.model_name}"
+            ),
+        ),
+    )
     monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
 
     with pytest.raises(BatchPreconditionError, match="ollama:qwen2.5: the run was minted on"):
@@ -909,12 +1203,15 @@ async def test_a_run_minted_without_a_manifest_resumes_with_a_warning(monkeypatc
     assert report.completed == 192 and "without a stimulus manifest" in caplog.text
 
 
-@pytest.mark.parametrize("minted, now, problem", [
-    ({"a": "1", "b": "2"}, {"a": "1", "b": "2"}, False),
-    ({"a": "1", "b": "2"}, {"a": "1", "b": "3"}, True),   # a board's content changed
-    ({"a": "1", "b": "2"}, {"a": "1", "c": "2"}, True),   # another board is scheduled
-    (None, {"a": "1"}, False),                             # nothing to compare with
-])
+@pytest.mark.parametrize(
+    "minted, now, problem",
+    [
+        ({"a": "1", "b": "2"}, {"a": "1", "b": "2"}, False),
+        ({"a": "1", "b": "2"}, {"a": "1", "b": "3"}, True),  # a board's content changed
+        ({"a": "1", "b": "2"}, {"a": "1", "c": "2"}, True),  # another board is scheduled
+        (None, {"a": "1"}, False),  # nothing to compare with
+    ],
+)
 def test_the_manifest_comparison(minted, now, problem) -> None:
     problems = batch_runner._manifest_problems(_stored_run(stimulus_manifest=minted), now)
     assert bool(problems) == problem
@@ -942,12 +1239,15 @@ async def test_other_code_only_warns_and_the_run_notes_it(monkeypatch, caplog) -
     assert "resumed at code_version def5678 (minted at abc1234)" in seen["notes"][0][1]
 
 
-@pytest.mark.parametrize("minted, current, warns", [
-    ("abc1234", "abc1234", False),
-    ("abc1234", "def5678", True),
-    ("abc1234", None, True),
-    ("abc1234-dirty", "abc1234-dirty", True),
-])
+@pytest.mark.parametrize(
+    "minted, current, warns",
+    [
+        ("abc1234", "abc1234", False),
+        ("abc1234", "def5678", True),
+        ("abc1234", None, True),
+        ("abc1234-dirty", "abc1234-dirty", True),
+    ],
+)
 def test_the_code_change_warning(minted, current, warns) -> None:
     warning = batch_runner._code_change_warning(_stored_run(code_version=minted), current)
     assert (warning is not None) == warns
@@ -964,14 +1264,19 @@ async def test_an_unknown_run_cannot_be_resumed(monkeypatch) -> None:
 async def test_a_resume_needs_the_database(monkeypatch) -> None:
     monkeypatch.setattr(batch_runner, "run_single_game", _spy_never_called())
     with pytest.raises(BatchPreconditionError, match="needs the database"):
-        await run_batch(models=_models(), boards=_bank(), master_seed=_MASTER_SEED,
-                        temperature=0.4, persist=False, enforce_digests=False,
-                        resume_run_id=_RUN_ID)
+        await run_batch(
+            models=_models(),
+            boards=_bank(),
+            master_seed=_MASTER_SEED,
+            temperature=0.4,
+            persist=False,
+            enforce_digests=False,
+            resume_run_id=_RUN_ID,
+        )
 
 
 def test_the_collision_message_names_the_run_to_resume(monkeypatch) -> None:
-    monkeypatch.setattr(batch_runner, "_recorded_games",
-                        lambda game_ids: _recorded({0: "error"}))
+    monkeypatch.setattr(batch_runner, "_recorded_games", lambda game_ids: _recorded({0: "error"}))
     with pytest.raises(BatchPreconditionError, match="already recorded") as excinfo:
         batch_runner._check_no_collisions(["any"], master_seed=_MASTER_SEED)
     assert f"run(s) ['{_RUN_ID}']" in str(excinfo.value) and "--resume" in str(excinfo.value)
@@ -1002,22 +1307,35 @@ def test_a_run_is_read_back_and_its_resumes_are_noted() -> None:
     snapshot = _snapshot(_models())
     with session_scope() as s:
         s.add(BoardModel(board_id=board_id))
-        s.add(RunModel(id=run_id, master_seed=Decimal(987), temperature=0.4,
-                       prompt_template_version="tpl", code_version="abc1234",
-                       model_registry_snapshot=snapshot, stimulus_manifest={"b": "h"}))
+        s.add(
+            RunModel(
+                id=run_id,
+                master_seed=Decimal(987),
+                temperature=0.4,
+                prompt_template_version="tpl",
+                code_version="abc1234",
+                model_registry_snapshot=snapshot,
+                stimulus_manifest={"b": "h"},
+            )
+        )
         s.flush()
-        s.add(GameModel(id=game_ids[0], run_id=run_id, board_id=board_id,
-                        game_status="completed"))
+        s.add(GameModel(id=game_ids[0], run_id=run_id, board_id=board_id, game_status="completed"))
         s.add(GameModel(id=game_ids[1], run_id=run_id, board_id=board_id, game_status="error"))
     try:
         assert batch_runner.load_run(run_id) == batch_runner.StoredRun(
-            run_id=run_id, master_seed=987, temperature=0.4, prompt_template_version="tpl",
-            code_version="abc1234", model_registry_snapshot=snapshot,
-            stimulus_manifest={"b": "h"})
+            run_id=run_id,
+            master_seed=987,
+            temperature=0.4,
+            prompt_template_version="tpl",
+            code_version="abc1234",
+            model_registry_snapshot=snapshot,
+            stimulus_manifest={"b": "h"},
+        )
         assert batch_runner.load_run(str(uuid.uuid4())) is None
         assert batch_runner._recorded_games([*game_ids, str(uuid.uuid4())]) == {
             game_ids[0]: batch_runner.RecordedGame(run_id, board_id, "completed"),
-            game_ids[1]: batch_runner.RecordedGame(run_id, board_id, "error")}
+            game_ids[1]: batch_runner.RecordedGame(run_id, board_id, "error"),
+        }
 
         batch_runner._record_resume(run_id, "first resume")
         batch_runner._record_resume(run_id, "second resume")

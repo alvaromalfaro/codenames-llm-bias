@@ -6,6 +6,7 @@ graph is built through the real writer (writer.persist_game) so the cascade is e
 realistic tree - a normal turn AND a two-seat sudden-death turn, with non-null reveal_event_id
 backfill on both.
 """
+
 import uuid
 
 import pytest
@@ -13,7 +14,11 @@ from sqlalchemy import func, select
 
 from backend.app.core.game_runner import _game_identity
 from backend.app.models.game_schemas import (
-    CardRole, ClueEntry, ConfidenceRanking, RankedCard, ResolvedTarget,
+    CardRole,
+    ClueEntry,
+    ConfidenceRanking,
+    RankedCard,
+    ResolvedTarget,
 )
 from backend.app.models.llm_schemas import ClueProposal, GuessProposal, LLMCallRecord, LLMMessage
 
@@ -22,10 +27,13 @@ pytestmark = pytest.mark.db
 
 def _call(role, retry_index=0, temperature=0.5, seed=7):
     return LLMCallRecord(
-        role=role, retry_index=retry_index,
+        role=role,
+        retry_index=retry_index,
         rendered_prompt=[LLMMessage(role="user", content="prompt text")],
-        requested_temperature=temperature, requested_seed=seed,
-        prompt_tokens=10, completion_tokens=5,
+        requested_temperature=temperature,
+        requested_seed=seed,
+        prompt_tokens=10,
+        completion_tokens=5,
     )
 
 
@@ -36,12 +44,20 @@ def _insert_board(session):
     board_id = f"test-delete-run-{uuid.uuid4()}"
     session.add(BoardModel(board_id=board_id, type="control"))
     for card_id, text, role in [
-        (0, "ALPHA", CardRole.AGENT), (1, "BETA", CardRole.CIVILIAN),
-        (2, "GAMMA", CardRole.ASSASSIN), (3, "DELTA", CardRole.AGENT),
+        (0, "ALPHA", CardRole.AGENT),
+        (1, "BETA", CardRole.CIVILIAN),
+        (2, "GAMMA", CardRole.ASSASSIN),
+        (3, "DELTA", CardRole.AGENT),
     ]:
-        session.add(WordCardModel(
-            board_id=board_id, card_id=card_id, text=text,
-            llm_perspective_role=role.value, human_perspective_role=role.value))
+        session.add(
+            WordCardModel(
+                board_id=board_id,
+                card_id=card_id,
+                text=text,
+                llm_perspective_role=role.value,
+                human_perspective_role=role.value,
+            )
+        )
     session.flush()
     return board_id
 
@@ -58,9 +74,12 @@ def _insert_run(session):
 def _recorder(*, game_id, board_id, run_id):
     from backend.app.db.recorder import GameRecorder, SeatRecord
 
-    rec = GameRecorder(game_id=game_id, board_id=board_id, start_player=0,
-                       seats=[SeatRecord(0, "openrouter", "or-model"),
-                              SeatRecord(1, "ollama", "local-model")])
+    rec = GameRecorder(
+        game_id=game_id,
+        board_id=board_id,
+        start_player=0,
+        seats=[SeatRecord(0, "openrouter", "or-model"), SeatRecord(1, "ollama", "local-model")],
+    )
     rec.run_id = run_id
     rec.derived_seed = 999
     return rec
@@ -70,32 +89,90 @@ def _record_full_game(rec):
     """Drive a rec through a normal turn AND a two-seat sudden-death turn with backfilled reveals."""
     # Normal turn: clue (2 attempts) + 3-item play (2 reveals -> tail NULL) + measurement.
     rec.record_clue(
-        ClueEntry(clue="battle", count=2, clue_giver=0, turn_number=0, targets=["ALPHA"],
-                  targets_resolved=[ResolvedTarget(word="ALPHA", card_id=0,
-                                                   giver_role=CardRole.AGENT, revealed_at_clue=False)]),
-        proposal=ClueProposal(clue="battle", count=2, reasoning="military",
-                              llm_calls=[_call("clue_giver", 0), _call("clue_giver", 1)]))
-    rec.record_play_proposal(GuessProposal(
-        proposals=["ALPHA", "BETA", "GAMMA"], confidence=[0.9, 0.4, 0.2],
-        reasoning="r", stop_reason="s", llm_call=_call("guesser")))
-    rec.record_measurement(ConfidenceRanking(
-        reasoning="m", rankings=[RankedCard(word="ALPHA", confidence=0.8),
-                                 RankedCard(word="BETA", confidence=0.3)],
-        llm_call=_call("measurement")))
-    rec.record_reveal(card_id=0, result_str="agent", timer_tokens_after=9,
-                      ended_game=False, proposal_index=0, acting_seat=0)
-    rec.record_reveal(card_id=1, result_str="civilian", timer_tokens_after=8,
-                      ended_game=False, proposal_index=1, acting_seat=0)
+        ClueEntry(
+            clue="battle",
+            count=2,
+            clue_giver=0,
+            turn_number=0,
+            targets=["ALPHA"],
+            targets_resolved=[
+                ResolvedTarget(
+                    word="ALPHA", card_id=0, giver_role=CardRole.AGENT, revealed_at_clue=False
+                )
+            ],
+        ),
+        proposal=ClueProposal(
+            clue="battle",
+            count=2,
+            reasoning="military",
+            llm_calls=[_call("clue_giver", 0), _call("clue_giver", 1)],
+        ),
+    )
+    rec.record_play_proposal(
+        GuessProposal(
+            proposals=["ALPHA", "BETA", "GAMMA"],
+            confidence=[0.9, 0.4, 0.2],
+            reasoning="r",
+            stop_reason="s",
+            llm_call=_call("guesser"),
+        )
+    )
+    rec.record_measurement(
+        ConfidenceRanking(
+            reasoning="m",
+            rankings=[
+                RankedCard(word="ALPHA", confidence=0.8),
+                RankedCard(word="BETA", confidence=0.3),
+            ],
+            llm_call=_call("measurement"),
+        )
+    )
+    rec.record_reveal(
+        card_id=0,
+        result_str="agent",
+        timer_tokens_after=9,
+        ended_game=False,
+        proposal_index=0,
+        acting_seat=0,
+    )
+    rec.record_reveal(
+        card_id=1,
+        result_str="civilian",
+        timer_tokens_after=8,
+        ended_game=False,
+        proposal_index=1,
+        acting_seat=0,
+    )
     # Two-seat sudden-death turn: both seats play + are measured, seat-0 reveal backfilled.
     for seat in (0, 1):
-        rec.record_sd_play_proposal(GuessProposal(
-            proposals=["DELTA"], confidence=[0.9], reasoning="r", stop_reason="s",
-            llm_call=_call("guesser_sd")), clue_giver_seat=1, guesser_seat=seat)
-        rec.record_sd_measurement(ConfidenceRanking(
-            rankings=[RankedCard(word="DELTA", confidence=0.7)],
-            llm_call=_call("measurement_sd")), clue_giver_seat=1, guesser_seat=seat)
-    rec.record_sd_reveal(clue_giver_seat=1, card_id=3, result_str="victory_sd",
-                         timer_tokens_after=0, ended_game=True, proposal_index=0, acting_seat=0)
+        rec.record_sd_play_proposal(
+            GuessProposal(
+                proposals=["DELTA"],
+                confidence=[0.9],
+                reasoning="r",
+                stop_reason="s",
+                llm_call=_call("guesser_sd"),
+            ),
+            clue_giver_seat=1,
+            guesser_seat=seat,
+        )
+        rec.record_sd_measurement(
+            ConfidenceRanking(
+                rankings=[RankedCard(word="DELTA", confidence=0.7)],
+                llm_call=_call("measurement_sd"),
+            ),
+            clue_giver_seat=1,
+            guesser_seat=seat,
+        )
+    rec.record_sd_reveal(
+        clue_giver_seat=1,
+        card_id=3,
+        result_str="victory_sd",
+        timer_tokens_after=0,
+        ended_game=True,
+        proposal_index=0,
+        acting_seat=0,
+    )
     rec.set_outcome("victory", 0)
 
 
@@ -111,36 +188,59 @@ def _persist_full_game(*, game_id, board_id, run_id):
 def _row_counts_for_game(session, game_id):
     """Return {table: count} across the whole game subtree, filtered to one game."""
     from backend.app.db.models import (
-        ClueModel, ClueTargetModel, GameModel, GameSeatModel, GuessProposalItemModel,
-        GuessProposalModel, LlmCallModel, RevealEventModel, TurnModel,
+        ClueModel,
+        ClueTargetModel,
+        GameModel,
+        GameSeatModel,
+        GuessProposalItemModel,
+        GuessProposalModel,
+        LlmCallModel,
+        RevealEventModel,
+        TurnModel,
     )
 
-    turn_ids = session.execute(select(TurnModel.id).where(
-        TurnModel.game_id == game_id)).scalars().all()
-    clue_ids = session.execute(select(ClueModel.id).where(
-        ClueModel.turn_id.in_(turn_ids))).scalars().all() if turn_ids else []
-    gp_ids = session.execute(select(GuessProposalModel.id).where(
-        GuessProposalModel.turn_id.in_(turn_ids))).scalars().all() if turn_ids else []
+    turn_ids = (
+        session.execute(select(TurnModel.id).where(TurnModel.game_id == game_id)).scalars().all()
+    )
+    clue_ids = (
+        session.execute(select(ClueModel.id).where(ClueModel.turn_id.in_(turn_ids))).scalars().all()
+        if turn_ids
+        else []
+    )
+    gp_ids = (
+        session.execute(
+            select(GuessProposalModel.id).where(GuessProposalModel.turn_id.in_(turn_ids))
+        )
+        .scalars()
+        .all()
+        if turn_ids
+        else []
+    )
 
     def _count(model, col, ids):
         if not ids:
             return 0
-        return session.execute(select(func.count()).select_from(model).where(
-            col.in_(ids))).scalar_one()
+        return session.execute(
+            select(func.count()).select_from(model).where(col.in_(ids))
+        ).scalar_one()
 
     return {
-        "game": session.execute(select(func.count()).select_from(GameModel).where(
-            GameModel.id == game_id)).scalar_one(),
-        "game_seat": session.execute(select(func.count()).select_from(GameSeatModel).where(
-            GameSeatModel.game_id == game_id)).scalar_one(),
+        "game": session.execute(
+            select(func.count()).select_from(GameModel).where(GameModel.id == game_id)
+        ).scalar_one(),
+        "game_seat": session.execute(
+            select(func.count()).select_from(GameSeatModel).where(GameSeatModel.game_id == game_id)
+        ).scalar_one(),
         "turn": len(turn_ids),
         "clue": len(clue_ids),
         "clue_target": _count(ClueTargetModel, ClueTargetModel.clue_id, clue_ids),
-        "llm_call": session.execute(select(func.count()).select_from(LlmCallModel).where(
-            LlmCallModel.game_id == game_id)).scalar_one(),
+        "llm_call": session.execute(
+            select(func.count()).select_from(LlmCallModel).where(LlmCallModel.game_id == game_id)
+        ).scalar_one(),
         "guess_proposal": len(gp_ids),
         "guess_proposal_item": _count(
-            GuessProposalItemModel, GuessProposalItemModel.guess_proposal_id, gp_ids),
+            GuessProposalItemModel, GuessProposalItemModel.guess_proposal_id, gp_ids
+        ),
         "reveal_event": _count(RevealEventModel, RevealEventModel.turn_id, turn_ids),
     }
 
@@ -161,13 +261,27 @@ def test_delete_run_cascades_whole_subtree():
     with session_scope() as session:
         before = _row_counts_for_game(session, game_id)
         from backend.app.db.models import GuessProposalItemModel, GuessProposalModel, TurnModel
-        turn_ids = session.execute(select(TurnModel.id).where(
-            TurnModel.game_id == game_id)).scalars().all()
-        gp_ids = session.execute(select(GuessProposalModel.id).where(
-            GuessProposalModel.turn_id.in_(turn_ids))).scalars().all()
-        backfilled = session.execute(select(func.count()).select_from(GuessProposalItemModel).where(
-            GuessProposalItemModel.guess_proposal_id.in_(gp_ids),
-            GuessProposalItemModel.reveal_event_id.is_not(None))).scalar_one()
+
+        turn_ids = (
+            session.execute(select(TurnModel.id).where(TurnModel.game_id == game_id))
+            .scalars()
+            .all()
+        )
+        gp_ids = (
+            session.execute(
+                select(GuessProposalModel.id).where(GuessProposalModel.turn_id.in_(turn_ids))
+            )
+            .scalars()
+            .all()
+        )
+        backfilled = session.execute(
+            select(func.count())
+            .select_from(GuessProposalItemModel)
+            .where(
+                GuessProposalItemModel.guess_proposal_id.in_(gp_ids),
+                GuessProposalItemModel.reveal_event_id.is_not(None),
+            )
+        ).scalar_one()
     assert all(v > 0 for v in before.values()), before
     assert backfilled > 0
 
@@ -179,8 +293,8 @@ def test_delete_run_cascades_whole_subtree():
     with session_scope() as session:
         after = _row_counts_for_game(session, game_id)
         from backend.app.db.models import RunModel
-        run_gone = session.execute(select(RunModel.id).where(
-            RunModel.id == run_id)).first()
+
+        run_gone = session.execute(select(RunModel.id).where(RunModel.id == run_id)).first()
     assert after == {k: 0 for k in before}, after
     assert run_gone is None
 
@@ -200,8 +314,11 @@ def test_delete_run_preserves_shared_ingest_data():
 
     with session_scope() as session:
         board = session.get(BoardModel, board_id)
-        n_cards = session.execute(select(func.count()).select_from(WordCardModel).where(
-            WordCardModel.board_id == board_id)).scalar_one()
+        n_cards = session.execute(
+            select(func.count())
+            .select_from(WordCardModel)
+            .where(WordCardModel.board_id == board_id)
+        ).scalar_one()
     assert board is not None
     assert n_cards == 4
 
@@ -260,8 +377,11 @@ def test_delete_error_game_deletes_only_an_error_game_of_its_run():
         other_run_id = _insert_run(session)
 
     error_id, completed_id, other_id = (str(uuid.uuid4()) for _ in range(3))
-    for game_id, run, status in [(error_id, run_id, "error"), (completed_id, run_id, "completed"),
-                                 (other_id, other_run_id, "error")]:
+    for game_id, run, status in [
+        (error_id, run_id, "error"),
+        (completed_id, run_id, "completed"),
+        (other_id, other_run_id, "error"),
+    ]:
         rec = _recorder(game_id=game_id, board_id=board_id, run_id=run)
         _record_full_game(rec)
         writer.persist_game(rec, status=status)
@@ -313,8 +433,11 @@ def test_delete_run_enables_rerun_of_same_identity():
 
     with session_scope() as session:
         assert session.get(GameModel, game_id) is None
-        session.add(RunModel(id=run_id, master_seed=master_seed, temperature=0.5,
-                             notes="test-delete-run-rerun"))
+        session.add(
+            RunModel(
+                id=run_id, master_seed=master_seed, temperature=0.5, notes="test-delete-run-rerun"
+            )
+        )
 
     rec = _persist_full_game(game_id=game_id, board_id=board_id, run_id=run_id)
     assert rec.flushed is True

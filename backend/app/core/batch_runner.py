@@ -59,6 +59,7 @@ Level 2 - PER-GAME FAULT ISOLATION (count-and-continue, inside the loop):
 
 The CLI wrapper lives in ``scripts/run_batch.py``; the orchestration lives here.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -78,7 +79,11 @@ from sqlalchemy import select
 from backend.app.core import provenance
 from backend.app.core.batch_schedule import BatchCell, build_schedule
 from backend.app.core.game_runner import (
-    ClientFactory, SeatSpec, create_run, default_client_factory, run_single_game,
+    ClientFactory,
+    SeatSpec,
+    create_run,
+    default_client_factory,
+    run_single_game,
     served_registry_snapshot,
 )
 from backend.app.core.llm.client import LLMClient
@@ -86,7 +91,11 @@ from backend.app.core.llm_service import LLMService
 from backend.app.models.game_schemas import Board, CardRole
 from backend.app.paths import ALEMBIC_INI, BOARDS_DIR
 from backend.app.models.llm_schemas import (
-    ClueJSONFormat, ConfidenceRankingJSONFormat, GuessJSONFormat, LLMRequest, LLMResponse,
+    ClueJSONFormat,
+    ConfidenceRankingJSONFormat,
+    GuessJSONFormat,
+    LLMRequest,
+    LLMResponse,
 )
 
 logger = logging.getLogger("run_batch")
@@ -125,11 +134,26 @@ def _model_id(spec: SeatSpec) -> str:
 # LLMError codes (models/llm_errors.py) by kind: what went wrong with the provider, or with the
 # setup that reaches it, and what the model itself returned.
 _PROVIDER_ERROR_CODES = frozenset(
-    {"timeout", "rate_limit", "provider_unavailable", "auth", "model_not_provided",
-     "model_not_found", "invalid_request"})
+    {
+        "timeout",
+        "rate_limit",
+        "provider_unavailable",
+        "auth",
+        "model_not_provided",
+        "model_not_found",
+        "invalid_request",
+    }
+)
 _MODEL_ERROR_CODES = frozenset(
-    {"parse_error", "empty_response", "degenerate_response", "truncated_response",
-     "malformed_response", "refused"})
+    {
+        "parse_error",
+        "empty_response",
+        "degenerate_response",
+        "truncated_response",
+        "malformed_response",
+        "refused",
+    }
+)
 # The code of a game that broke the rules of its own state (core/invariants.py): a bug of the
 # engine or of what drives it, neither the provider's nor the model's.
 _INVARIANT_ERROR_CODE = "invariant_broken"
@@ -158,16 +182,48 @@ def _classify_error(error: Optional[str], code: Optional[str] = None) -> str:
     if not error:
         return "other"
     low = error.lower()
-    if any(t in low for t in
-           ("duplicate key", "already exists", "unique", "primary key", "uniqueviolation")):
+    if any(
+        t in low
+        for t in ("duplicate key", "already exists", "unique", "primary key", "uniqueviolation")
+    ):
         return "collision"
-    if any(t in low for t in
-           ("timeout", "timed out", "connection", "unreachable", "refused", "rate limit",
-            "429", "502", "503", "504", "network", "httpx", "socket", "provider")):
+    if any(
+        t in low
+        for t in (
+            "timeout",
+            "timed out",
+            "connection",
+            "unreachable",
+            "refused",
+            "rate limit",
+            "429",
+            "502",
+            "503",
+            "504",
+            "network",
+            "httpx",
+            "socket",
+            "provider",
+        )
+    ):
         return "provider"
-    if any(t in low for t in
-           ("no legal", "no playable", "illegal", "invalid clue", "could not parse", "no valid",
-            "json", "validation", "malformed", "empty", "refus", "at least one guess")):
+    if any(
+        t in low
+        for t in (
+            "no legal",
+            "no playable",
+            "illegal",
+            "invalid clue",
+            "could not parse",
+            "no valid",
+            "json",
+            "validation",
+            "malformed",
+            "empty",
+            "refus",
+            "at least one guess",
+        )
+    ):
         return "model"
     return "other"
 
@@ -175,6 +231,7 @@ def _classify_error(error: Optional[str], code: Optional[str] = None) -> str:
 @dataclass
 class PairingReport:
     """The outcome of one pairing's 32 games."""
+
     pairing_ordinal: int
     pairing_key: tuple[str, str]
     total_cells: int
@@ -190,8 +247,9 @@ class PairingReport:
 
     @property
     def skipped(self) -> int:
-        return (self.total_cells - self.attempted - self.previously_completed
-                - self.previously_errored)
+        return (
+            self.total_cells - self.attempted - self.previously_completed - self.previously_errored
+        )
 
     def as_dict(self) -> dict:
         return {
@@ -214,6 +272,7 @@ class PairingReport:
 class BatchReport:
     """The whole batch's outcome, structured so the analysis can read reduced effective-n off it:
     which pairings aborted and why, and the per-pairing completed/errored split."""
+
     run_id: str
     master_seed: int
     attempted: int
@@ -250,6 +309,7 @@ def _migration_heads() -> set[str]:
     """The head revision(s) of the Alembic migrations shipped with this code."""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
+
     # The Alembic configuration whose migrations define the schema this code writes.
     return set(ScriptDirectory.from_config(Config(str(ALEMBIC_INI))).get_heads())
 
@@ -258,6 +318,7 @@ def _database_revisions() -> set[str]:
     """The revision(s) the database is stamped with; empty for a database that was never migrated."""
     from alembic.runtime.migration import MigrationContext
     from backend.app.db.session import get_engine
+
     with get_engine().connect() as connection:
         return set(MigrationContext.configure(connection).get_current_heads())
 
@@ -271,13 +332,15 @@ def _check_schema_at_head() -> None:
         raise BatchPreconditionError(
             f"the database schema is at {sorted(current) or 'no revision (never migrated)'}, but "
             f"this code's migrations end at {sorted(heads)}: every game would be played and then "
-            f"fail to be stored. Run `alembic -c backend/alembic.ini upgrade head` first.")
+            f"fail to be stored. Run `alembic -c backend/alembic.ini upgrade head` first."
+        )
 
 
 @dataclass(frozen=True)
 class RecordedGame:
     """A game of the schedule already in the database: the run it belongs to, the board it was
     played on, and its ``game_status``."""
+
     run_id: Optional[str]
     board_id: str
     status: str
@@ -288,13 +351,17 @@ def _recorded_games(game_ids: Sequence[str]) -> dict[str, RecordedGame]:
     ``SELECT ... WHERE game.id IN (...)`` over the ids."""
     from backend.app.db.models import GameModel
     from backend.app.db.session import session_scope
+
     with session_scope() as session:
         rows = session.execute(
-            select(GameModel.id, GameModel.run_id, GameModel.board_id, GameModel.game_status)
-            .where(GameModel.id.in_(list(game_ids)))
+            select(GameModel.id, GameModel.run_id, GameModel.board_id, GameModel.game_status).where(
+                GameModel.id.in_(list(game_ids))
+            )
         ).all()
-    return {game_id: RecordedGame(run_id, board_id, status)
-            for game_id, run_id, board_id, status in rows}
+    return {
+        game_id: RecordedGame(run_id, board_id, status)
+        for game_id, run_id, board_id, status in rows
+    }
 
 
 def _check_no_collisions(game_ids: Sequence[str], *, master_seed: int) -> None:
@@ -309,12 +376,14 @@ def _check_no_collisions(game_ids: Sequence[str], *, master_seed: int) -> None:
             f"(deterministic game.id collision). Continue that run with "
             f"`python scripts/run_batch.py --resume <RUN_ID>`, or delete it first "
             f"(`python scripts/manage_runs.py delete <RUN_ID>`) and run this master_seed again. "
-            f"Colliding ids (first 3): {sorted(existing)[:3]}")
+            f"Colliding ids (first 3): {sorted(existing)[:3]}"
+        )
 
 
 @dataclass(frozen=True)
 class StoredRun:
     """A run as it was minted, read off its row: what a batch that resumes it must match."""
+
     run_id: str
     master_seed: Optional[int]
     temperature: float
@@ -330,26 +399,40 @@ def load_run(run_id: str) -> Optional[StoredRun]:
     if not os.environ.get("DATABASE_URL"):
         raise BatchPreconditionError(f"reading run {run_id} requires DATABASE_URL.")
     from backend.app.db.runs import get_run
+
     run = get_run(run_id)
     if run is None:
         return None
     return StoredRun(
-        run_id=run.run_id, master_seed=run.master_seed, temperature=run.temperature,
-        prompt_template_version=run.prompt_template_version, code_version=run.code_version,
+        run_id=run.run_id,
+        master_seed=run.master_seed,
+        temperature=run.temperature,
+        prompt_template_version=run.prompt_template_version,
+        code_version=run.code_version,
         model_registry_snapshot=run.model_registry_snapshot,
-        stimulus_manifest=run.stimulus_manifest)
+        stimulus_manifest=run.stimulus_manifest,
+    )
 
 
 def _snapshot_models(snapshot: Optional[dict]) -> dict[str, Optional[str]]:
     """Each model of a ``model_registry_snapshot`` by model id (as :func:`_model_id` writes it), with
     its identity: the served digest of a local model, the requested string of an API one."""
-    return {f"{entry.get('provider')}:{entry.get('model_name')}": entry.get("identity")
-            for entry in (snapshot or {}).values()}
+    return {
+        f"{entry.get('provider')}:{entry.get('model_name')}": entry.get("identity")
+        for entry in (snapshot or {}).values()
+    }
 
 
-def _resume_problems(run: StoredRun, *, schedule: Sequence[BatchCell], models: Sequence[SeatSpec],
-                     master_seed: int, temperature: float, template_fingerprint: str,
-                     recorded: dict[str, RecordedGame]) -> list[str]:
+def _resume_problems(
+    run: StoredRun,
+    *,
+    schedule: Sequence[BatchCell],
+    models: Sequence[SeatSpec],
+    master_seed: int,
+    temperature: float,
+    template_fingerprint: str,
+    recorded: dict[str, RecordedGame],
+) -> list[str]:
     """Why this batch is not the one ``run`` was minted for, one reason each; empty when it can
     resume ``run``. ``recorded`` holds the schedule's games already in the database."""
     problems = []
@@ -358,8 +441,10 @@ def _resume_problems(run: StoredRun, *, schedule: Sequence[BatchCell], models: S
     if run.temperature != temperature:
         problems.append(f"temperature: the run has {run.temperature}, this batch {temperature}")
     if run.prompt_template_version != template_fingerprint:
-        problems.append(f"prompt templates and response schemas: the run was minted with "
-                        f"{run.prompt_template_version}, they now hash to {template_fingerprint}")
+        problems.append(
+            f"prompt templates and response schemas: the run was minted with "
+            f"{run.prompt_template_version}, they now hash to {template_fingerprint}"
+        )
     minted = sorted(_snapshot_models(run.model_registry_snapshot))
     now = sorted(_model_id(spec) for spec in models)
     if minted != now:
@@ -374,12 +459,16 @@ def _resume_problems(run: StoredRun, *, schedule: Sequence[BatchCell], models: S
         elif game.board_id != cell.board_id:
             moved.append(f"game_index {cell.game_index} on {game.board_id}, now {cell.board_id}")
     if foreign:
-        problems.append(f"{len(foreign)} of the scheduled games are recorded under another run "
-                        f"(first 3: {foreign[:3]})")
+        problems.append(
+            f"{len(foreign)} of the scheduled games are recorded under another run "
+            f"(first 3: {foreign[:3]})"
+        )
     if moved:
-        problems.append(f"{len(moved)} recorded games were played on another board than the one the "
-                        f"schedule now puts there: the board bank changed since the run was minted "
-                        f"(first 3: {moved[:3]})")
+        problems.append(
+            f"{len(moved)} recorded games were played on another board than the one the "
+            f"schedule now puts there: the board bank changed since the run was minted "
+            f"(first 3: {moved[:3]})"
+        )
     return problems
 
 
@@ -387,8 +476,11 @@ def _served_model_problems(run: StoredRun, served: dict) -> list[str]:
     """The models whose identity served now (``served``, a ``model_registry_snapshot``) is not the
     one ``run`` was minted on."""
     minted, now = _snapshot_models(run.model_registry_snapshot), _snapshot_models(served)
-    return [f"{model}: the run was minted on {minted[model]}, the provider serves {now.get(model)}"
-            for model in sorted(minted) if now.get(model) != minted[model]]
+    return [
+        f"{model}: the run was minted on {minted[model]}, the provider serves {now.get(model)}"
+        for model in sorted(minted)
+        if now.get(model) != minted[model]
+    ]
 
 
 def _manifest_problems(run: StoredRun, manifest: dict[str, str]) -> list[str]:
@@ -397,23 +489,32 @@ def _manifest_problems(run: StoredRun, manifest: dict[str, str]) -> list[str]:
     minted = run.stimulus_manifest or {}
     if not minted:
         return []
-    changed = sorted(board_id for board_id in set(minted) | set(manifest)
-                     if minted.get(board_id) != manifest.get(board_id))
+    changed = sorted(
+        board_id
+        for board_id in set(minted) | set(manifest)
+        if minted.get(board_id) != manifest.get(board_id)
+    )
     if not changed:
         return []
-    return [f"boards: {len(changed)} of the boards scheduled now, or their content, are not those "
-            f"the run was minted with (first 3: {changed[:3]})"]
+    return [
+        f"boards: {len(changed)} of the boards scheduled now, or their content, are not those "
+        f"the run was minted with (first 3: {changed[:3]})"
+    ]
 
 
 def _code_change_warning(run: StoredRun, current: Optional[str]) -> Optional[str]:
     """What a resume at ``current`` code_version cannot vouch for, or None when the code is the
     run's own."""
     if current != run.code_version:
-        return (f"the run was minted at code_version {run.code_version}, this code is {current}: "
-                f"the games played from here on run other code")
+        return (
+            f"the run was minted at code_version {run.code_version}, this code is {current}: "
+            f"the games played from here on run other code"
+        )
     if current and current.endswith("-dirty"):
-        return (f"the run was minted at code_version {current} and this code is too: their "
-                f"uncommitted changes cannot be compared")
+        return (
+            f"the run was minted at code_version {current} and this code is too: their "
+            f"uncommitted changes cannot be compared"
+        )
     return None
 
 
@@ -421,6 +522,7 @@ def _record_resume(run_id: str, note: str) -> None:
     """Append ``note`` to the run's ``notes``: a resume is part of the run's provenance."""
     from backend.app.db.models import RunModel
     from backend.app.db.session import session_scope
+
     with session_scope() as session:
         run = session.get(RunModel, run_id)
         if run is None:
@@ -441,16 +543,20 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> dict[str, str]:
     nothing. A file of the bank that is not a valid board, and a stored board whose file now holds
     other content, abort the batch: the games would play what the database does not hold."""
     from backend.app.db.ingest_boards import (
-        InvalidBoardFileError, StaleBoardError, ingest_boards_if_absent,
+        InvalidBoardFileError,
+        StaleBoardError,
+        ingest_boards_if_absent,
     )
     from backend.app.db.ingest_frame import StaleFrameError, ingest_frame_if_absent
     from backend.app.db.models import BoardModel
     from backend.app.db.session import session_scope
+
     frame_path = bank_dir / "measurement_frame.json"
     if not frame_path.exists():
         raise BatchPreconditionError(
             f"no measurement frame at {frame_path}: the sealed boards point at it, and the analysis "
-            f"measures against it.")
+            f"measures against it."
+        )
     try:
         with session_scope() as session:
             frame_inserted = ingest_frame_if_absent(session, frame_path)
@@ -461,31 +567,45 @@ def _ingest_bank(bank_dir: Path, board_ids: Sequence[str]) -> dict[str, str]:
     try:
         with session_scope() as session:
             boards_inserted = ingest_boards_if_absent(session, bank_dir)
-            stored = dict(session.execute(
-                select(BoardModel.board_id, BoardModel.content_sha256)
-                .where(BoardModel.board_id.in_(list(board_ids)))
-            ).all())
+            stored = dict(
+                session.execute(
+                    select(BoardModel.board_id, BoardModel.content_sha256).where(
+                        BoardModel.board_id.in_(list(board_ids))
+                    )
+                ).all()
+            )
     except InvalidBoardFileError as exc:
         raise BatchPreconditionError(f"the board bank cannot be read whole: {exc}") from exc
     except StaleBoardError as exc:
         raise BatchPreconditionError(
-            f"{exc} Restore the file, or delete the board and the runs that played it.") from exc
-    logger.info("bank ingestion: measurement frame %s, %s new board(s) from %s",
-                "stored" if frame_inserted else "already stored", boards_inserted, bank_dir)
+            f"{exc} Restore the file, or delete the board and the runs that played it."
+        ) from exc
+    logger.info(
+        "bank ingestion: measurement frame %s, %s new board(s) from %s",
+        "stored" if frame_inserted else "already stored",
+        boards_inserted,
+        bank_dir,
+    )
     missing = sorted(set(board_ids) - stored.keys())
     if missing:
         raise BatchPreconditionError(
-            f"scheduled boards missing from the database after ingesting {bank_dir}: {missing}")
+            f"scheduled boards missing from the database after ingesting {bank_dir}: {missing}"
+        )
     # The ingestion hashes every board of the bank it stores, or finds stored with its hash.
     unhashed = sorted(board_id for board_id, digest in stored.items() if digest is None)
     if unhashed:
         raise BatchPreconditionError(
-            f"scheduled boards stored without their content hash: {unhashed}")
+            f"scheduled boards stored without their content hash: {unhashed}"
+        )
     return {board_id: digest for board_id, digest in stored.items() if digest is not None}
 
 
-async def _wait_for_provider(probe: Callable[[], Awaitable[bool]], *, max_wait_s: float,
-                             sleep: Callable[[float], Awaitable[object]] = asyncio.sleep) -> bool:
+async def _wait_for_provider(
+    probe: Callable[[], Awaitable[bool]],
+    *,
+    max_wait_s: float,
+    sleep: Callable[[float], Awaitable[object]] = asyncio.sleep,
+) -> bool:
     """Wait until ``probe`` says the provider answers again: True once it does, False if it still
     does not after ``max_wait_s`` seconds of waiting. Probes at once, then after each wait of an
     exponential backoff (``_PROVIDER_PROBE_BASE_S``, doubling, at most ``_PROVIDER_PROBE_MAX_S``),
@@ -496,8 +616,12 @@ async def _wait_for_provider(probe: Callable[[], Awaitable[bool]], *, max_wait_s
         if waited >= max_wait_s:
             return False
         step = min(delay, _PROVIDER_PROBE_MAX_S, max_wait_s - waited)
-        logger.warning("the provider does not answer; probing again in %.0fs "
-                       "(waited %.0fs of %.0fs)", step, waited, max_wait_s)
+        logger.warning(
+            "the provider does not answer; probing again in %.0fs (waited %.0fs of %.0fs)",
+            step,
+            waited,
+            max_wait_s,
+        )
         await sleep(step)
         waited += step
         delay *= 2
@@ -525,6 +649,7 @@ def _forget_error_game(game_id: str, run_id: str) -> None:
     """Delete the error row of a game about to be played again, which would otherwise collide with
     the replay on its deterministic ``game.id``."""
     from backend.app.db.writer import delete_error_game
+
     delete_error_game(game_id, run_id)
 
 
@@ -578,11 +703,11 @@ async def run_batch(
     board_by_id: dict[str, Board] = {b.board_id: b for b in boards}
     missing = sorted({c.board_id for c in schedule} - board_by_id.keys())
     if missing:
-        raise BatchPreconditionError(
-            f"scheduled boards missing from the loaded bank: {missing}")
+        raise BatchPreconditionError(f"scheduled boards missing from the loaded bank: {missing}")
     if resume_run_id is not None and not persist:
         raise BatchPreconditionError(
-            f"resuming run {resume_run_id} needs the database: it cannot be done without persist.")
+            f"resuming run {resume_run_id} needs the database: it cannot be done without persist."
+        )
 
     svc = LLMService(temperature=temperature)
     run: Optional[StoredRun] = None
@@ -592,14 +717,14 @@ async def run_batch(
         if not os.environ.get("DATABASE_URL"):
             raise BatchPreconditionError(
                 "run_batch(persist=True) requires DATABASE_URL; refusing to burn provider calls on "
-                "a batch that cannot be persisted. Use the dry run for a no-DB check.")
+                "a batch that cannot be persisted. Use the dry run for a no-DB check."
+            )
         # Level 1e: the schema the games will be written to, before anything reads or writes it.
         _check_schema_at_head()
         if resume_run_id is None:
             # Level 1c: collision check before minting, so an already-recorded seed leaves no
             # orphan run row.
-            _check_no_collisions([c.game_id for c in schedule],
-                                 master_seed=master_seed)
+            _check_no_collisions([c.game_id for c in schedule], master_seed=master_seed)
         else:
             # Level 1c, resuming: the run must be the one this batch would mint.
             run = load_run(resume_run_id)
@@ -607,12 +732,18 @@ async def run_batch(
                 raise BatchPreconditionError(f"there is no run {resume_run_id} to resume.")
             recorded = _recorded_games([c.game_id for c in schedule])
             problems = _resume_problems(
-                run, schedule=schedule, models=models, master_seed=master_seed,
-                temperature=temperature, template_fingerprint=svc.template_fingerprint(),
-                recorded=recorded)
+                run,
+                schedule=schedule,
+                models=models,
+                master_seed=master_seed,
+                temperature=temperature,
+                template_fingerprint=svc.template_fingerprint(),
+                recorded=recorded,
+            )
             if problems:
                 raise _precondition_failure(
-                    f"run {resume_run_id} cannot be resumed by this batch:", problems)
+                    f"run {resume_run_id} cannot be resumed by this batch:", problems
+                )
         # Level 1d: the frame and the boards into the database, before any row points at them.
         manifest = _ingest_bank(Path(bank_dir), sorted({c.board_id for c in schedule}))
 
@@ -620,35 +751,51 @@ async def run_batch(
         # Level 1b: mint the run + run the digest gate once (create_run raises on a bad/unavailable
         # local digest under enforcement). The run carries all four models' provenance.
         run_id, _snapshot = create_run(
-            seat_specs=list(models), master_seed=master_seed, temperature=temperature,
-            template_fingerprint=svc.template_fingerprint(), persist=persist,
-            enforce_digests=enforce_digests, stimulus_manifest=manifest)
+            seat_specs=list(models),
+            master_seed=master_seed,
+            temperature=temperature,
+            template_fingerprint=svc.template_fingerprint(),
+            persist=persist,
+            enforce_digests=enforce_digests,
+            stimulus_manifest=manifest,
+        )
     else:
         # Level 1b, resuming: the digest gate, and the models served now and the boards scheduled
         # now must be the ones the run was minted with.
         run_id = run.run_id
         problems = _served_model_problems(
-            run, served_registry_snapshot(list(models), enforce_digests=enforce_digests))
+            run, served_registry_snapshot(list(models), enforce_digests=enforce_digests)
+        )
         problems += _manifest_problems(run, manifest or {})
         if problems:
             raise _precondition_failure(f"run {run_id} cannot be resumed:", problems)
         if not run.stimulus_manifest:
-            logger.warning("resuming run %s: it was minted without a stimulus manifest, so only "
-                           "the boards of its recorded games could be checked", run_id)
+            logger.warning(
+                "resuming run %s: it was minted without a stimulus manifest, so only "
+                "the boards of its recorded games could be checked",
+                run_id,
+            )
         code_version = provenance.git_code_version()
         warning = _code_change_warning(run, code_version)
         if warning:
             logger.warning("resuming run %s: %s", run_id, warning)
         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        _record_resume(run_id, (
-            f"{stamp} resumed at code_version {code_version}"
-            + ("" if code_version == run.code_version else f" (minted at {run.code_version})")
-            + ("; recorded errors played again" if retry_errors else "")))
+        _record_resume(
+            run_id,
+            (
+                f"{stamp} resumed at code_version {code_version}"
+                + ("" if code_version == run.code_version else f" (minted at {run.code_version})")
+                + ("; recorded errors played again" if retry_errors else "")
+            ),
+        )
 
     # On a resume, the games the run recorded are not played again: the completed ones, and the
     # errors unless retry_errors.
-    kept = {game_id: game.status for game_id, game in recorded.items()
-            if game.status == "completed" or not retry_errors}
+    kept = {
+        game_id: game.status
+        for game_id, game in recorded.items()
+        if game.status == "completed" or not retry_errors
+    }
 
     # per-pairing report scaffolding, in canonical pairing order.
     cells_per_pairing = Counter(c.pairing_ordinal for c in schedule)
@@ -657,16 +804,23 @@ async def run_batch(
         if c.pairing_ordinal not in reports:
             lo, hi = sorted((_model_id(c.seat0_spec), _model_id(c.seat1_spec)))
             reports[c.pairing_ordinal] = PairingReport(
-                pairing_ordinal=c.pairing_ordinal, pairing_key=(lo, hi),
-                total_cells=cells_per_pairing[c.pairing_ordinal])
+                pairing_ordinal=c.pairing_ordinal,
+                pairing_key=(lo, hi),
+                total_cells=cells_per_pairing[c.pairing_ordinal],
+            )
         status = kept.get(c.game_id)
         if status == "completed":
             reports[c.pairing_ordinal].previously_completed += 1
         elif status is not None:
             reports[c.pairing_ordinal].previously_errored += 1
     if run is not None:
-        logger.info("resuming run %s: %s of its games recorded, %s not played again; %s to play",
-                    run_id, len(recorded), len(kept), len(schedule) - len(kept))
+        logger.info(
+            "resuming run %s: %s of its games recorded, %s not played again; %s to play",
+            run_id,
+            len(recorded),
+            len(kept),
+            len(schedule) - len(kept),
+        )
 
     # Level 2: the play loop (game_index ascending), count-and-continue + per-pairing threshold.
     current_p: Optional[int] = None
@@ -691,8 +845,9 @@ async def run_batch(
 
         pr = reports[p]
         board = board_by_id[cell.board_id]
-        factory = (make_client_factory(board) if make_client_factory is not None
-                   else client_factory) or default_client_factory
+        factory = (
+            make_client_factory(board) if make_client_factory is not None else client_factory
+        ) or default_client_factory
         if cell.game_id in recorded:
             # An error played again (retry_errors): its row would collide with the game's.
             _forget_error_game(cell.game_id, run_id)
@@ -701,29 +856,48 @@ async def run_batch(
             # The gate already ran once at mint; do not re-run it per game (enforce_digests=False).
             # Every game plays with the one service whose fingerprint the run records.
             result = await run_single_game(
-                board=board, seat_specs=[cell.seat0_spec, cell.seat1_spec],
-                master_seed=master_seed, temperature=temperature, run_id=run_id,
-                game_index=cell.game_index, persist=persist, enforce_digests=False,
-                service=svc, client_factory=factory)
-            if (result.status != "error" or result.error_code not in _TRANSIENT_PROVIDER_CODES
-                    or replays >= provider_replays):
+                board=board,
+                seat_specs=[cell.seat0_spec, cell.seat1_spec],
+                master_seed=master_seed,
+                temperature=temperature,
+                run_id=run_id,
+                game_index=cell.game_index,
+                persist=persist,
+                enforce_digests=False,
+                service=svc,
+                client_factory=factory,
+            )
+            if (
+                result.status != "error"
+                or result.error_code not in _TRANSIENT_PROVIDER_CODES
+                or replays >= provider_replays
+            ):
                 break
             # Lost to the provider, not the model: wait for it to answer again, then play the same
             # game again.
-            logger.warning("game %s (game_index %s) lost to the provider (%s); waiting for it to "
-                           "answer again", result.game_id, cell.game_index, result.error_code)
+            logger.warning(
+                "game %s (game_index %s) lost to the provider (%s); waiting for it to answer again",
+                result.game_id,
+                cell.game_index,
+                result.error_code,
+            )
             probe = functools.partial(_provider_healthy, cell, factory)
             if not await _wait_for_provider(probe, max_wait_s=provider_wait_s):
                 aborted_reason = (
                     f"the provider did not answer for {provider_wait_s / 60:g} min after "
                     f"game_index {cell.game_index} ({result.game_id}) failed with "
-                    f"{result.error_code}; the games after it were not played")
+                    f"{result.error_code}; the games after it were not played"
+                )
                 break
             if persist:
                 _forget_error_game(result.game_id, run_id)
             replays += 1
-            logger.warning("the provider answers again; playing game %s again (replay %s of %s)",
-                           result.game_id, replays, provider_replays)
+            logger.warning(
+                "the provider answers again; playing game %s again (replay %s of %s)",
+                result.game_id,
+                replays,
+                provider_replays,
+            )
 
         pr.attempted += 1
         if result.status == "completed":
@@ -742,13 +916,15 @@ async def run_batch(
                 pr.abort_reason = (
                     f"{consecutive} consecutive errors in pairing {p} "
                     f"({pr.pairing_key[0]} vs {pr.pairing_key[1]}); "
-                    f"{pr.skipped} remaining games skipped")
+                    f"{pr.skipped} remaining games skipped"
+                )
                 aborted_pairings.add(p)
                 logger.warning("pairing %s aborted: %s", p, pr.abort_reason)
 
     pairings = [reports[p] for p in sorted(reports)]
     report = BatchReport(
-        run_id=run_id, master_seed=master_seed,
+        run_id=run_id,
+        master_seed=master_seed,
         attempted=sum(pr.attempted for pr in pairings),
         completed=sum(pr.completed for pr in pairings),
         errored=sum(pr.errored for pr in pairings),
@@ -769,11 +945,14 @@ def shared_assassin_word(board: Board) -> str:
     one shared assassin). Guessing it ends any game in ``loss_assassin`` regardless of which seat
     guesses first - the board-agnostic terminal the dry run relies on."""
     for card in board.cards:
-        if (card.llm_perspective_role == CardRole.ASSASSIN
-                and card.human_perspective_role == CardRole.ASSASSIN):
+        if (
+            card.llm_perspective_role == CardRole.ASSASSIN
+            and card.human_perspective_role == CardRole.ASSASSIN
+        ):
             return card.text
     raise BatchPreconditionError(
-        f"board {board.board_id!r} has no shared assassin (not a valid Duet board).")
+        f"board {board.board_id!r} has no shared assassin (not a valid Duet board)."
+    )
 
 
 class DryRunClient(LLMClient):
@@ -787,21 +966,33 @@ class DryRunClient(LLMClient):
 
     async def generate(self, request: LLMRequest, expected_format=None) -> LLMResponse:
         if expected_format is ClueJSONFormat:
-            payload: dict = {"reasoning": "dry-run", "clue": _DRY_RUN_CLUE,
-                             "count": 1, "targets": []}
+            payload: dict = {
+                "reasoning": "dry-run",
+                "clue": _DRY_RUN_CLUE,
+                "count": 1,
+                "targets": [],
+            }
         elif expected_format is GuessJSONFormat:
-            payload = {"reasoning": "dry-run", "stop_reason": "done",
-                       "proposals": [{"word": self._assassin, "confidence": 0.99}]}
+            payload = {
+                "reasoning": "dry-run",
+                "stop_reason": "done",
+                "proposals": [{"word": self._assassin, "confidence": 0.99}],
+            }
         elif expected_format is ConfidenceRankingJSONFormat:
-            payload = {"reasoning": "dry-run",
-                       "rankings": [{"word": self._assassin, "confidence": 0.99}]}
+            payload = {
+                "reasoning": "dry-run",
+                "rankings": [{"word": self._assassin, "confidence": 0.99}],
+            }
         else:
-            raise AssertionError(
-                f"DryRunClient: unexpected expected_format {expected_format!r}")
+            raise AssertionError(f"DryRunClient: unexpected expected_format {expected_format!r}")
         return LLMResponse(
-            text=json.dumps(payload), model_used=self.model_name, latency_ms=0,
-            raw_payload=payload, requested_seed=request.seed,
-            requested_temperature=request.temperature)
+            text=json.dumps(payload),
+            model_used=self.model_name,
+            latency_ms=0,
+            raw_payload=payload,
+            requested_seed=request.seed,
+            requested_temperature=request.temperature,
+        )
 
 
 def dry_run_client_factory(board: Board) -> ClientFactory:

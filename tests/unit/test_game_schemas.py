@@ -45,11 +45,23 @@ def test_measurement_frame_id_present_is_carried(valid_board_data):
     assert board.measurement_frame_id == "test-frame-abc"
 
 
-@pytest.mark.parametrize("modification, expected_error", [
-    ("less_llm_agents", "There must be exactly 9 agent cards for both LLM and human players (3 shared between them)."),
-    ("less_human_agents", "There must be exactly 9 agent cards for both LLM and human players (3 shared between them)."),
-    ("wrong_shared_count", "There must be exactly 9 agent cards for both LLM and human players (3 shared between them).")
-])
+@pytest.mark.parametrize(
+    "modification, expected_error",
+    [
+        (
+            "less_llm_agents",
+            "There must be exactly 9 agent cards for both LLM and human players (3 shared between them).",
+        ),
+        (
+            "less_human_agents",
+            "There must be exactly 9 agent cards for both LLM and human players (3 shared between them).",
+        ),
+        (
+            "wrong_shared_count",
+            "There must be exactly 9 agent cards for both LLM and human players (3 shared between them).",
+        ),
+    ],
+)
 def test_board_invalid_agent_rules(valid_board_data, modification, expected_error):
     """
     Validates that a board configuration with an incorrect number of agent cards or incorrect intersections fails validation.
@@ -77,13 +89,19 @@ def test_board_invalid_agent_rules(valid_board_data, modification, expected_erro
 
         # First, set one of the shared agent cards to be a civilian for the human player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.AGENT and card["human_perspective_role"] == CardRole.AGENT:
+            if (
+                card["llm_perspective_role"] == CardRole.AGENT
+                and card["human_perspective_role"] == CardRole.AGENT
+            ):
                 card["human_perspective_role"] = CardRole.CIVILIAN
                 break
 
         # Then, set one of the civilian cards to be an agent for the human player to maintain the total count of 9 agents for the human player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.CIVILIAN and card["human_perspective_role"] == CardRole.CIVILIAN:
+            if (
+                card["llm_perspective_role"] == CardRole.CIVILIAN
+                and card["human_perspective_role"] == CardRole.CIVILIAN
+            ):
                 card["human_perspective_role"] = CardRole.AGENT
                 break
 
@@ -91,15 +109,31 @@ def test_board_invalid_agent_rules(valid_board_data, modification, expected_erro
         Board(**data)
 
 
-@pytest.mark.parametrize("modification, expected_error", [
-    ("less_llm_assassins", "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human)."),
-    ("less_human_assassins", "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human)."),
-    ("wrong_shared_count", "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human)."),
-    ("invalid_human_intersection",
-     "One of the human's assassin cards must be one of the LLM's agent cards."),
-    ("invalid_llm_intersection",
-     "One of the LLM's assassin cards must be one of the human's agent cards.")
-])
+@pytest.mark.parametrize(
+    "modification, expected_error",
+    [
+        (
+            "less_llm_assassins",
+            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human).",
+        ),
+        (
+            "less_human_assassins",
+            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human).",
+        ),
+        (
+            "wrong_shared_count",
+            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human).",
+        ),
+        (
+            "invalid_human_intersection",
+            "One of the human's assassin cards must be one of the LLM's agent cards.",
+        ),
+        (
+            "invalid_llm_intersection",
+            "One of the LLM's assassin cards must be one of the human's agent cards.",
+        ),
+    ],
+)
 def test_board_invalid_assassin_rules(valid_board_data, modification, expected_error):
     """
     Validates that a board configuration with an incorrect number of assassin cards or incorrect intersections fails validation.
@@ -127,13 +161,19 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
 
         # First, set the shared assassin card to be a civilian for the human player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.ASSASSIN and card["human_perspective_role"] == CardRole.ASSASSIN:
+            if (
+                card["llm_perspective_role"] == CardRole.ASSASSIN
+                and card["human_perspective_role"] == CardRole.ASSASSIN
+            ):
                 card["human_perspective_role"] = CardRole.CIVILIAN
                 break
 
         # Then, set one of the civilian cards to be an assassin for the human player to maintain the total count of 3 assassins for the human player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.CIVILIAN and card["human_perspective_role"] == CardRole.CIVILIAN:
+            if (
+                card["llm_perspective_role"] == CardRole.CIVILIAN
+                and card["human_perspective_role"] == CardRole.CIVILIAN
+            ):
                 card["human_perspective_role"] = CardRole.ASSASSIN
                 break
     elif modification == "invalid_human_intersection":
@@ -141,25 +181,37 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
 
         # First, set the human assassin card that intersects with the LLM's agent cards to be a civilian for the human player
         for card in data["cards"]:
-            if card["human_perspective_role"] == CardRole.ASSASSIN and card["llm_perspective_role"] == CardRole.AGENT:
+            if (
+                card["human_perspective_role"] == CardRole.ASSASSIN
+                and card["llm_perspective_role"] == CardRole.AGENT
+            ):
                 card["human_perspective_role"] = CardRole.CIVILIAN
                 break
 
         # Then, set one of the civilian cards to be an assassin for the human player to maintain the total count of 3 assassins for the human player
         for card in data["cards"]:
-            if card["human_perspective_role"] == CardRole.CIVILIAN and card["llm_perspective_role"] == CardRole.CIVILIAN:
+            if (
+                card["human_perspective_role"] == CardRole.CIVILIAN
+                and card["llm_perspective_role"] == CardRole.CIVILIAN
+            ):
                 card["human_perspective_role"] = CardRole.ASSASSIN
                 break
     elif modification == "invalid_llm_intersection":
         # Modify the valid board data to have an LLM assassin card that is not one of the human's agent cards
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.ASSASSIN and card["human_perspective_role"] == CardRole.AGENT:
+            if (
+                card["llm_perspective_role"] == CardRole.ASSASSIN
+                and card["human_perspective_role"] == CardRole.AGENT
+            ):
                 card["llm_perspective_role"] = CardRole.CIVILIAN
                 break
 
         # Then, set one of the civilian cards to be an assassin for the LLM player to maintain the total count of 3 assassins for the LLM player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.CIVILIAN and card["human_perspective_role"] == CardRole.CIVILIAN:
+            if (
+                card["llm_perspective_role"] == CardRole.CIVILIAN
+                and card["human_perspective_role"] == CardRole.CIVILIAN
+            ):
                 card["llm_perspective_role"] = CardRole.ASSASSIN
                 break
 
@@ -181,7 +233,9 @@ def test_board_rejects_repeated_word(valid_board_data, repeated_text):
     # Card 0 (BUCKET) is civilian on both faces, so the key-card counts stay valid.
     data["cards"][0]["text"] = repeated_text
 
-    with pytest.raises(ValidationError, match=re.escape("must be distinct (ignoring case); repeated: ['cave']")):
+    with pytest.raises(
+        ValidationError, match=re.escape("must be distinct (ignoring case); repeated: ['cave']")
+    ):
         Board(**data)
 
 

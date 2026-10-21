@@ -9,6 +9,7 @@ Deliberately not stored (reconstructable / transient): ``sd_measurement_pending`
 markers (``time_marker_by``) - the latter is derivable downstream from ``reveal_event`` rows with
 ``result_role='civilian'``.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -34,12 +35,14 @@ def result_role_of(result_str: str) -> str:
     if result_str in ("civilian", "loss_civilian_sd"):
         return "civilian"
     raise ValueError(
-        f"Unmappable resolve_guess result {result_str!r}: cannot derive a reveal_event.result_role")
+        f"Unmappable resolve_guess result {result_str!r}: cannot derive a reveal_event.result_role"
+    )
 
 
 @dataclass
 class SeatRecord:
     """One seat's persisted identity + the sampling actually requested of it."""
+
     seat_index: int
     provider: Optional[str]
     model_ref: Optional[str]
@@ -49,6 +52,7 @@ class SeatRecord:
 @dataclass
 class ClueRecord:
     """A turn's clue, plus every model attempt that produced it."""
+
     clue_word: str
     count: int
     reasoning: Optional[str]
@@ -62,6 +66,7 @@ class ClueRecord:
 @dataclass
 class RevealRecord:
     """One card resolution, derived from a ``resolve_guess`` return + reads of ``engine.state``."""
+
     card_id: int
     result_role: str
     timer_tokens_after: Optional[int]
@@ -75,27 +80,28 @@ class RevealRecord:
 @dataclass
 class TurnRecord:
     """One turn: a clue and its guessing phase (normal), or the single sudden-death turn."""
+
     turn_number: int
     phase: str  # 'normal' | 'sudden_death'
     clue_giver_seat: int
     clue: Optional[ClueRecord] = None
-    play_proposal: Optional[GuessProposal] = None       # kind='play'
-    measurement: Optional[ConfidenceRanking] = None     # kind='measurement'
+    play_proposal: Optional[GuessProposal] = None  # kind='play'
+    measurement: Optional[ConfidenceRanking] = None  # kind='measurement'
     reveals: list[RevealRecord] = field(default_factory=list)
     # Sudden death is a single collective turn on which both seats guess (the guesser is not
     # derivable from clue_giver_seat), so its play proposals and measurements are carried per guesser
     # seat rather than in the single normal-play slots above. Empty on normal turns; the writer emits
     # one guess_proposal row per (seat, kind) under UNIQUE(turn_id, kind, guesser_seat).
     sd_play_by_seat: dict[int, GuessProposal] = field(default_factory=dict)
-    sd_measurement_by_seat: dict[int, ConfidenceRanking] = field(
-        default_factory=dict)
+    sd_measurement_by_seat: dict[int, ConfidenceRanking] = field(default_factory=dict)
 
 
 class GameRecorder:
     """Accumulates the per-game signals of one Codenames Duet play for a single terminal flush."""
 
-    def __init__(self, *, game_id: str, board_id: str, start_player: Optional[int],
-                 seats: list[SeatRecord]):
+    def __init__(
+        self, *, game_id: str, board_id: str, start_player: Optional[int], seats: list[SeatRecord]
+    ):
         self.game_id = game_id
         self.board_id = board_id
         # When the game started (UTC): the runner builds the recorder just before the first
@@ -127,7 +133,8 @@ class GameRecorder:
     def _current_turn(self) -> TurnRecord:
         if not self.turns:
             raise RuntimeError(
-                "No turn is open; record_clue must be called before guesses/reveals.")
+                "No turn is open; record_clue must be called before guesses/reveals."
+            )
         return self.turns[-1]
 
     # normal play
@@ -198,22 +205,31 @@ class GameRecorder:
             self.turns.append(self._sd_turn)
         return self._sd_turn
 
-    def record_sd_measurement(self, ranking: Optional[ConfidenceRanking], clue_giver_seat: int,
-                              *, guesser_seat: int) -> None:
+    def record_sd_measurement(
+        self, ranking: Optional[ConfidenceRanking], clue_giver_seat: int, *, guesser_seat: int
+    ) -> None:
         if ranking is None:
             return
         turn = self.ensure_sudden_death_turn(clue_giver_seat)
         turn.sd_measurement_by_seat[guesser_seat] = ranking
 
-    def record_sd_play_proposal(self, guess_proposal: GuessProposal, clue_giver_seat: int,
-                                *, guesser_seat: int) -> None:
+    def record_sd_play_proposal(
+        self, guess_proposal: GuessProposal, clue_giver_seat: int, *, guesser_seat: int
+    ) -> None:
         turn = self.ensure_sudden_death_turn(clue_giver_seat)
         turn.sd_play_by_seat[guesser_seat] = guess_proposal
 
-    def record_sd_reveal(self, *, clue_giver_seat: int, card_id: int, result_str: str,
-                         timer_tokens_after: Optional[int], ended_game: bool, proposal_index: Optional[int],
-                         acting_seat: int,
-                         ) -> None:
+    def record_sd_reveal(
+        self,
+        *,
+        clue_giver_seat: int,
+        card_id: int,
+        result_str: str,
+        timer_tokens_after: Optional[int],
+        ended_game: bool,
+        proposal_index: Optional[int],
+        acting_seat: int,
+    ) -> None:
         """Record one sudden-death reveal on the single SD turn.
 
         CONTRACT (relied on by the writer's per-seat backfill): in sudden death ``proposal_index`` is

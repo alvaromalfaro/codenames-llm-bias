@@ -126,9 +126,7 @@ def _print_diagnostics(report: GuesserMetricsReport) -> None:
 
     print()
     print("Card funnel - why CIT has the power it has")
-    print(
-        f"{'model':<24} {'candidate':>10} {'neutral':>9} {'dead-zone':>10} {'classified':>11}"
-    )
+    print(f"{'model':<24} {'candidate':>10} {'neutral':>9} {'dead-zone':>10} {'classified':>11}")
     for diag in report.diagnostics:
         print(
             f"{diag.model_ref:<24} {diag.n_cards_candidate:>10} {diag.n_cards_neutral:>9} "
@@ -180,7 +178,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Compute the guesser-role bias metric (CIT). Read-only."
     )
     parser.add_argument(
-        "--frame-id", default=DEFAULT_FRAME_ID, help="measurement frame id (default: the live frame)"
+        "--frame-id",
+        default=DEFAULT_FRAME_ID,
+        help="measurement frame id (default: the live frame)",
     )
     parser.add_argument(
         "--master-seed",

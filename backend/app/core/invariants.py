@@ -6,6 +6,7 @@ dispatch, and once the game is over, before it is stored (``game_runner.run_sing
 batch ends a game that breaks one in error (``GameInvariantError``), and the test games log it and
 play on. Section numbers (§) are those of the Duet rules the engine cites.
 """
+
 from __future__ import annotations
 
 import logging
@@ -19,8 +20,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Every result a finished game can have.
-GAME_RESULTS = frozenset({"victory", "loss_assassin", "victory_sd", "loss_civilian_sd",
-                          "loss_assassin_sd", "loss_stopped_sd"})
+GAME_RESULTS = frozenset(
+    {
+        "victory",
+        "loss_assassin",
+        "victory_sd",
+        "loss_civilian_sd",
+        "loss_assassin_sd",
+        "loss_stopped_sd",
+    }
+)
 
 
 class GameInvariantError(RuntimeError):
@@ -42,8 +51,10 @@ def _side(card: WordCard, seat: int) -> CardRole:
 def _pending_on_board(engine: CodenamesDuetEngine) -> list[int]:
     """pending_words as the board says it (§2): green on the OTHER seat's side, not covered."""
     cards = engine.state.board.cards
-    return [sum(1 for c in cards if _side(c, 1 - seat) == CardRole.AGENT and not c.revealed)
-            for seat in (0, 1)]
+    return [
+        sum(1 for c in cards if _side(c, 1 - seat) == CardRole.AGENT and not c.revealed)
+        for seat in (0, 1)
+    ]
 
 
 def check_invariants(engine: CodenamesDuetEngine) -> list[str]:
@@ -54,34 +65,43 @@ def check_invariants(engine: CodenamesDuetEngine) -> list[str]:
 
     spent = s.bystander_tokens + s.check_tokens + s.penalty_tokens
     if s.timer_tokens + spent != 9:
-        problems.append(f"tokens do not add up to 9 (§12): reserve={s.timer_tokens} "
-                        f"bystander={s.bystander_tokens} check={s.check_tokens} "
-                        f"penalty={s.penalty_tokens}")
+        problems.append(
+            f"tokens do not add up to 9 (§12): reserve={s.timer_tokens} "
+            f"bystander={s.bystander_tokens} check={s.check_tokens} "
+            f"penalty={s.penalty_tokens}"
+        )
     if not 0 <= s.timer_tokens <= 9:
         problems.append(f"reserve out of range: {s.timer_tokens}")
     on_words = sum(len(c.time_marker_by) for c in cards)
     if on_words != s.bystander_tokens:
-        problems.append(f"{on_words} time token(s) on words but bystander_tokens={s.bystander_tokens}")
+        problems.append(
+            f"{on_words} time token(s) on words but bystander_tokens={s.bystander_tokens}"
+        )
     if s.pending_words != _pending_on_board(engine):
-        problems.append(f"pending_words={s.pending_words} but the board says "
-                        f"{_pending_on_board(engine)} (§2)")
+        problems.append(
+            f"pending_words={s.pending_words} but the board says {_pending_on_board(engine)} (§2)"
+        )
 
     for c in cards:
         if len(c.time_marker_by) > 2 or len(set(c.time_marker_by)) != len(c.time_marker_by):
             problems.append(f"{c.text}: time tokens {c.time_marker_by} (at most one per direction)")
         for guesser in c.time_marker_by:
             if _side(c, 1 - guesser) != CardRole.CIVILIAN:
-                problems.append(f"{c.text}: time token from seat {guesser}, but the word is "
-                                f"{_side(c, 1 - guesser).value} for the clue giver (§6.4)")
+                problems.append(
+                    f"{c.text}: time token from seat {guesser}, but the word is "
+                    f"{_side(c, 1 - guesser).value} for the clue giver (§6.4)"
+                )
         if c.revealed and CardRole.AGENT not in (_side(c, 0), _side(c, 1)):
             problems.append(f"{c.text}: covered by an agent card but green on neither side")
 
     visible = {c.text.lower() for c in cards if not c.is_covered}
     validator = set(engine.clue_validator.visible_words)
     if visible != validator:
-        problems.append(f"visible words for clue validation differ from the board (§8.2): "
-                        f"validator has {sorted(validator - visible)} extra, misses "
-                        f"{sorted(visible - validator)}")
+        problems.append(
+            f"visible words for clue validation differ from the board (§8.2): "
+            f"validator has {sorted(validator - visible)} extra, misses "
+            f"{sorted(visible - validator)}"
+        )
 
     if s.is_game_over:
         if s.result not in GAME_RESULTS:
@@ -91,8 +111,10 @@ def check_invariants(engine: CodenamesDuetEngine) -> list[str]:
             problems.append(f"result {s.result} with pending_words={s.pending_words}")
     else:
         phase = s.current_phase
-        if s.timer_tokens == 0 and phase not in (GamePhase.SUDDEN_DEATH_LLM,
-                                                 GamePhase.SUDDEN_DEATH_HUMAN):
+        if s.timer_tokens == 0 and phase not in (
+            GamePhase.SUDDEN_DEATH_LLM,
+            GamePhase.SUDDEN_DEATH_HUMAN,
+        ):
             problems.append(f"the reserve is empty but the phase is {phase.value} (§7.3)")
         if phase in (GamePhase.GIVING_CLUE, GamePhase.GUESSING):
             if s.clue_giver == s.guesser:
@@ -101,8 +123,9 @@ def check_invariants(engine: CodenamesDuetEngine) -> list[str]:
                 problems.append(f"seat {s.guesser} guesses with nothing pending (§6.8)")
         if phase == GamePhase.SUDDEN_DEATH_LLM and s.pending_words[0] == 0:
             problems.append("SUDDEN_DEATH_LLM with nothing pending for seat 0")
-        if phase == GamePhase.SUDDEN_DEATH_HUMAN and (s.pending_words[1] == 0
-                                                      or s.pending_words[0] != 0):
+        if phase == GamePhase.SUDDEN_DEATH_HUMAN and (
+            s.pending_words[1] == 0 or s.pending_words[0] != 0
+        ):
             problems.append(f"SUDDEN_DEATH_HUMAN with pending_words={s.pending_words}")
     return problems
 

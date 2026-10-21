@@ -9,10 +9,18 @@ class LLMError(Exception):
     the original exception that caused this error (if any), and the execution mode.
     """
 
-    def __init__(self, code: str, message: str, retriable: bool = False, provider: str | None = None,
-                 http_status: int | None = None, request_id: str | None = None,
-                 raw_payload: dict[str, Any] | None = None, cause: Exception | None = None,
-                 execution_mode: str | None = None):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        retriable: bool = False,
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
         super().__init__(message)
         self.code = code
         self.message = message
@@ -25,9 +33,11 @@ class LLMError(Exception):
         self.execution_mode = execution_mode
 
     def __str__(self) -> str:
-        return f"LLMError(code={self.code}, message={self.message}, retriable={self.retriable}, " \
-            f"provider={self.provider}, http_status={self.http_status}, request_id={self.request_id}, "\
+        return (
+            f"LLMError(code={self.code}, message={self.message}, retriable={self.retriable}, "
+            f"provider={self.provider}, http_status={self.http_status}, request_id={self.request_id}, "
             f"execution_mode={self.execution_mode}, cause={repr(self.cause)})"
+        )
 
 
 class LLMModelNotProvidedError(LLMError):
@@ -37,13 +47,27 @@ class LLMModelNotProvidedError(LLMError):
     attempt.
     """
 
-    def __init__(self, message: str = "LLM model not provided in the request.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
-        super().__init__(code="model_not_provided", message=message, retriable=False,
-                         provider=provider, http_status=http_status, request_id=request_id,
-                         raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+    def __init__(
+        self,
+        message: str = "LLM model not provided in the request.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
+        super().__init__(
+            code="model_not_provided",
+            message=message,
+            retriable=False,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMModelNotFoundError(LLMError):
@@ -53,13 +77,27 @@ class LLMModelNotFoundError(LLMError):
     made available before the request can succeed on a subsequent attempt.
     """
 
-    def __init__(self, message: str = "The LLM provider does not have the requested model.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
-        super().__init__(code="model_not_found", message=message, retriable=False,
-                         provider=provider, http_status=http_status, request_id=request_id,
-                         raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+    def __init__(
+        self,
+        message: str = "The LLM provider does not have the requested model.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
+        super().__init__(
+            code="model_not_found",
+            message=message,
+            retriable=False,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMInvalidRequestError(LLMError):
@@ -69,13 +107,27 @@ class LLMInvalidRequestError(LLMError):
     be rejected again: the code or the configuration that built it must be fixed.
     """
 
-    def __init__(self, message: str = "The LLM provider rejected the request as invalid.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
-        super().__init__(code="invalid_request", message=message, retriable=False,
-                         provider=provider, http_status=http_status, request_id=request_id,
-                         raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+    def __init__(
+        self,
+        message: str = "The LLM provider rejected the request as invalid.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
+        super().__init__(
+            code="invalid_request",
+            message=message,
+            retriable=False,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMRefusalError(LLMError):
@@ -86,13 +138,27 @@ class LLMRefusalError(LLMError):
     policies.
     """
 
-    def __init__(self, message: str = "The LLM refused to generate a response for the given input.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
-        super().__init__(code="refused", message=message, retriable=False,
-                         provider=provider, http_status=http_status, request_id=request_id,
-                         raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+    def __init__(
+        self,
+        message: str = "The LLM refused to generate a response for the given input.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
+        super().__init__(
+            code="refused",
+            message=message,
+            retriable=False,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMTimeoutError(LLMError):
@@ -102,13 +168,27 @@ class LLMTimeoutError(LLMError):
     could succeed on a subsequent attempt.
     """
 
-    def __init__(self, message: str = "The LLM request timed out.", provider: str | None = None,
-                 http_status: int | None = None, request_id: str | None = None,
-                 raw_payload: dict[str, Any] | None = None, cause: Exception | None = None,
-                 execution_mode: str | None = None):
-        super().__init__(code="timeout", message=message, retriable=True, provider=provider,
-                         http_status=http_status, request_id=request_id, raw_payload=raw_payload,
-                         cause=cause, execution_mode=execution_mode)
+    def __init__(
+        self,
+        message: str = "The LLM request timed out.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
+        super().__init__(
+            code="timeout",
+            message=message,
+            retriable=True,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMRateLimitError(LLMError):
@@ -119,13 +199,27 @@ class LLMRateLimitError(LLMError):
     subsequent attempt.
     """
 
-    def __init__(self, message: str = "The LLM request was rate limited.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
-        super().__init__(code="rate_limit", message=message, retriable=True, provider=provider,
-                         http_status=http_status, request_id=request_id, raw_payload=raw_payload,
-                         cause=cause, execution_mode=execution_mode)
+    def __init__(
+        self,
+        message: str = "The LLM request was rate limited.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
+        super().__init__(
+            code="rate_limit",
+            message=message,
+            retriable=True,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMAuthError(LLMError):
@@ -136,13 +230,27 @@ class LLMAuthError(LLMError):
     subsequent attempt.
     """
 
-    def __init__(self, message: str = "Authentication with the LLM provider failed.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
-        super().__init__(code="auth", message=message, retriable=False, provider=provider,
-                         http_status=http_status, request_id=request_id, raw_payload=raw_payload,
-                         cause=cause, execution_mode=execution_mode)
+    def __init__(
+        self,
+        message: str = "Authentication with the LLM provider failed.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
+        super().__init__(
+            code="auth",
+            message=message,
+            retriable=False,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMParseError(LLMError):
@@ -154,13 +262,27 @@ class LLMParseError(LLMError):
     subclasses: empty, degenerate, cut, or malformed.
     """
 
-    def __init__(self, message: str = "Failed to parse the LLM response.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
-        super().__init__(code="parse_error", message=message, retriable=False, provider=provider,
-                         http_status=http_status, request_id=request_id, raw_payload=raw_payload,
-                         cause=cause, execution_mode=execution_mode)
+    def __init__(
+        self,
+        message: str = "Failed to parse the LLM response.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
+        super().__init__(
+            code="parse_error",
+            message=message,
+            retriable=False,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMEmptyResponseError(LLMParseError):
@@ -172,15 +294,30 @@ class LLMEmptyResponseError(LLMParseError):
     LLMParseError so existing ``except LLMParseError`` handlers keep catching it.
     """
 
-    def __init__(self, message: str = "The LLM returned an empty response.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
+    def __init__(
+        self,
+        message: str = "The LLM returned an empty response.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
         # Bypass LLMParseError.__init__ (which hardcodes retriable=False) to set the code and the
         # retriable flag that distinguish this case.
-        LLMError.__init__(self, code="empty_response", message=message, retriable=True,
-                          provider=provider, http_status=http_status, request_id=request_id,
-                          raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+        LLMError.__init__(
+            self,
+            code="empty_response",
+            message=message,
+            retriable=True,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMDegenerateResponseError(LLMParseError):
@@ -201,15 +338,30 @@ class LLMDegenerateResponseError(LLMParseError):
     rules, so after the retry budget is exhausted this still errors out.
     """
 
-    def __init__(self, message: str = "The LLM returned a well-formed but degenerate response.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
+    def __init__(
+        self,
+        message: str = "The LLM returned a well-formed but degenerate response.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
         # Bypass LLMParseError.__init__ (which hardcodes retriable=False) to set the code and the
         # retriable flag that distinguish this case.
-        LLMError.__init__(self, code="degenerate_response", message=message, retriable=True,
-                          provider=provider, http_status=http_status, request_id=request_id,
-                          raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+        LLMError.__init__(
+            self,
+            code="degenerate_response",
+            message=message,
+            retriable=True,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMTruncatedResponseError(LLMParseError):
@@ -224,15 +376,30 @@ class LLMTruncatedResponseError(LLMParseError):
     the retry budget is exhausted the game still errors out.
     """
 
-    def __init__(self, message: str = "The LLM response was cut at the output limit.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
+    def __init__(
+        self,
+        message: str = "The LLM response was cut at the output limit.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
         # Bypass LLMParseError.__init__ (which hardcodes retriable=False) to set the code and the
         # retriable flag that distinguish this case.
-        LLMError.__init__(self, code="truncated_response", message=message, retriable=True,
-                          provider=provider, http_status=http_status, request_id=request_id,
-                          raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+        LLMError.__init__(
+            self,
+            code="truncated_response",
+            message=message,
+            retriable=True,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMMalformedResponseError(LLMParseError):
@@ -248,15 +415,30 @@ class LLMMalformedResponseError(LLMParseError):
     catching it; after the retry budget is exhausted the game still errors out.
     """
 
-    def __init__(self, message: str = "The LLM response does not match the expected format.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
+    def __init__(
+        self,
+        message: str = "The LLM response does not match the expected format.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
         # Bypass LLMParseError.__init__ (which hardcodes retriable=False) to set the code and the
         # retriable flag that distinguish this case.
-        LLMError.__init__(self, code="malformed_response", message=message, retriable=True,
-                          provider=provider, http_status=http_status, request_id=request_id,
-                          raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+        LLMError.__init__(
+            self,
+            code="malformed_response",
+            message=message,
+            retriable=True,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )
 
 
 class LLMProviderUnavailableError(LLMError):
@@ -267,10 +449,24 @@ class LLMProviderUnavailableError(LLMError):
     subsequent attempt.
     """
 
-    def __init__(self, message: str = "The LLM provider is currently unavailable.",
-                 provider: str | None = None, http_status: int | None = None,
-                 request_id: str | None = None, raw_payload: dict[str, Any] | None = None,
-                 cause: Exception | None = None, execution_mode: str | None = None):
-        super().__init__(code="provider_unavailable", message=message, retriable=True,
-                         provider=provider, http_status=http_status, request_id=request_id,
-                         raw_payload=raw_payload, cause=cause, execution_mode=execution_mode)
+    def __init__(
+        self,
+        message: str = "The LLM provider is currently unavailable.",
+        provider: str | None = None,
+        http_status: int | None = None,
+        request_id: str | None = None,
+        raw_payload: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+        execution_mode: str | None = None,
+    ):
+        super().__init__(
+            code="provider_unavailable",
+            message=message,
+            retriable=True,
+            provider=provider,
+            http_status=http_status,
+            request_id=request_id,
+            raw_payload=raw_payload,
+            cause=cause,
+            execution_mode=execution_mode,
+        )

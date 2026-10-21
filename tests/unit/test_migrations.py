@@ -2,6 +2,7 @@
 
 Most read the scripts only. The last, marked ``db``, compares the models with the test session's
 database, which tests/conftest.py migrates to head."""
+
 from pathlib import Path
 
 import pytest

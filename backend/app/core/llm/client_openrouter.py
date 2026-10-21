@@ -4,14 +4,24 @@ import time
 from pydantic import BaseModel
 from typing import cast
 
-from openai import AsyncOpenAI, AuthenticationError, RateLimitError, APITimeoutError, APIConnectionError
+from openai import (
+    AsyncOpenAI,
+    AuthenticationError,
+    RateLimitError,
+    APITimeoutError,
+    APIConnectionError,
+)
 from openai.types.chat import ChatCompletionMessageParam
 from openai.types.chat.completion_create_params import ResponseFormat
 from backend.app.core.llm.client import LLMClient, generate_with_retries
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
-    LLMAuthError, LLMRateLimitError, LLMTimeoutError, LLMProviderUnavailableError,
-    LLMTruncatedResponseError, LLMMalformedResponseError,
+    LLMAuthError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    LLMProviderUnavailableError,
+    LLMTruncatedResponseError,
+    LLMMalformedResponseError,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,21 +40,29 @@ class LLMClientOpenRouter(LLMClient):
             api_key=os.environ.get("OPENROUTER_API_KEY", ""),
         )
 
-    async def generate(self, request: LLMRequest,
-                       expected_format: type[BaseModel] | None = None) -> LLMResponse:
+    async def generate(
+        self, request: LLMRequest, expected_format: type[BaseModel] | None = None
+    ) -> LLMResponse:
         """Generate a response, retrying retriable errors per ``self.max_retries``.
 
         A cut or malformed answer is drawn again with a new seed, and a transient failure re-sends
         the same request; see ``generate_with_retries``."""
         return await generate_with_retries(
-            lambda req: self._generate_once(req, expected_format), request,
-            max_retries=self.max_retries, provider="openrouter", model=self.model_name)
+            lambda req: self._generate_once(req, expected_format),
+            request,
+            max_retries=self.max_retries,
+            provider="openrouter",
+            model=self.model_name,
+        )
 
-    async def _generate_once(self, request: LLMRequest,
-                             expected_format: type[BaseModel] | None = None) -> LLMResponse:
+    async def _generate_once(
+        self, request: LLMRequest, expected_format: type[BaseModel] | None = None
+    ) -> LLMResponse:
         # LLMMessage.role is one of the roles the API takes (system, user, assistant).
-        messages = [cast(ChatCompletionMessageParam, {"role": m.role, "content": m.content})
-                    for m in request.messages]
+        messages = [
+            cast(ChatCompletionMessageParam, {"role": m.role, "content": m.content})
+            for m in request.messages
+        ]
 
         response_format: ResponseFormat
         if expected_format:
@@ -82,10 +100,14 @@ class LLMClientOpenRouter(LLMClient):
             # The answer reached max_tokens and its JSON is unfinished: a bad draw, re-sampled
             # within the caller's budget (see LLMTruncatedResponseError).
             if response.choices[0].finish_reason == "length":
-                logger.debug("openrouter %s answer cut at max_tokens; discarded draw:\n%s",
-                             self.model_name, content)
+                logger.debug(
+                    "openrouter %s answer cut at max_tokens; discarded draw:\n%s",
+                    self.model_name,
+                    content,
+                )
                 raise LLMTruncatedResponseError(
-                    provider="openrouter", raw_payload=response.model_dump(), execution_mode="api")
+                    provider="openrouter", raw_payload=response.model_dump(), execution_mode="api"
+                )
 
             if expected_format:
                 try:
@@ -94,12 +116,19 @@ class LLMClientOpenRouter(LLMClient):
                     # A bad draw, drawn again within the caller's budget. Only its count reaches the
                     # database, so it is logged whole (max_tokens bounds it), at a level the batch's
                     # log keeps.
-                    logger.warning("openrouter %s response does not match %s (%s); discarded "
-                                   "draw:\n%s", self.model_name, expected_format.__name__, e,
-                                   content)
+                    logger.warning(
+                        "openrouter %s response does not match %s (%s); discarded draw:\n%s",
+                        self.model_name,
+                        expected_format.__name__,
+                        e,
+                        content,
+                    )
                     raise LLMMalformedResponseError(
-                        provider="openrouter", raw_payload=response.model_dump(), cause=e,
-                        execution_mode="api") from e
+                        provider="openrouter",
+                        raw_payload=response.model_dump(),
+                        cause=e,
+                        execution_mode="api",
+                    ) from e
 
             usage = response.usage
             raw_payload = response.model_dump()
@@ -121,23 +150,20 @@ class LLMClientOpenRouter(LLMClient):
                 provider="openrouter",
                 requested_temperature=request.temperature,
                 requested_seed=request.seed,
-                system_fingerprint=getattr(
-                    response, "system_fingerprint", None),
+                system_fingerprint=getattr(response, "system_fingerprint", None),
                 resolved_model=response.model,
             )
 
         except AuthenticationError as e:
-            raise LLMAuthError(provider="openrouter",
-                               cause=e, execution_mode="api") from e
+            raise LLMAuthError(provider="openrouter", cause=e, execution_mode="api") from e
         except RateLimitError as e:
-            raise LLMRateLimitError(
-                provider="openrouter", cause=e, execution_mode="api") from e
+            raise LLMRateLimitError(provider="openrouter", cause=e, execution_mode="api") from e
         except APITimeoutError as e:
-            raise LLMTimeoutError(provider="openrouter",
-                                  cause=e, execution_mode="api") from e
+            raise LLMTimeoutError(provider="openrouter", cause=e, execution_mode="api") from e
         except APIConnectionError as e:
             raise LLMProviderUnavailableError(
-                provider="openrouter", cause=e, execution_mode="api") from e
+                provider="openrouter", cause=e, execution_mode="api"
+            ) from e
 
     async def close(self) -> None:
         await self._client.close()

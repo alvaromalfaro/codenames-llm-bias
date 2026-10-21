@@ -75,17 +75,19 @@ def test_engine_receive_clue_resolves_target_snapshot(valid_board_data: dict):
     engine.state.guesser = 1
 
     # BRICK -> LLM-agent (id 1); BUCKET -> LLM-civilian (id 0); ZEBRA -> not on the board.
-    engine.receive_clue(clue="battle", count=2, player_id=0,
-                        targets=["BRICK", "BUCKET", "ZEBRA"])
+    engine.receive_clue(clue="battle", count=2, player_id=0, targets=["BRICK", "BUCKET", "ZEBRA"])
 
     resolved = engine.state.current_clue.targets_resolved
     assert engine.state.current_clue.targets == ["BRICK", "BUCKET", "ZEBRA"]
     assert resolved[0] == ResolvedTarget(
-        word="BRICK", card_id=1, giver_role=CardRole.AGENT, revealed_at_clue=False)
+        word="BRICK", card_id=1, giver_role=CardRole.AGENT, revealed_at_clue=False
+    )
     assert resolved[1] == ResolvedTarget(
-        word="BUCKET", card_id=0, giver_role=CardRole.CIVILIAN, revealed_at_clue=False)
+        word="BUCKET", card_id=0, giver_role=CardRole.CIVILIAN, revealed_at_clue=False
+    )
     assert resolved[2] == ResolvedTarget(
-        word="ZEBRA", card_id=None, giver_role=None, revealed_at_clue=None)
+        word="ZEBRA", card_id=None, giver_role=None, revealed_at_clue=None
+    )
 
 
 def test_engine_resolve_target_snapshot_is_perspective_aware(valid_board_data: dict):
@@ -97,24 +99,27 @@ def test_engine_resolve_target_snapshot_is_perspective_aware(valid_board_data: d
     engine0 = CodenamesDuetEngine(board=Board(**valid_board_data))
     engine0.state.clue_giver = 0
     engine0.state.guesser = 1
-    engine0.receive_clue(clue="battle", count=1,
-                         player_id=0, targets=["RUSSIA"])
+    engine0.receive_clue(clue="battle", count=1, player_id=0, targets=["RUSSIA"])
     assert engine0.state.current_clue.targets_resolved[0].giver_role == CardRole.AGENT
 
     # Player 1 (human) seat: the very same card is a civilian.
     engine1 = CodenamesDuetEngine(board=Board(**valid_board_data))
     engine1.state.clue_giver = 1
     engine1.state.guesser = 0
-    engine1.receive_clue(clue="battle", count=1,
-                         player_id=1, targets=["RUSSIA"])
+    engine1.receive_clue(clue="battle", count=1, player_id=1, targets=["RUSSIA"])
     assert engine1.state.current_clue.targets_resolved[0].giver_role == CardRole.CIVILIAN
 
 
-@pytest.mark.parametrize("modification, expected_error", [
-    ("invalid_phase", "Clues can only be given during the GIVING_CLUE phase."),
-    ("invalid_player", "Only the clue giver can provide a clue."),
-])
-def test_engine_receive_clue_invalid_inputs(valid_board_data: dict, modification: str, expected_error: str):
+@pytest.mark.parametrize(
+    "modification, expected_error",
+    [
+        ("invalid_phase", "Clues can only be given during the GIVING_CLUE phase."),
+        ("invalid_player", "Only the clue giver can provide a clue."),
+    ],
+)
+def test_engine_receive_clue_invalid_inputs(
+    valid_board_data: dict, modification: str, expected_error: str
+):
     """
     Validates that the receive_clue method raises appropriate exceptions when given invalid inputs.
 
@@ -138,11 +143,14 @@ def test_engine_receive_clue_invalid_inputs(valid_board_data: dict, modification
             engine.receive_clue(clue="TestClue", count=2, player_id=1)
 
 
-@pytest.mark.parametrize("clue, count", [
-    ("", 2),
-    ("   ", 2),
-    ("TestClue", 0),
-])
+@pytest.mark.parametrize(
+    "clue, count",
+    [
+        ("", 2),
+        ("   ", 2),
+        ("TestClue", 0),
+    ],
+)
 def test_engine_receive_clue_pydantic_validation(valid_board_data: dict, clue: str, count: int):
     """
     Validates that receive_clue raises ValueError (wrapping Pydantic ValidationError) for
@@ -184,8 +192,12 @@ def test_engine_invalid_clue_is_played_with_a_penalty_token(valid_board_data: di
     def tokens() -> tuple[int, int, int, int]:
         """(reserve, bystanders, checks, penalties), which must always add up to 9."""
         state = engine.state
-        counts = (state.timer_tokens, state.bystander_tokens,
-                  state.check_tokens, state.penalty_tokens)
+        counts = (
+            state.timer_tokens,
+            state.bystander_tokens,
+            state.check_tokens,
+            state.penalty_tokens,
+        )
         assert sum(counts) == 9
         return counts
 
@@ -209,15 +221,19 @@ def test_engine_invalid_clue_is_played_with_a_penalty_token(valid_board_data: di
     assert (engine.state.clue_giver, engine.state.guesser) == (HUMAN, LLM)
 
 
-@pytest.mark.parametrize("clue, reason", [
-    # A form of a visible word (§8.1.5).
-    ("buckets", "'buckets' is a morphological form of the board word 'bucket'."),
-    # A name of several words (§6.2, §8.1.10). It used to fail ClueEntry's own validation, so it was
-    # rejected - and an LLM giving it lost the game to the error.
-    ("Leonardo da Vinci", "'Leonardo da Vinci' is not a single word."),
-])
-def test_engine_invalid_clue_penalty_comes_on_top_of_a_miss(valid_board_data: dict, clue: str,
-                                                            reason: str):
+@pytest.mark.parametrize(
+    "clue, reason",
+    [
+        # A form of a visible word (§8.1.5).
+        ("buckets", "'buckets' is a morphological form of the board word 'bucket'."),
+        # A name of several words (§6.2, §8.1.10). It used to fail ClueEntry's own validation, so it was
+        # rejected - and an LLM giving it lost the game to the error.
+        ("Leonardo da Vinci", "'Leonardo da Vinci' is not a single word."),
+    ],
+)
+def test_engine_invalid_clue_penalty_comes_on_top_of_a_miss(
+    valid_board_data: dict, clue: str, reason: str
+):
     """
     The penalty token is discarded on top of the token a miss puts on the word (§8.4, §12). Either
     seat can be penalised: here the human gives the invalid clue.
@@ -241,17 +257,25 @@ def test_engine_invalid_clue_penalty_comes_on_top_of_a_miss(valid_board_data: di
     assert engine.resolve_guess(card_id=FIDDLE, player_id=LLM) == "civilian"
 
     state = engine.state
-    assert (state.timer_tokens, state.bystander_tokens,
-            state.check_tokens, state.penalty_tokens) == (7, 1, 0, 1)
+    assert (
+        state.timer_tokens,
+        state.bystander_tokens,
+        state.check_tokens,
+        state.penalty_tokens,
+    ) == (7, 1, 0, 1)
     assert state.current_phase == GamePhase.GIVING_CLUE
 
 
-@pytest.mark.parametrize("llm_pending, sudden_death_phase", [
-    (3, GamePhase.SUDDEN_DEATH_LLM),
-    (0, GamePhase.SUDDEN_DEATH_HUMAN),
-])
+@pytest.mark.parametrize(
+    "llm_pending, sudden_death_phase",
+    [
+        (3, GamePhase.SUDDEN_DEATH_LLM),
+        (0, GamePhase.SUDDEN_DEATH_HUMAN),
+    ],
+)
 def test_engine_invalid_clue_on_the_last_token_starts_sudden_death(
-        valid_board_data: dict, llm_pending: int, sudden_death_phase: GamePhase):
+    valid_board_data: dict, llm_pending: int, sudden_death_phase: GamePhase
+):
     """
     When the penalty takes the last token, the reserve is empty and words are still pending, so
     sudden death starts at once (§7.3): no turn is left to guess on the clue. The rules do not cover
@@ -277,8 +301,12 @@ def test_engine_invalid_clue_on_the_last_token_starts_sudden_death(
 
     state = engine.state
     assert entry.invalid_reason is not None
-    assert (state.timer_tokens, state.bystander_tokens,
-            state.check_tokens, state.penalty_tokens) == (0, 0, 8, 1)
+    assert (
+        state.timer_tokens,
+        state.bystander_tokens,
+        state.check_tokens,
+        state.penalty_tokens,
+    ) == (0, 0, 8, 1)
     assert state.current_phase == sudden_death_phase
     assert state.sd_measurement_pending is True
     assert state.current_clue is None
@@ -492,21 +520,37 @@ def test_engine_resolve_guess_time_marker_from_other_player(valid_board_data: di
     assert engine.state.current_phase == GamePhase.GIVING_CLUE
 
 
-@pytest.mark.parametrize("modification, expected_error", [
-    ("invalid_phase", "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or SUDDEN_DEATH_LLM phase."),
-    ("invalid_player", "Only the guesser can make guesses."),
-    ("unknown_card_id", "There is no card with id 99 on this board."),
-    ("covered_by_own_agent_card",
-     "This card is covered by an agent card and cannot be guessed."),
-    ("covered_by_other_seats_agent_card",
-     "This card is covered by an agent card and cannot be guessed."),
-    ("covered_by_two_time_tokens",
-     "This card is covered by two time tokens and cannot be guessed."),
-    ("time_token", "This card is currently marked by a time token and cannot be guessed."),
-    ("sudden_death_no_agents_left",
-     "The player has already revealed all of their agents and cannot make more guesses.")
-])
-def test_engine_resolve_guess_invalid_inputs(valid_board_data: dict, modification: str, expected_error: str):
+@pytest.mark.parametrize(
+    "modification, expected_error",
+    [
+        (
+            "invalid_phase",
+            "Guesses can only be made during the GUESSING, SUDDEN_DEATH_HUMAN, or SUDDEN_DEATH_LLM phase.",
+        ),
+        ("invalid_player", "Only the guesser can make guesses."),
+        ("unknown_card_id", "There is no card with id 99 on this board."),
+        (
+            "covered_by_own_agent_card",
+            "This card is covered by an agent card and cannot be guessed.",
+        ),
+        (
+            "covered_by_other_seats_agent_card",
+            "This card is covered by an agent card and cannot be guessed.",
+        ),
+        (
+            "covered_by_two_time_tokens",
+            "This card is covered by two time tokens and cannot be guessed.",
+        ),
+        ("time_token", "This card is currently marked by a time token and cannot be guessed."),
+        (
+            "sudden_death_no_agents_left",
+            "The player has already revealed all of their agents and cannot make more guesses.",
+        ),
+    ],
+)
+def test_engine_resolve_guess_invalid_inputs(
+    valid_board_data: dict, modification: str, expected_error: str
+):
     """
     Validates that the resolve_guess method raises appropriate exceptions when given invalid inputs
     during the GUESSING or SUDDEN_DEATH phases.
@@ -550,8 +594,7 @@ def test_engine_resolve_guess_invalid_inputs(valid_board_data: dict, modificatio
         with pytest.raises(ValueError, match=expected_error):
             engine.resolve_guess(card_id=0, player_id=1)
     elif modification == "time_token":
-        engine.state.board.cards[0].time_marker_by.append(
-            1)  # Marked by the guesser
+        engine.state.board.cards[0].time_marker_by.append(1)  # Marked by the guesser
         with pytest.raises(ValueError, match=expected_error):
             engine.resolve_guess(card_id=0, player_id=1)
     elif modification == "sudden_death_no_agents_left":
@@ -703,11 +746,13 @@ def test_engine_resolve_guess_sudden_death(valid_board_data: dict):
     assert engine.state.check_tokens == 0
 
 
-@pytest.mark.parametrize("modification, result", [
-    ("guess_civilian", "loss_civilian_sd"),
-    ("guess_assassin", "loss_assassin_sd")
-])
-def test_engine_resolve_guess_sudden_death_loss_civilian(valid_board_data: dict, modification: str, result: str):
+@pytest.mark.parametrize(
+    "modification, result",
+    [("guess_civilian", "loss_civilian_sd"), ("guess_assassin", "loss_assassin_sd")],
+)
+def test_engine_resolve_guess_sudden_death_loss_civilian(
+    valid_board_data: dict, modification: str, result: str
+):
     """
     Validates that the resolve_guess method correctly identifies a loss condition in the
     SUDDEN_DEATH phase when a civilian or assassin card is guessed, and updates the game state to
@@ -749,8 +794,8 @@ def test_engine_sudden_death_llm_to_human_transition(valid_board_data: dict):
     engine = CodenamesDuetEngine(board=board)
 
     engine.state.current_phase = GamePhase.SUDDEN_DEATH_LLM
-    engine.state.pending_words[0] = 1   # LLM has one agent left
-    engine.state.pending_words[1] = 3   # human still has agents
+    engine.state.pending_words[0] = 1  # LLM has one agent left
+    engine.state.pending_words[1] = 3  # human still has agents
 
     result = engine.resolve_guess(card_id=2, player_id=0)
 
@@ -771,8 +816,8 @@ def test_engine_sudden_death_skip_human_if_done(valid_board_data: dict):
     engine.state.guesser = 1
     engine.state.current_phase = GamePhase.GUESSING
     engine.state.timer_tokens = 1
-    engine.state.pending_words[1] = 0   # human already done
-    engine.state.pending_words[0] = 3   # LLM still has agents
+    engine.state.pending_words[1] = 0  # human already done
+    engine.state.pending_words[0] = 3  # LLM still has agents
 
     # Guess a civilian to drain the last timer token and trigger _switch_roles
     # ensure card 16 is clean
@@ -784,15 +829,23 @@ def test_engine_sudden_death_skip_human_if_done(valid_board_data: dict):
     assert engine.state.current_phase == GamePhase.SUDDEN_DEATH_LLM
 
 
-@pytest.mark.parametrize("player_id, phase, agents, card_id, agents_after", [
-    # CAVE is green only on the human's face: one of the LLM's words
-    (0, GamePhase.SUDDEN_DEATH_LLM, [2, 3], 5, [1, 3]),
-    # RUSSIA is green only on the LLM's face: one of the human's words
-    (1, GamePhase.SUDDEN_DEATH_HUMAN, [0, 3], 4, [0, 2]),
-])
+@pytest.mark.parametrize(
+    "player_id, phase, agents, card_id, agents_after",
+    [
+        # CAVE is green only on the human's face: one of the LLM's words
+        (0, GamePhase.SUDDEN_DEATH_LLM, [2, 3], 5, [1, 3]),
+        # RUSSIA is green only on the LLM's face: one of the human's words
+        (1, GamePhase.SUDDEN_DEATH_HUMAN, [0, 3], 4, [0, 2]),
+    ],
+)
 def test_engine_concede_sudden_death_ends_the_game_as_a_loss(
-        valid_board_data: dict, player_id: int, phase: GamePhase, agents: list[int],
-        card_id: int, agents_after: list[int]):
+    valid_board_data: dict,
+    player_id: int,
+    phase: GamePhase,
+    agents: list[int],
+    card_id: int,
+    agents_after: list[int],
+):
     """
     Validates that the seat guessing in sudden death can stop with words still pending, and that
     stopping ends the game as a loss for both without touching a card (§7.3, §14). Before this
@@ -826,16 +879,20 @@ def test_engine_concede_sudden_death_ends_the_game_as_a_loss(
     assert [c.id for c in engine.state.board.cards if c.revealed] == [card_id]
 
 
-@pytest.mark.parametrize("phase, player_id", [
-    (GamePhase.GUESSING, 1),            # normal play: the turn ends with pass_turn instead
-    (GamePhase.GIVING_CLUE, 1),
-    (GamePhase.GAME_OVER, 0),
-    (GamePhase.SUDDEN_DEATH_LLM, 1),    # not this seat's sudden-death turn
-    (GamePhase.SUDDEN_DEATH_HUMAN, 0),
-    (GamePhase.SUDDEN_DEATH_LLM, 2),    # not a seat
-])
+@pytest.mark.parametrize(
+    "phase, player_id",
+    [
+        (GamePhase.GUESSING, 1),  # normal play: the turn ends with pass_turn instead
+        (GamePhase.GIVING_CLUE, 1),
+        (GamePhase.GAME_OVER, 0),
+        (GamePhase.SUDDEN_DEATH_LLM, 1),  # not this seat's sudden-death turn
+        (GamePhase.SUDDEN_DEATH_HUMAN, 0),
+        (GamePhase.SUDDEN_DEATH_LLM, 2),  # not a seat
+    ],
+)
 def test_engine_concede_sudden_death_rejected(
-        valid_board_data: dict, phase: GamePhase, player_id: int):
+    valid_board_data: dict, phase: GamePhase, player_id: int
+):
     """
     Validates that sudden death can only be conceded during a sudden-death phase, and only by the
     seat guessing in it. A rejected concession leaves the game untouched.
@@ -901,8 +958,7 @@ def test_engine_pass_turn_save_clue(valid_board_data: dict):
     engine.state.current_phase = GamePhase.GUESSING
     # Simulate that a guess has been made and a clue is active
     engine.state.guesses_made_this_turn = 1
-    engine.state.current_clue = ClueEntry(
-        clue="TestClue", count=2, clue_giver=0, turn_number=1)
+    engine.state.current_clue = ClueEntry(clue="TestClue", count=2, clue_giver=0, turn_number=1)
 
     engine.pass_turn(player_id=1)
 
@@ -915,12 +971,17 @@ def test_engine_pass_turn_save_clue(valid_board_data: dict):
     assert engine.state.clue_history[0].turn_number == 1
 
 
-@pytest.mark.parametrize("modification, expected_error", [
-    ("invalid_phase", "Turns can only be passed during the GUESSING phase."),
-    ("invalid_player", "Only the guesser can pass the turn."),
-    ("no_guesses_made", "The guesser must make at least one guess before passing.")
-])
-def test_engine_pass_turn_invalid_inputs(valid_board_data: dict, modification: str, expected_error: str):
+@pytest.mark.parametrize(
+    "modification, expected_error",
+    [
+        ("invalid_phase", "Turns can only be passed during the GUESSING phase."),
+        ("invalid_player", "Only the guesser can pass the turn."),
+        ("no_guesses_made", "The guesser must make at least one guess before passing."),
+    ],
+)
+def test_engine_pass_turn_invalid_inputs(
+    valid_board_data: dict, modification: str, expected_error: str
+):
     """
     Validates that the pass_turn method raises appropriate exceptions when given invalid inputs,
     such as being called during the wrong phase, by the wrong player, or without any guesses made.
@@ -999,8 +1060,9 @@ def test_engine_seat_without_pending_words_gives_every_remaining_clue(valid_boar
 
 
 @pytest.mark.parametrize("exhausted", [0, 1])
-def test_engine_seat_can_run_out_of_pending_words_on_the_partners_turn(valid_board_data: dict,
-                                                                       exhausted: int):
+def test_engine_seat_can_run_out_of_pending_words_on_the_partners_turn(
+    valid_board_data: dict, exhausted: int
+):
     """
     A seat can run out of pending words while it is the clue giver: the partner covering a shared
     green also covers it for that seat. The seat that just gave the clue then gives the next one too,
@@ -1090,12 +1152,16 @@ def test_engine_turn_ends_when_the_guesser_covers_its_last_pending_word(valid_bo
     assert engine.state.is_game_over is False
 
 
-@pytest.mark.parametrize("exhausted, sudden_death_phase", [
-    (0, GamePhase.SUDDEN_DEATH_HUMAN),
-    (1, GamePhase.SUDDEN_DEATH_LLM),
-])
+@pytest.mark.parametrize(
+    "exhausted, sudden_death_phase",
+    [
+        (0, GamePhase.SUDDEN_DEATH_HUMAN),
+        (1, GamePhase.SUDDEN_DEATH_LLM),
+    ],
+)
 def test_engine_last_pending_word_on_the_last_token_starts_sudden_death(
-        valid_board_data: dict, exhausted: int, sudden_death_phase: GamePhase):
+    valid_board_data: dict, exhausted: int, sudden_death_phase: GamePhase
+):
     """
     The stop forced by the last pending word spends a token like any other stop, so on the last
     token it starts sudden death for the partner, the only seat with words left.
@@ -1147,8 +1213,12 @@ def test_engine_tokens_add_up_to_nine_through_a_won_game(valid_board_data: dict)
     def tokens() -> tuple[int, int, int, int]:
         """(reserve, bystanders, checks, penalties), which must always add up to 9."""
         state = engine.state
-        counts = (state.timer_tokens, state.bystander_tokens,
-                  state.check_tokens, state.penalty_tokens)
+        counts = (
+            state.timer_tokens,
+            state.bystander_tokens,
+            state.check_tokens,
+            state.penalty_tokens,
+        )
         assert sum(counts) == 9
         return counts
 
@@ -1197,12 +1267,18 @@ def test_engine_pending_words_always_match_the_board(valid_board_data: dict):
 
     def pending() -> list[int]:
         """The counter, after checking it against the words the board still has pending."""
+
         def side(card, seat):
             return card.llm_perspective_role if seat == LLM else card.human_perspective_role
 
-        on_board = [sum(1 for card in engine.state.board.cards
-                        if side(card, 1 - seat) == CardRole.AGENT and not card.revealed)
-                    for seat in (LLM, HUMAN)]
+        on_board = [
+            sum(
+                1
+                for card in engine.state.board.cards
+                if side(card, 1 - seat) == CardRole.AGENT and not card.revealed
+            )
+            for seat in (LLM, HUMAN)
+        ]
         assert engine.state.pending_words == on_board
         return on_board
 

@@ -21,6 +21,7 @@ Design (fixed by prior decisions):
   - ``game_index = p * 32 + k`` with ``k = j * 2 + o`` for board ordinal ``j`` in 0..15 (over the
     fixed order ``[career4, science4, control8]``) and orientation ``o`` in {0, 1}. Range 0..191.
 """
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import combinations
@@ -50,7 +51,8 @@ class ScheduleError(ValueError):
 class BatchCell:
     """One game in the batch: an opaque identity coordinate (``game_index`` / ``game_id``) plus the
     stimulus (board) and the seat assignment that give it meaning."""
-    game_index: int          # opaque identity coordinate, 0..191
+
+    game_index: int  # opaque identity coordinate, 0..191
     # the real DB identity, from _game_identity(master_seed, game_index)
     game_id: str
     # p, 0..5 (canonical lexicographic order of pairing keys)
@@ -58,11 +60,11 @@ class BatchCell:
     # 0..31 within the pairing (= board_ordinal * 2 + orientation)
     k: int
     board_id: str
-    board_type: str          # "probe" | "control"
+    board_type: str  # "probe" | "control"
     # "gender-career" | "gender-science" | None (control)
     specification: str | None
-    seat0_spec: SeatSpec     # model playing seat 0 in this game
-    seat1_spec: SeatSpec     # model playing seat 1 in this game
+    seat0_spec: SeatSpec  # model playing seat 0 in this game
+    seat1_spec: SeatSpec  # model playing seat 1 in this game
 
 
 def _model_id(spec: SeatSpec) -> str:
@@ -75,13 +77,11 @@ def _select_boards(boards: Sequence[Board]) -> list[Board]:
     """Return the fixed 16-board list ``[career4, science4, control8]`` in canonical (board_id
     ascending) order, or raise :class:`ScheduleError` naming every kind that is short."""
     career = sorted(
-        (b for b in boards if b.type ==
-         "probe" and b.specification == "gender-career"),
+        (b for b in boards if b.type == "probe" and b.specification == "gender-career"),
         key=lambda b: b.board_id,
     )
     science = sorted(
-        (b for b in boards if b.type ==
-         "probe" and b.specification == "gender-science"),
+        (b for b in boards if b.type == "probe" and b.specification == "gender-science"),
         key=lambda b: b.board_id,
     )
     control = sorted(
@@ -91,14 +91,11 @@ def _select_boards(boards: Sequence[Board]) -> list[Board]:
 
     shortfalls = []
     if len(career) < _N_CAREER:
-        shortfalls.append(
-            f"career boards: need {_N_CAREER}, have {len(career)}")
+        shortfalls.append(f"career boards: need {_N_CAREER}, have {len(career)}")
     if len(science) < _N_SCIENCE:
-        shortfalls.append(
-            f"science boards: need {_N_SCIENCE}, have {len(science)}")
+        shortfalls.append(f"science boards: need {_N_SCIENCE}, have {len(science)}")
     if len(control) < _N_CONTROL:
-        shortfalls.append(
-            f"control boards: need {_N_CONTROL}, have {len(control)}")
+        shortfalls.append(f"control boards: need {_N_CONTROL}, have {len(control)}")
     if shortfalls:
         raise ScheduleError("board bank shortfall - " + "; ".join(shortfalls))
 
@@ -106,7 +103,9 @@ def _select_boards(boards: Sequence[Board]) -> list[Board]:
 
 
 def build_schedule(
-    models: Sequence[SeatSpec], boards: Sequence[Board], master_seed: int,
+    models: Sequence[SeatSpec],
+    boards: Sequence[Board],
+    master_seed: int,
 ) -> list[BatchCell]:
     """Build the deterministic batch schedule.
 
@@ -118,8 +117,7 @@ def build_schedule(
     bank lacks _N_CAREER career + _N_SCIENCE science + _N_CONTROL control boards.
     """
     if len(models) != _N_MODELS:
-        raise ScheduleError(
-            f"need exactly {_N_MODELS} models, got {len(models)}")
+        raise ScheduleError(f"need exactly {_N_MODELS} models, got {len(models)}")
     by_id: dict[str, SeatSpec] = {_model_id(m): m for m in models}
     if len(by_id) != _N_MODELS:
         raise ScheduleError(
@@ -132,8 +130,7 @@ def build_schedule(
 
     # The 6 pairing keys, ordered lexicographically; p is the index into this order. model_a is the
     # lexicographically smaller model of the pair (key[0]).
-    pairing_keys = sorted(tuple(sorted(pair))
-                          for pair in combinations(by_id, 2))
+    pairing_keys = sorted(tuple(sorted(pair)) for pair in combinations(by_id, 2))
 
     cells: list[BatchCell] = []
     for p, key in enumerate(pairing_keys):
@@ -145,8 +142,7 @@ def build_schedule(
                 k = j * 2 + o
                 game_index = p * _GAMES_PER_PAIRING + k
                 game_id = _game_identity(master_seed, game_index)[0]
-                seat0, seat1 = (model_a, model_b) if o == 0 else (
-                    model_b, model_a)
+                seat0, seat1 = (model_a, model_b) if o == 0 else (model_b, model_a)
                 cells.append(
                     BatchCell(
                         game_index=game_index,

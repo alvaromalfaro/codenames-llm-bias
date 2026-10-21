@@ -18,21 +18,13 @@
 llm_models = {
     "Ollama": {
         # LLaMA
-        "llama3.1:8b": {
-            "think": False
-        },
+        "llama3.1:8b": {"think": False},
         # Gemma
-        "gemma4:12b": {
-            "think": False
-        },
+        "gemma4:12b": {"think": False},
         # Qwen
-        "qwen2.5:14b": {
-            "think": False
-        },
+        "qwen2.5:14b": {"think": False},
         # Mistral
-        "mistral-small3.2:24b": {
-            "think": False
-        },
+        "mistral-small3.2:24b": {"think": False},
     },
     # "OpenRouter": {
     #     "x-ai/grok-4.3": {},
@@ -62,14 +54,10 @@ llm_models = {
 EXPECTED_OLLAMA_VERSION = "0.40.2"
 
 EXPECTED_LOCAL_DIGESTS = {
-    "llama3.1:8b":
-        "sha256:46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
-    "gemma4:12b":
-        "sha256:4eb23ef187e2c5462566d6a1d3bbbc2f1346d0b4327cbb66d58fffbcc9b2b05c",
-    "qwen2.5:14b":
-        "sha256:7cdf5a0187d5c58cc5d369b255592f7841d1c4696d45a8c8a9489440385b22f6",
-    "mistral-small3.2:24b":
-        "sha256:57bbe3480604be532b76a11087b4028a73e251a22c34380527281039a3967a06",
+    "llama3.1:8b": "sha256:46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+    "gemma4:12b": "sha256:4eb23ef187e2c5462566d6a1d3bbbc2f1346d0b4327cbb66d58fffbcc9b2b05c",
+    "qwen2.5:14b": "sha256:7cdf5a0187d5c58cc5d369b255592f7841d1c4696d45a8c8a9489440385b22f6",
+    "mistral-small3.2:24b": "sha256:57bbe3480604be532b76a11087b4028a73e251a22c34380527281039a3967a06",
 }
 
 # The context window, in tokens, of every local (Ollama) request. Set here so that every machine

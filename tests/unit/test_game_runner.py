@@ -3,6 +3,7 @@
 Seed-derivation, reproducibility, the temperature assertion and the error boundary run without a
 database. The dispatch + sudden-death end-to-end tests need Postgres, marked ``db``: they run on
 the test session's (tests/conftest.py)."""
+
 import json
 import logging
 import random
@@ -14,54 +15,70 @@ from unittest.mock import AsyncMock, MagicMock
 
 from backend.app.core import game_runner, invariants, llm_service
 from backend.app.core.game_runner import (
-    SeatSpec, _derive, _game_identity, _seed_engine, _seed_game,
-    _seed_meas, _seed_play, run_single_game,
+    SeatSpec,
+    _derive,
+    _game_identity,
+    _seed_engine,
+    _seed_game,
+    _seed_meas,
+    _seed_play,
+    run_single_game,
 )
 from backend.app.core.llm.client import LLMClient
 from backend.app.models.game_schemas import Board, CardRole, GamePhase, WordCard
 from backend.app.models.llm_errors import LLMRefusalError, LLMTimeoutError
 from backend.app.models.llm_schemas import (
-    ClueJSONFormat, ConfidenceRankingJSONFormat, GuessJSONFormat,
+    ClueJSONFormat,
+    ConfidenceRankingJSONFormat,
+    GuessJSONFormat,
 )
 
 
 # shared board (the official Duet layout, mirrored from test_game_conductor)
 _A, _C, _S = CardRole.AGENT, CardRole.CIVILIAN, CardRole.ASSASSIN
 _CARDS = [
-    ("BUCKET", _C, _C),    # 0
-    ("BRICK", _A, _A),     # 1  shared agent
-    ("ANT", _A, _S),       # 2
+    ("BUCKET", _C, _C),  # 0
+    ("BRICK", _A, _A),  # 1  shared agent
+    ("ANT", _A, _S),  # 2
     ("LEMONADE", _S, _S),  # 3  assassin for BOTH perspectives
-    ("RUSSIA", _C, _A),    # 4  seat-1 agent
-    ("CAVE", _A, _C),      # 5  seat-0 agent
-    ("FIDDLE", _C, _C),    # 6
-    ("VAMPIRE", _C, _C),   # 7
-    ("TATTOO", _A, _A),    # 8  shared agent
-    ("RANCH", _A, _C),     # 9  seat-0 agent
-    ("LOCUST", _S, _C),    # 10
-    ("RIFLE", _C, _A),     # 11 seat-1 agent
-    ("VIRUS", _C, _A),     # 12 seat-1 agent
-    ("IGLOO", _C, _C),     # 13
-    ("MAKEUP", _C, _S),    # 14
-    ("POTTER", _C, _A),    # 15 seat-1 agent
-    ("CAESAR", _A, _C),    # 16 seat-0 agent
+    ("RUSSIA", _C, _A),  # 4  seat-1 agent
+    ("CAVE", _A, _C),  # 5  seat-0 agent
+    ("FIDDLE", _C, _C),  # 6
+    ("VAMPIRE", _C, _C),  # 7
+    ("TATTOO", _A, _A),  # 8  shared agent
+    ("RANCH", _A, _C),  # 9  seat-0 agent
+    ("LOCUST", _S, _C),  # 10
+    ("RIFLE", _C, _A),  # 11 seat-1 agent
+    ("VIRUS", _C, _A),  # 12 seat-1 agent
+    ("IGLOO", _C, _C),  # 13
+    ("MAKEUP", _C, _S),  # 14
+    ("POTTER", _C, _A),  # 15 seat-1 agent
+    ("CAESAR", _A, _C),  # 16 seat-0 agent
     ("NAPOLEON", _A, _A),  # 17 shared agent
-    ("GOLF", _C, _C),      # 18
-    ("PINE", _S, _A),      # 19 seat-1 agent
-    ("DOLL", _A, _C),      # 20 seat-0 agent
-    ("LUNCH", _A, _C),     # 21 seat-0 agent
-    ("SKATES", _C, _C),    # 22
-    ("CRAFT", _C, _C),     # 23
-    ("PEW", _C, _A),       # 24 seat-1 agent
+    ("GOLF", _C, _C),  # 18
+    ("PINE", _S, _A),  # 19 seat-1 agent
+    ("DOLL", _A, _C),  # 20 seat-0 agent
+    ("LUNCH", _A, _C),  # 21 seat-0 agent
+    ("SKATES", _C, _C),  # 22
+    ("CRAFT", _C, _C),  # 23
+    ("PEW", _C, _A),  # 24 seat-1 agent
 ]
 
 
 def _board(board_id: str = "tb") -> Board:
     return Board(
-        board_id=board_id, category="neutral",
-        cards=[WordCard(id=i, text=text, human_perspective_role=human,
-                        llm_perspective_role=llm, category="neutral")
-               for i, (text, human, llm) in enumerate(_CARDS)],
+        board_id=board_id,
+        category="neutral",
+        cards=[
+            WordCard(
+                id=i,
+                text=text,
+                human_perspective_role=human,
+                llm_perspective_role=llm,
+                category="neutral",
+            )
+            for i, (text, human, llm) in enumerate(_CARDS)
+        ],
     )
 
 
@@ -86,19 +103,20 @@ def _mock_response(text: str) -> MagicMock:
 def _guess_json(words, confidences=None, reasoning="r", stop_reason="done") -> str:
     confidences = confidences or [0.9] * len(words)
     items = ", ".join(
-        f'{{"word": "{w}", "confidence": {c}}}' for w, c in zip(words, confidences, strict=True))
+        f'{{"word": "{w}", "confidence": {c}}}' for w, c in zip(words, confidences, strict=True)
+    )
     return f'{{"reasoning": "{reasoning}", "stop_reason": "{stop_reason}", "proposals": [{items}]}}'
 
 
 def _rankings_json(pairs=(("BRICK", 0.9), ("CAVE", 0.1)), reasoning="r") -> str:
-    items = ", ".join(
-        f'{{"word": "{w}", "confidence": {c}}}' for w, c in pairs)
+    items = ", ".join(f'{{"word": "{w}", "confidence": {c}}}' for w, c in pairs)
     return f'{{"reasoning": "{reasoning}", "rankings": [{items}]}}'
 
 
 def _clue_json(clue="OCEAN", count=1, reasoning="r", targets=None) -> str:
-    return json.dumps({"reasoning": reasoning, "clue": clue,
-                       "count": count, "targets": targets or []})
+    return json.dumps(
+        {"reasoning": reasoning, "clue": clue, "count": count, "targets": targets or []}
+    )
 
 
 def _make_client(name: str, guess_supplier, log=None) -> MagicMock:
@@ -106,6 +124,7 @@ def _make_client(name: str, guess_supplier, log=None) -> MagicMock:
     (or raises to inject an error); clue/ranking are canned. Each response echoes the request seed
     (as real clients do). ``log``, if given, records (name, format, seed) per call in dispatch order.
     """
+
     def gen(request, expected_format=None):
         if log is not None:
             log.append((name, expected_format, request.seed))
@@ -116,8 +135,7 @@ def _make_client(name: str, guess_supplier, log=None) -> MagicMock:
         elif expected_format is GuessJSONFormat:
             text = _guess_json(guess_supplier())
         else:
-            raise AssertionError(
-                f"unexpected expected_format {expected_format!r}")
+            raise AssertionError(f"unexpected expected_format {expected_format!r}")
         resp = _mock_response(text)
         resp.requested_seed = request.seed
         resp.requested_temperature = request.temperature
@@ -187,8 +205,14 @@ async def test_temperature_required_raises_before_any_client(monkeypatch):
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
     factory = MagicMock()  # would blow up if called
     with pytest.raises(ValueError, match="temperature"):
-        await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=1,
-                              temperature=None, persist=False, client_factory=factory)
+        await run_single_game(
+            board=_board(),
+            seat_specs=_SPECS,
+            master_seed=1,
+            temperature=None,
+            persist=False,
+            client_factory=factory,
+        )
     factory.assert_not_called()
 
 
@@ -200,22 +224,35 @@ async def test_persist_true_without_database_url_raises_before_any_client(monkey
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
     factory = MagicMock()  # would blow up if called
     with pytest.raises(RuntimeError, match="DATABASE_URL"):
-        await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=1,
-                              temperature=0.4, client_factory=factory)
+        await run_single_game(
+            board=_board(),
+            seat_specs=_SPECS,
+            master_seed=1,
+            temperature=0.4,
+            client_factory=factory,
+        )
     factory.assert_not_called()
 
 
 @pytest.mark.asyncio
 async def test_persist_false_plays_without_touching_db(monkeypatch):
     """persist=False plays a full game and returns a result while never calling into the writer."""
-    persist_game = MagicMock(side_effect=AssertionError(
-        "writer must not be called for persist=False"))
+    persist_game = MagicMock(
+        side_effect=AssertionError("writer must not be called for persist=False")
+    )
     monkeypatch.setattr(game_runner.writer, "persist_game", persist_game)
-    clients = {0: _make_client("m0", lambda: ["LEMONADE"]),
-               1: _make_client("m1", lambda: ["LEMONADE"])}
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=777,
-                                temperature=0.4, persist=False,
-                                client_factory=lambda i, spec: clients[i])
+    clients = {
+        0: _make_client("m0", lambda: ["LEMONADE"]),
+        1: _make_client("m1", lambda: ["LEMONADE"]),
+    }
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=777,
+        temperature=0.4,
+        persist=False,
+        client_factory=lambda i, spec: clients[i],
+    )
     assert res.status == "completed" and res.result == "loss_assassin"
     persist_game.assert_not_called()
 
@@ -224,25 +261,44 @@ async def test_persist_false_plays_without_touching_db(monkeypatch):
 async def test_a_game_plays_with_the_service_it_is_handed(monkeypatch):
     """A batch hands every game one service; the game must not read the templates again."""
     from backend.app.core.llm_service import LLMService
+
     service = LLMService(temperature=0.4)
-    monkeypatch.setattr(game_runner, "LLMService", MagicMock(
-        side_effect=AssertionError("a game handed a service must not build another")))
-    clients = {0: _make_client("m0", lambda: ["LEMONADE"]),
-               1: _make_client("m1", lambda: ["LEMONADE"])}
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=777,
-                                temperature=0.4, persist=False, service=service,
-                                client_factory=lambda i, spec: clients[i])
+    monkeypatch.setattr(
+        game_runner,
+        "LLMService",
+        MagicMock(side_effect=AssertionError("a game handed a service must not build another")),
+    )
+    clients = {
+        0: _make_client("m0", lambda: ["LEMONADE"]),
+        1: _make_client("m1", lambda: ["LEMONADE"]),
+    }
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=777,
+        temperature=0.4,
+        persist=False,
+        service=service,
+        client_factory=lambda i, spec: clients[i],
+    )
     assert res.status == "completed"
 
 
 @pytest.mark.asyncio
 async def test_a_service_at_another_temperature_is_refused():
     from backend.app.core.llm_service import LLMService
+
     factory = MagicMock()  # would blow up if called
     with pytest.raises(ValueError, match="temperature 0.7"):
-        await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=1, temperature=0.4,
-                              persist=False, service=LLMService(temperature=0.7),
-                              client_factory=factory)
+        await run_single_game(
+            board=_board(),
+            seat_specs=_SPECS,
+            master_seed=1,
+            temperature=0.4,
+            persist=False,
+            service=LLMService(temperature=0.7),
+            client_factory=factory,
+        )
     factory.assert_not_called()
 
 
@@ -252,15 +308,23 @@ async def test_on_dispatch_sees_the_state_before_and_after_every_dispatch(monkey
     clue and then a guess of LEMONADE (an assassin for both seats), so it is called three times, the
     last one on the finished game."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
-    clients = {0: _make_client("m0", lambda: ["LEMONADE"]),
-               1: _make_client("m1", lambda: ["LEMONADE"])}
+    clients = {
+        0: _make_client("m0", lambda: ["LEMONADE"]),
+        1: _make_client("m1", lambda: ["LEMONADE"]),
+    }
     seen = []
 
     res = await run_single_game(
-        board=_board(), seat_specs=_SPECS, master_seed=777, temperature=0.4, persist=False,
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=777,
+        temperature=0.4,
+        persist=False,
         client_factory=lambda i, spec: clients[i],
         on_dispatch=lambda engine, recorder: seen.append(
-            (engine.state.current_phase.value, engine.state.is_game_over)))
+            (engine.state.current_phase.value, engine.state.is_game_over)
+        ),
+    )
 
     assert res.status == "completed"
     assert seen == [("giving_clue", False), ("guessing", False), ("game_over", True)]
@@ -271,11 +335,18 @@ async def _run_lemonade(master_seed, monkeypatch, log):
     """A 2-dispatch game: the first guessing seat guesses LEMONADE (assassin for BOTH perspectives),
     so the game ends in a loss regardless of which seat starts - fully deterministic."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
-    clients = {0: _make_client("m0", lambda: ["LEMONADE"], log),
-               1: _make_client("m1", lambda: ["LEMONADE"], log)}
+    clients = {
+        0: _make_client("m0", lambda: ["LEMONADE"], log),
+        1: _make_client("m1", lambda: ["LEMONADE"], log),
+    }
     return await run_single_game(
-        board=_board(), seat_specs=_SPECS, master_seed=master_seed, temperature=0.4,
-        persist=False, client_factory=lambda i, spec: clients[i]), clients
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=master_seed,
+        temperature=0.4,
+        persist=False,
+        client_factory=lambda i, spec: clients[i],
+    ), clients
 
 
 @pytest.mark.asyncio
@@ -306,11 +377,9 @@ async def test_request_seeds_match_derivation_scheme(monkeypatch):
     cg_name = "m0" if clue_giver == 0 else "m1"
     g_name = "m0" if guesser == 0 else "m1"
     # Turn 1: clue by the clue-giver, guess+measurement by the guesser, each with its own seed.
-    assert seen[(cg_name, ClueJSONFormat)] == _seed_play(
-        seed_game, clue_giver, 1)
+    assert seen[(cg_name, ClueJSONFormat)] == _seed_play(seed_game, clue_giver, 1)
     assert seen[(g_name, GuessJSONFormat)] == _seed_play(seed_game, guesser, 1)
-    assert seen[(g_name, ConfidenceRankingJSONFormat)
-                ] == _seed_meas(seed_game, guesser, 1)
+    assert seen[(g_name, ConfidenceRankingJSONFormat)] == _seed_meas(seed_game, guesser, 1)
 
 
 @pytest.mark.asyncio
@@ -330,12 +399,20 @@ async def test_identity_ignores_run_id(monkeypatch):
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
 
     async def _play(run_id):
-        clients = {0: _make_client("m0", lambda: ["LEMONADE"]),
-                   1: _make_client("m1", lambda: ["LEMONADE"])}
+        clients = {
+            0: _make_client("m0", lambda: ["LEMONADE"]),
+            1: _make_client("m1", lambda: ["LEMONADE"]),
+        }
         return await run_single_game(
-            board=_board(), seat_specs=_SPECS, master_seed=777, temperature=0.4,
-            run_id=run_id, game_index=3, persist=False,
-            client_factory=lambda i, spec: clients[i])
+            board=_board(),
+            seat_specs=_SPECS,
+            master_seed=777,
+            temperature=0.4,
+            run_id=run_id,
+            game_index=3,
+            persist=False,
+            client_factory=lambda i, spec: clients[i],
+        )
 
     res_fixed = await _play("fixed-run-id")
     # a DB-minted run.id is a random uuid4
@@ -372,18 +449,25 @@ async def test_retriable_error_propagates_without_dispatch_retry(monkeypatch):
 
     # Both seats: clue succeeds, the guess times out (retriable). Whichever seat guesses, the error
     # goes straight to the boundary without the dispatch retrying.
-    clients = {0: _make_client("m0", _raise_timeout),
-               1: _make_client("m1", _raise_timeout)}
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
-                                temperature=0.4, persist=False,
-                                client_factory=lambda i, spec: clients[i])
+    clients = {0: _make_client("m0", _raise_timeout), 1: _make_client("m1", _raise_timeout)}
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=5,
+        temperature=0.4,
+        persist=False,
+        client_factory=lambda i, spec: clients[i],
+    )
 
     assert res.status == "error"
     assert "timed out" in (res.error or "")
     # Exactly one seat guessed, and its guess dispatch happened exactly once (no dispatch-level retry).
     guess_calls = sum(
-        1 for c in clients.values() for call in c.generate.call_args_list
-        if call.kwargs.get("expected_format") is GuessJSONFormat)
+        1
+        for c in clients.values()
+        for call in c.generate.call_args_list
+        if call.kwargs.get("expected_format") is GuessJSONFormat
+    )
     assert guess_calls == 1
 
 
@@ -394,8 +478,11 @@ async def test_transient_failure_records_no_telemetry(monkeypatch):
     carries zero turns (zero llm_calls). Runs the persist path with a fake writer - no DB needed."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: True)
     captured = {}
-    monkeypatch.setattr(game_runner.writer, "persist_game",
-                        lambda rec, status: captured.update(recorder=rec, status=status))
+    monkeypatch.setattr(
+        game_runner.writer,
+        "persist_game",
+        lambda rec, status: captured.update(recorder=rec, status=status),
+    )
 
     def _clue_times_out(request, expected_format=None):
         raise LLMTimeoutError()
@@ -406,9 +493,14 @@ async def test_transient_failure_records_no_telemetry(monkeypatch):
     client.generate = AsyncMock(side_effect=_clue_times_out)
     client.close = AsyncMock()
 
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
-                                temperature=0.4, run_id="fixed-run-id",
-                                client_factory=lambda i, spec: client)
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=5,
+        temperature=0.4,
+        run_id="fixed-run-id",
+        client_factory=lambda i, spec: client,
+    )
 
     assert res.status == "error"
     assert captured["status"] == "error"
@@ -421,21 +513,32 @@ def _guess_times_out():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("guess, code, message", [
-    (_guess_times_out, "timeout", "LLMTimeoutError: LLMError("),
-    # Off the board: the turn has no guess, which is no LLM error, so it has no code.
-    (lambda: ["NONWORD"], None, "at least one guess"),
-])
+@pytest.mark.parametrize(
+    "guess, code, message",
+    [
+        (_guess_times_out, "timeout", "LLMTimeoutError: LLMError("),
+        # Off the board: the turn has no guess, which is no LLM error, so it has no code.
+        (lambda: ["NONWORD"], None, "at least one guess"),
+    ],
+)
 async def test_a_failed_game_is_flushed_with_why_it_failed(monkeypatch, guess, code, message):
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: True)
     captured = {}
-    monkeypatch.setattr(game_runner.writer, "persist_game",
-                        lambda rec, status: captured.update(recorder=rec, status=status))
+    monkeypatch.setattr(
+        game_runner.writer,
+        "persist_game",
+        lambda rec, status: captured.update(recorder=rec, status=status),
+    )
     clients = {0: _make_client("m0", guess), 1: _make_client("m1", guess)}
 
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
-                                temperature=0.4, run_id="fixed-run-id",
-                                client_factory=lambda i, spec: clients[i])
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=5,
+        temperature=0.4,
+        run_id="fixed-run-id",
+        client_factory=lambda i, spec: clients[i],
+    )
 
     recorder = captured["recorder"]
     assert res.status == captured["status"] == "error"
@@ -447,20 +550,25 @@ async def test_a_failed_game_is_flushed_with_why_it_failed(monkeypatch, guess, c
 
 def _break_invariants_when(monkeypatch, broken):
     """Make the invariant check report a breach in every state for which ``broken(state)``."""
-    monkeypatch.setattr(invariants, "check_invariants",
-                        lambda engine: ["boom"] if broken(engine.state) else [])
+    monkeypatch.setattr(
+        invariants, "check_invariants", lambda engine: ["boom"] if broken(engine.state) else []
+    )
 
 
 def _capture_persists(monkeypatch) -> list:
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: True)
     persisted = []
-    monkeypatch.setattr(game_runner.writer, "persist_game",
-                        lambda rec, status: persisted.append((status, rec)))
+    monkeypatch.setattr(
+        game_runner.writer, "persist_game", lambda rec, status: persisted.append((status, rec))
+    )
     return persisted
 
 
 def _lemonade_clients():
-    return {0: _make_client("m0", lambda: ["LEMONADE"]), 1: _make_client("m1", lambda: ["LEMONADE"])}
+    return {
+        0: _make_client("m0", lambda: ["LEMONADE"]),
+        1: _make_client("m1", lambda: ["LEMONADE"]),
+    }
 
 
 @pytest.mark.asyncio
@@ -470,17 +578,25 @@ async def test_a_strict_game_ends_in_error_at_the_first_broken_invariant(monkeyp
     _break_invariants_when(monkeypatch, lambda s: s.current_phase == GamePhase.GUESSING)
     clients = _lemonade_clients()
 
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
-                                temperature=0.4, run_id="fixed-run-id",
-                                client_factory=lambda i, spec: clients[i])
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=5,
+        temperature=0.4,
+        run_id="fixed-run-id",
+        client_factory=lambda i, spec: clients[i],
+    )
 
     assert res.status == "error" and res.error_code == "invariant_broken"
     assert res.invariant_violations == ["boom"]
     [(status, recorder)] = persisted
     assert status == "error" and recorder.error_code == "invariant_broken"
     assert recorder.error_message == "GameInvariantError: boom"
-    assert not any(call.kwargs.get("expected_format") is GuessJSONFormat
-                   for c in clients.values() for call in c.generate.call_args_list)
+    assert not any(
+        call.kwargs.get("expected_format") is GuessJSONFormat
+        for c in clients.values()
+        for call in c.generate.call_args_list
+    )
 
 
 @pytest.mark.asyncio
@@ -490,9 +606,14 @@ async def test_a_strict_game_broken_at_its_end_is_stored_as_an_error(monkeypatch
     _break_invariants_when(monkeypatch, lambda s: s.is_game_over)
     clients = _lemonade_clients()
 
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
-                                temperature=0.4, run_id="fixed-run-id",
-                                client_factory=lambda i, spec: clients[i])
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=5,
+        temperature=0.4,
+        run_id="fixed-run-id",
+        client_factory=lambda i, spec: clients[i],
+    )
 
     assert res.status == "error" and res.error_code == "invariant_broken"
     assert [status for status, _ in persisted] == ["error"]
@@ -505,9 +626,15 @@ async def test_a_lenient_game_plays_on_and_returns_what_broke(monkeypatch, caplo
     clients = _lemonade_clients()
 
     with caplog.at_level(logging.ERROR, logger="backend.app.core.invariants"):
-        res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
-                                    temperature=0.4, persist=False, strict_invariants=False,
-                                    client_factory=lambda i, spec: clients[i])
+        res = await run_single_game(
+            board=_board(),
+            seat_specs=_SPECS,
+            master_seed=5,
+            temperature=0.4,
+            persist=False,
+            strict_invariants=False,
+            client_factory=lambda i, spec: clients[i],
+        )
 
     assert res.status == "completed" and res.result == "loss_assassin"
     assert res.invariant_violations == ["boom"]
@@ -522,15 +649,23 @@ async def test_deterministic_error_not_retried(monkeypatch):
         raise LLMRefusalError()
 
     clients = {0: _make_client("m0", _refuse), 1: _make_client("m1", _refuse)}
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
-                                temperature=0.4, persist=False,
-                                client_factory=lambda i, spec: clients[i])
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=5,
+        temperature=0.4,
+        persist=False,
+        client_factory=lambda i, spec: clients[i],
+    )
 
     assert res.status == "error"
     # A non-retriable LLM error is not retried: the guess dispatch happened exactly once.
     guess_calls = sum(
-        1 for c in clients.values() for call in c.generate.call_args_list
-        if call.kwargs.get("expected_format") is GuessJSONFormat)
+        1
+        for c in clients.values()
+        for call in c.generate.call_args_list
+        if call.kwargs.get("expected_format") is GuessJSONFormat
+    )
     assert guess_calls == 1
 
 
@@ -541,18 +676,28 @@ async def test_all_unmappable_guess_errors_without_redispatch(monkeypatch):
     on the still-GUESSING phase (the guess dispatch happens exactly once)."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
     # Both seats propose only off-board words; whichever seat guesses first triggers the raise.
-    clients = {0: _make_client("m0", lambda: ["NONWORD1", "NONWORD2"]),
-               1: _make_client("m1", lambda: ["NONWORD1", "NONWORD2"])}
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=5,
-                                temperature=0.4, persist=False,
-                                client_factory=lambda i, spec: clients[i])
+    clients = {
+        0: _make_client("m0", lambda: ["NONWORD1", "NONWORD2"]),
+        1: _make_client("m1", lambda: ["NONWORD1", "NONWORD2"]),
+    }
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=5,
+        temperature=0.4,
+        persist=False,
+        client_factory=lambda i, spec: clients[i],
+    )
 
     assert res.status == "error"
     assert "at least one guess" in (res.error or "")
     # The guessing phase was dispatched exactly once - no re-dispatch spin on the unadvanced phase.
     guess_calls = sum(
-        1 for c in clients.values() for call in c.generate.call_args_list
-        if call.kwargs.get("expected_format") is GuessJSONFormat)
+        1
+        for c in clients.values()
+        for call in c.generate.call_args_list
+        if call.kwargs.get("expected_format") is GuessJSONFormat
+    )
     assert guess_calls == 1
 
 
@@ -565,23 +710,37 @@ async def test_sudden_death_without_a_playable_proposal_concedes_without_redispa
     master_seed = _seed_with_start_player(0)
     # The canned clue OCEAN is given on all nine turns: repeating a clue is legal (§8.1).
     # Guesser order under start_player 0 is 1,0,1,0,1,0,1,0,1 across the nine civilian turns.
-    client0 = _make_client("m0", _queue_supplier(
-        # 4 civilians, then an off-board SD proposal
-        [["RUSSIA"], ["RIFLE"], ["VIRUS"], ["MAKEUP"], ["NONWORD"]]))
-    client1 = _make_client("m1", _queue_supplier(
-        [["BUCKET"], ["FIDDLE"], ["VAMPIRE"], ["IGLOO"], ["GOLF"]]))  # 5 civilians
+    client0 = _make_client(
+        "m0",
+        _queue_supplier(
+            # 4 civilians, then an off-board SD proposal
+            [["RUSSIA"], ["RIFLE"], ["VIRUS"], ["MAKEUP"], ["NONWORD"]]
+        ),
+    )
+    client1 = _make_client(
+        "m1", _queue_supplier([["BUCKET"], ["FIDDLE"], ["VAMPIRE"], ["IGLOO"], ["GOLF"]])
+    )  # 5 civilians
     clients = {0: client0, 1: client1}
 
-    res = await run_single_game(board=_board(), seat_specs=_SPECS, master_seed=master_seed,
-                                temperature=0.4, persist=False,
-                                client_factory=lambda i, spec: clients[i])
+    res = await run_single_game(
+        board=_board(),
+        seat_specs=_SPECS,
+        master_seed=master_seed,
+        temperature=0.4,
+        persist=False,
+        client_factory=lambda i, spec: clients[i],
+    )
 
     assert res.status == "completed" and res.result == "loss_stopped_sd"
     # Seat 0: 4 normal guess turns + exactly one SD play. Seat 1 never reaches sudden death.
     guess_calls = {
-        seat: sum(1 for call in c.generate.call_args_list
-                  if call.kwargs.get("expected_format") is GuessJSONFormat)
-        for seat, c in clients.items()}
+        seat: sum(
+            1
+            for call in c.generate.call_args_list
+            if call.kwargs.get("expected_format") is GuessJSONFormat
+        )
+        for seat, c in clients.items()
+    }
     assert guess_calls == {0: 5, 1: 5}
 
 
@@ -591,11 +750,18 @@ _db_required = pytest.mark.db
 
 def _insert_board(session, board_id):
     from backend.app.db.models import BoardModel, WordCardModel
+
     session.add(BoardModel(board_id=board_id, type="control"))
     for i, (text, human, llm) in enumerate(_CARDS):
-        session.add(WordCardModel(
-            board_id=board_id, card_id=i, text=text,
-            human_perspective_role=human.value, llm_perspective_role=llm.value))
+        session.add(
+            WordCardModel(
+                board_id=board_id,
+                card_id=i,
+                text=text,
+                human_perspective_role=human.value,
+                llm_perspective_role=llm.value,
+            )
+        )
     session.flush()
 
 
@@ -616,12 +782,18 @@ async def test_dispatch_full_game_persists_two_seats():
 
     game_index = _unique_game_index()
     master_seed = _seed_with_start_player(0, game_index=game_index)
-    clients = {0: _make_client("m0", _queue_supplier([["LEMONADE"]])),
-               1: _make_client("m1", _queue_supplier([["BRICK"]]))}
-    res = await run_single_game(board=_board(board_id), seat_specs=_SPECS,
-                                master_seed=master_seed, temperature=0.4,
-                                game_index=game_index,
-                                client_factory=lambda i, spec: clients[i])
+    clients = {
+        0: _make_client("m0", _queue_supplier([["LEMONADE"]])),
+        1: _make_client("m1", _queue_supplier([["BRICK"]])),
+    }
+    res = await run_single_game(
+        board=_board(board_id),
+        seat_specs=_SPECS,
+        master_seed=master_seed,
+        temperature=0.4,
+        game_index=game_index,
+        client_factory=lambda i, spec: clients[i],
+    )
 
     assert res.status == "completed" and res.result == "loss_assassin"
     with session_scope() as session:
@@ -631,28 +803,40 @@ async def test_dispatch_full_game_persists_two_seats():
         assert game.run_id == res.run_id and game.run_id is not None
         assert game.start_player == 0
 
-        seats = session.execute(select(GameSeatModel).where(
-            GameSeatModel.game_id == res.game_id)).scalars().all()
+        seats = (
+            session.execute(select(GameSeatModel).where(GameSeatModel.game_id == res.game_id))
+            .scalars()
+            .all()
+        )
         by_seat = {s.seat_index: s for s in seats}
         assert set(by_seat) == {0, 1}
         assert (by_seat[0].provider, by_seat[0].model_ref) == ("ollama", "m0")
-        assert (by_seat[1].provider, by_seat[1].model_ref) == (
-            "openrouter", "m1")
+        assert (by_seat[1].provider, by_seat[1].model_ref) == ("openrouter", "m1")
         # Runner seat sampling: constant temperature on both seats. The seat records no seed: the
         # runner seeds per (seat, turn), and each call's is llm_call.requested_seed.
         assert float(by_seat[0].requested_temperature) == 0.4
         assert float(by_seat[1].requested_temperature) == 0.4
 
-        turns = session.execute(select(TurnModel).where(
-            TurnModel.game_id == res.game_id)).scalars().all()
+        turns = (
+            session.execute(select(TurnModel).where(TurnModel.game_id == res.game_id))
+            .scalars()
+            .all()
+        )
         assert len(turns) == 2
         assert {t.clue_giver_seat for t in turns} == {0, 1}
         assert all(t.phase == "normal" for t in turns)
 
         # Both seats were measured: a measurement proposal exists for each guesser seat.
-        meas = session.execute(select(GuessProposalModel).where(
-            GuessProposalModel.kind == "measurement",
-            GuessProposalModel.turn_id.in_([t.id for t in turns]))).scalars().all()
+        meas = (
+            session.execute(
+                select(GuessProposalModel).where(
+                    GuessProposalModel.kind == "measurement",
+                    GuessProposalModel.turn_id.in_([t.id for t in turns]),
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert {m.guesser_seat for m in meas} == {0, 1}
 
 
@@ -674,45 +858,86 @@ async def test_sudden_death_both_seats_persists():
     game_index = _unique_game_index()
     master_seed = _seed_with_start_player(0, game_index=game_index)
     # Guesser order under start_player 0 is 1,0,1,0,1,0,1,0,1 across the nine civilian turns.
-    seat0_agents = ["BRICK", "ANT", "CAVE", "TATTOO", "RANCH",
-                    # all seat-0 (human) agents
-                    "CAESAR", "NAPOLEON", "DOLL", "LUNCH"]
-    seat1_agents = ["RUSSIA", "RIFLE", "VIRUS", "POTTER",
-                    "PINE", "PEW"]  # seat-1 leftovers post-SD
-    client0 = _make_client("m0", _queue_supplier(
-        # 4 civilians, then SD
-        [["RUSSIA"], ["RIFLE"], ["VIRUS"], ["MAKEUP"], seat0_agents]))
-    client1 = _make_client("m1", _queue_supplier(
-        # 5 civ, then SD
-        [["BUCKET"], ["FIDDLE"], ["VAMPIRE"], ["IGLOO"], ["GOLF"], seat1_agents]))
+    seat0_agents = [
+        "BRICK",
+        "ANT",
+        "CAVE",
+        "TATTOO",
+        "RANCH",
+        # all seat-0 (human) agents
+        "CAESAR",
+        "NAPOLEON",
+        "DOLL",
+        "LUNCH",
+    ]
+    seat1_agents = ["RUSSIA", "RIFLE", "VIRUS", "POTTER", "PINE", "PEW"]  # seat-1 leftovers post-SD
+    client0 = _make_client(
+        "m0",
+        _queue_supplier(
+            # 4 civilians, then SD
+            [["RUSSIA"], ["RIFLE"], ["VIRUS"], ["MAKEUP"], seat0_agents]
+        ),
+    )
+    client1 = _make_client(
+        "m1",
+        _queue_supplier(
+            # 5 civ, then SD
+            [["BUCKET"], ["FIDDLE"], ["VAMPIRE"], ["IGLOO"], ["GOLF"], seat1_agents]
+        ),
+    )
     clients = {0: client0, 1: client1}
 
-    res = await run_single_game(board=_board(board_id), seat_specs=_SPECS,
-                                master_seed=master_seed, temperature=0.4,
-                                game_index=game_index,
-                                client_factory=lambda i, spec: clients[i])
+    res = await run_single_game(
+        board=_board(board_id),
+        seat_specs=_SPECS,
+        master_seed=master_seed,
+        temperature=0.4,
+        game_index=game_index,
+        client_factory=lambda i, spec: clients[i],
+    )
 
     assert res.status == "completed" and res.result == "victory_sd"
     with session_scope() as session:
-        sd_turns = session.execute(select(TurnModel).where(
-            TurnModel.game_id == res.game_id,
-            TurnModel.phase == "sudden_death")).scalars().all()
+        sd_turns = (
+            session.execute(
+                select(TurnModel).where(
+                    TurnModel.game_id == res.game_id, TurnModel.phase == "sudden_death"
+                )
+            )
+            .scalars()
+            .all()
+        )
         assert len(sd_turns) == 1
-        proposals = session.execute(select(GuessProposalModel).where(
-            GuessProposalModel.turn_id == sd_turns[0].id)).scalars().all()
+        proposals = (
+            session.execute(
+                select(GuessProposalModel).where(GuessProposalModel.turn_id == sd_turns[0].id)
+            )
+            .scalars()
+            .all()
+        )
         assert {(p.kind, p.guesser_seat) for p in proposals} == {
-            ("play", 0), ("play", 1), ("measurement", 0), ("measurement", 1)}
+            ("play", 0),
+            ("play", 1),
+            ("measurement", 0),
+            ("measurement", 1),
+        }
 
 
 # run provenance: the created run row records model snapshot, template fingerprint, code version
 async def _play_one_persisted_game(board_id, game_index, master_seed):
     """Play the standard 2-turn loss game (start_player 0) and return its GameRunResult."""
-    clients = {0: _make_client("m0", _queue_supplier([["LEMONADE"]])),
-               1: _make_client("m1", _queue_supplier([["BRICK"]]))}
-    return await run_single_game(board=_board(board_id), seat_specs=_SPECS,
-                                 master_seed=master_seed, temperature=0.4,
-                                 game_index=game_index,
-                                 client_factory=lambda i, spec: clients[i])
+    clients = {
+        0: _make_client("m0", _queue_supplier([["LEMONADE"]])),
+        1: _make_client("m1", _queue_supplier([["BRICK"]])),
+    }
+    return await run_single_game(
+        board=_board(board_id),
+        seat_specs=_SPECS,
+        master_seed=master_seed,
+        temperature=0.4,
+        game_index=game_index,
+        client_factory=lambda i, spec: clients[i],
+    )
 
 
 @_db_required
@@ -728,8 +953,11 @@ async def test_created_run_records_provenance(monkeypatch):
     from backend.app.db.models import RunModel
     from backend.app.db.session import session_scope
 
-    monkeypatch.setattr(provenance, "resolve_ollama_digest",
-                        lambda model_name, host=None: f"sha256:{model_name}-fixed")
+    monkeypatch.setattr(
+        provenance,
+        "resolve_ollama_digest",
+        lambda model_name, host=None: f"sha256:{model_name}-fixed",
+    )
 
     board_id = f"runner-prov-{uuid.uuid4()}"
     with session_scope() as session:

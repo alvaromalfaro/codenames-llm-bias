@@ -170,20 +170,23 @@ def test_derived_form_of_visible_word(board_word, clue):
     assert reason == f"'{clue}' is a derived form of the board word '{board_word.lower()}'."
 
 
-@pytest.mark.parametrize(("board_word", "clue", "expected_valid"), [
-    ("STORM", "storm", False),
-    ("HIDE", "hid", False),
-    ("HIDE", "hidden", False),
-    ("HIDE", "rawhide", False),
-    ("HIDE", "hideous", True),
-    ("RAINBOW", "rain", False),
-    ("EARTHQUAKE", "earth", False),
-    ("EARTHQUAKE", "quake", False),
-    ("EARTHQUAKE", "earthy", False),
-    ("EARTHQUAKE", "quaking", False),
-    ("EARTHQUAKE", "hearth", True),
-    ("EARTHQUAKE", "ear", True),
-])
+@pytest.mark.parametrize(
+    ("board_word", "clue", "expected_valid"),
+    [
+        ("STORM", "storm", False),
+        ("HIDE", "hid", False),
+        ("HIDE", "hidden", False),
+        ("HIDE", "rawhide", False),
+        ("HIDE", "hideous", True),
+        ("RAINBOW", "rain", False),
+        ("EARTHQUAKE", "earth", False),
+        ("EARTHQUAKE", "quake", False),
+        ("EARTHQUAKE", "earthy", False),
+        ("EARTHQUAKE", "quaking", False),
+        ("EARTHQUAKE", "hearth", True),
+        ("EARTHQUAKE", "ear", True),
+    ],
+)
 def test_rulebook_examples(board_word, clue, expected_valid):
     """The examples of §8.1.4-6 of the Duet rules."""
     validator = ClueValidator([_make_card(0, board_word)])
@@ -192,16 +195,19 @@ def test_rulebook_examples(board_word, clue, expected_valid):
     assert valid == expected_valid
 
 
-@pytest.mark.parametrize(("board_word", "clue"), [
-    ("DRIVER", "river"),
-    ("THUNDER", "under"),
-    ("EAR", "earth"),
-    ("EAR", "year"),
-    ("BOIL", "b"),
-    ("ANT", "pleasant"),
-    ("MESS", "message"),
-    ("MONKEY", "key"),
-])
+@pytest.mark.parametrize(
+    ("board_word", "clue"),
+    [
+        ("DRIVER", "river"),
+        ("THUNDER", "under"),
+        ("EAR", "earth"),
+        ("EAR", "year"),
+        ("BOIL", "b"),
+        ("ANT", "pleasant"),
+        ("MESS", "message"),
+        ("MONKEY", "key"),
+    ],
+)
 def test_word_split_by_letters_is_not_a_compound(board_word, clue):
     """
     A word is a compound only if MorphoLex segments it as one, not because its letters split into
@@ -214,17 +220,20 @@ def test_word_split_by_letters_is_not_a_compound(board_word, clue):
     assert validator.is_valid(_make_clue(clue)) == (True, "")
 
 
-@pytest.mark.parametrize(("board_word", "clue"), [
-    ("HAPPY", "happily"),
-    ("SWEAT", "sweaty"),
-    ("STABLE", "unstable"),
-    ("CORPORATION", "corporate"),
-    ("DOMESTIC", "domesticated"),
-    ("MEDIC", "medical"),
-    ("INDEPENDENT", "depend"),
-    ("MARRIAGE", "marry"),
-    ("PATIENT", "patience"),
-])
+@pytest.mark.parametrize(
+    ("board_word", "clue"),
+    [
+        ("HAPPY", "happily"),
+        ("SWEAT", "sweaty"),
+        ("STABLE", "unstable"),
+        ("CORPORATION", "corporate"),
+        ("DOMESTIC", "domesticated"),
+        ("MEDIC", "medical"),
+        ("INDEPENDENT", "depend"),
+        ("MARRIAGE", "marry"),
+        ("PATIENT", "patience"),
+    ],
+)
 def test_derived_form_from_morpholex(board_word, clue):
     """
     Derived forms are caught from MorphoLex's segmentations, also the ones WordNet does not link
@@ -238,12 +247,15 @@ def test_derived_form_from_morpholex(board_word, clue):
     assert reason == f"'{clue}' is a derived form of the board word '{board_word.lower()}'."
 
 
-@pytest.mark.parametrize(("board_word", "clue"), [
-    ("FLEE", "flight"),
-    ("DIE", "death"),
-    ("PORT", "transport"),
-    ("INDEPENDENT", "pending"),
-])
+@pytest.mark.parametrize(
+    ("board_word", "clue"),
+    [
+        ("FLEE", "flight"),
+        ("DIE", "death"),
+        ("PORT", "transport"),
+        ("INDEPENDENT", "pending"),
+    ],
+)
 def test_related_word_that_is_not_a_form_is_valid(board_word, clue):
     """
     A word related to a visible word only by its history is not a form of it: WordNet links
@@ -255,18 +267,24 @@ def test_related_word_that_is_not_a_form_is_valid(board_word, clue):
     assert validator.is_valid(_make_clue(clue)) == (True, "")
 
 
-@pytest.mark.parametrize(("board_word", "clue", "reason"), [
-    ("OUTSIDE", "out", "'out' is a component of the board word 'outside'."),
-    ("CHRISTMAS", "christ", "'christ' is a component of the board word 'christmas'."),
-    ("MAKEUP", "upper",
-     "'upper' is a derived form of 'up', a component of the board word 'makeup'."),
-    ("SET", "upset", "'upset' contains the board word 'set'."),
-    ("STAIRS", "upstairs", "'upstairs' contains the board word 'stairs'."),
-    ("BOOK", "notebooks", "'notebooks' contains the board word 'book'."),
-    ("DRIVER", "screwdriver", "'screwdriver' contains the board word 'driver'."),
-    ("DRAWING", "withdraw", "'withdraw' contains the board word 'drawing'."),
-    ("SLEEP", "overslept", "'overslept' contains the board word 'sleep'."),
-])
+@pytest.mark.parametrize(
+    ("board_word", "clue", "reason"),
+    [
+        ("OUTSIDE", "out", "'out' is a component of the board word 'outside'."),
+        ("CHRISTMAS", "christ", "'christ' is a component of the board word 'christmas'."),
+        (
+            "MAKEUP",
+            "upper",
+            "'upper' is a derived form of 'up', a component of the board word 'makeup'.",
+        ),
+        ("SET", "upset", "'upset' contains the board word 'set'."),
+        ("STAIRS", "upstairs", "'upstairs' contains the board word 'stairs'."),
+        ("BOOK", "notebooks", "'notebooks' contains the board word 'book'."),
+        ("DRIVER", "screwdriver", "'screwdriver' contains the board word 'driver'."),
+        ("DRAWING", "withdraw", "'withdraw' contains the board word 'drawing'."),
+        ("SLEEP", "overslept", "'overslept' contains the board word 'sleep'."),
+    ],
+)
 def test_compounds_from_morpholex(board_word, clue, reason):
     """
     MorphoLex's compounds include the ones a prefix like "out" or "up" makes, and the ones it
@@ -278,13 +296,16 @@ def test_compounds_from_morpholex(board_word, clue, reason):
     assert validator.is_valid(_make_clue(clue)) == (False, reason)
 
 
-@pytest.mark.parametrize(("board_word", "clue"), [
-    ("EARTHQUAKE", "earthworm"),
-    ("RAINBOW", "raincoat"),
-    ("OUTSIDE", "inside"),
-    ("ARMAMENT", "firearm"),
-    ("BOXER", "mailbox"),
-])
+@pytest.mark.parametrize(
+    ("board_word", "clue"),
+    [
+        ("EARTHQUAKE", "earthworm"),
+        ("RAINBOW", "raincoat"),
+        ("OUTSIDE", "inside"),
+        ("ARMAMENT", "firearm"),
+        ("BOXER", "mailbox"),
+    ],
+)
 def test_word_sharing_only_a_part_is_valid(board_word, clue):
     """
     The rules are applied as written (§8.1.5-6): a clue is invalid if it is a part of a visible
@@ -297,11 +318,14 @@ def test_word_sharing_only_a_part_is_valid(board_word, clue):
     assert validator.is_valid(_make_clue(clue)) == (True, "")
 
 
-@pytest.mark.parametrize(("clue", "reason"), [
-    ("crown's", "'crown's' is a visible word on the board."),
-    ("CROWN!", "'CROWN!' is a visible word on the board."),
-    ("crown.", "'crown.' is a visible word on the board."),
-])
+@pytest.mark.parametrize(
+    ("clue", "reason"),
+    [
+        ("crown's", "'crown's' is a visible word on the board."),
+        ("CROWN!", "'CROWN!' is a visible word on the board."),
+        ("crown.", "'crown.' is a visible word on the board."),
+    ],
+)
 def test_punctuation_and_possessive_are_ignored(clue, reason):
     """Punctuation around the clue and a possessive "'s" do not make it a different word."""
     validator = ClueValidator([_make_card(0, "CROWN")])
@@ -314,14 +338,19 @@ def test_hyphenated_clue_is_a_compound_of_its_parts():
     validator = ClueValidator([_make_card(0, "RAIN")])
 
     assert validator.is_valid(_make_clue("rain-soaked")) == (
-        False, "'rain-soaked' contains the board word 'rain'.")
+        False,
+        "'rain-soaked' contains the board word 'rain'.",
+    )
 
 
-@pytest.mark.parametrize(("board_word", "clue", "expected"), [
-    ("SUN", "sunup", (False, "'sunup' contains the board word 'sun'.")),
-    ("CHILDCARE", "child", (False, "'child' is a component of the board word 'childcare'.")),
-    ("MOHAWK", "hawk", (True, "")),
-])
+@pytest.mark.parametrize(
+    ("board_word", "clue", "expected"),
+    [
+        ("SUN", "sunup", (False, "'sunup' contains the board word 'sun'.")),
+        ("CHILDCARE", "child", (False, "'child' is a component of the board word 'childcare'.")),
+        ("MOHAWK", "hawk", (True, "")),
+    ],
+)
 def test_words_missing_from_morpholex_are_split(board_word, clue, expected):
     """
     For a word MorphoLex does not have ("sunup", "childcare", "mohawk"), the validator splits it in
@@ -340,7 +369,9 @@ def test_known_limitation_etymological_segmentation():
     validator = ClueValidator([_make_card(0, "TEN")])
 
     assert validator.is_valid(_make_clue("tenant")) == (
-        False, "'tenant' is a derived form of the board word 'ten'.")
+        False,
+        "'tenant' is a derived form of the board word 'ten'.",
+    )
 
 
 def test_known_limitation_compound_taken_as_one_root():
@@ -399,8 +430,9 @@ def test_remove_nonexistent_word_does_not_raise(validator_hide):
 def test_morpholex_skips_blank_lines(tmp_path):
     """A blank line in the MorphoLex file, such as one an editor leaves at the end, is skipped."""
     path = tmp_path / "morpholex.tsv"
-    path.write_text("word\tsegmentation\nearth\t{(earth)}\n\n  \nquake\t{(quake)}\n\n",
-                    encoding="utf-8")
+    path.write_text(
+        "word\tsegmentation\nearth\t{(earth)}\n\n  \nquake\t{(quake)}\n\n", encoding="utf-8"
+    )
 
     morphology = _Morphology(path)
 

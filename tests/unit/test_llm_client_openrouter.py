@@ -7,7 +7,9 @@ from unittest.mock import patch, AsyncMock, MagicMock
 from backend.app.core.llm import client as client_module
 from backend.app.core.llm.client_openrouter import LLMClientOpenRouter, _OPENROUTER_BASE_URL
 from backend.app.models.llm_errors import (
-    LLMAuthError, LLMMalformedResponseError, LLMTimeoutError,
+    LLMAuthError,
+    LLMMalformedResponseError,
+    LLMTimeoutError,
 )
 from backend.app.models.llm_schemas import LLMResponse, ClueJSONFormat
 
@@ -126,7 +128,8 @@ async def test_openrouter_retries_retriable_then_succeeds(llm_request_cg, monkey
 
     with patch("backend.app.core.llm.client_openrouter.AsyncOpenAI") as MockOpenAI:
         mock_create = AsyncMock(
-            side_effect=[_timeout_error(), _timeout_error(), _mock_openai_response()])
+            side_effect=[_timeout_error(), _timeout_error(), _mock_openai_response()]
+        )
         MockOpenAI.return_value.chat.completions.create = mock_create
         client = LLMClientOpenRouter("openrouter/some-model", max_retries=2)
 
@@ -144,8 +147,10 @@ async def test_openrouter_non_retriable_raises_immediately(llm_request_cg, monke
     budget."""
     monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
     rejected = AuthenticationError(
-        "invalid key", body=None,
-        response=httpx.Response(401, request=httpx.Request("POST", _OPENROUTER_BASE_URL)))
+        "invalid key",
+        body=None,
+        response=httpx.Response(401, request=httpx.Request("POST", _OPENROUTER_BASE_URL)),
+    )
 
     with patch("backend.app.core.llm.client_openrouter.AsyncOpenAI") as MockOpenAI:
         mock_create = AsyncMock(side_effect=rejected)

@@ -11,14 +11,29 @@ from backend.app.paths import MORPHOLEX_PATH
 
 # Prefixes in MorphoLex that are words of their own, so the words they start are compounds for the
 # rules: "outside" is out + side, and "upset" is up + set.
-_PARTICLES = frozenset({
-    "after", "back", "by", "cross", "down", "half", "in", "off", "on", "out", "over", "through",
-    "under", "up",
-})
+_PARTICLES = frozenset(
+    {
+        "after",
+        "back",
+        "by",
+        "cross",
+        "down",
+        "half",
+        "in",
+        "off",
+        "on",
+        "out",
+        "over",
+        "through",
+        "under",
+        "up",
+    }
+)
 
 
 class _Unit(NamedTuple):
     """A root group of a MorphoLex segmentation, or a prefix that is a word of its own."""
+
     stem: str  # the group's content, fused affixes included: "(medic)>al>", "<trans<(port)"
     roots: tuple[str, ...]  # the roots in it: ("medic",), ("port",)
     fused_prefix: bool  # whether a prefix is fused into it: True for "<trans<(port)"
@@ -49,7 +64,8 @@ class _Morphology:
                 fields = line.split("\t")
                 if len(fields) != 2:
                     raise ValueError(
-                        f"{path}:{line_number}: expected 'word<TAB>segmentation', got {line!r}")
+                        f"{path}:{line_number}: expected 'word<TAB>segmentation', got {line!r}"
+                    )
                 word, segmentation = fields
                 self._segmentations[word] = segmentation
         self._units: dict[str, tuple[_Unit, ...] | None] = {}
@@ -78,7 +94,7 @@ class _Morphology:
             char = segmentation[i]
             if char == "<":  # a prefix outside the root groups
                 end = self._closing(segmentation, "<", i)
-                prefix = segmentation[i + 1:end]
+                prefix = segmentation[i + 1 : end]
                 if prefix in _PARTICLES:
                     units.append(_Unit(f"({prefix})", (prefix,), False))
             elif char == "{":  # a root group, which can hold braces of its own
@@ -88,10 +104,10 @@ class _Morphology:
                     if depth == 0:
                         break
                     end += 1
-                units += self._group_units(word, segmentation[i + 1:end])
+                units += self._group_units(word, segmentation[i + 1 : end])
             elif char == "(":  # a root outside the braces: "blueberry" is {(blue)}(berry)
                 end = self._closing(segmentation, ")", i)
-                root = segmentation[i + 1:end]
+                root = segmentation[i + 1 : end]
                 units.append(_Unit(f"({root})", (root,), False))
             elif char == ">":  # a suffix outside the root groups
                 end = self._closing(segmentation, ">", i)
@@ -109,8 +125,11 @@ class _Morphology:
         # spelled out in the compound, the roots are parts of their own. "geometry" stays a group:
         # it has a fused suffix, {(geo)(meter)>y>}.
         fused_affixes = re.sub(r"\([^()<>{}]+\)", "", group)
-        if len(roots) > 1 and not fused_affixes and any(
-                len(root) >= 3 and root in word and root in self for root in roots):
+        if (
+            len(roots) > 1
+            and not fused_affixes
+            and any(len(root) >= 3 and root in word and root in self for root in roots)
+        ):
             return [_Unit(f"({root})", (root,), False) for root in roots]
         return [_Unit(group, roots, "<" in group)]
 
@@ -140,8 +159,13 @@ def _same_family(a: tuple[_Unit, ...], b: tuple[_Unit, ...], morphology: _Morpho
         return True
     if len(a) == 1 and len(b) == 1:
         x, y = a[0], b[0]
-        if (x.roots == y.roots and len(x.roots) == 1 and x.roots[0] in morphology
-                and not x.fused_prefix and not y.fused_prefix):
+        if (
+            x.roots == y.roots
+            and len(x.roots) == 1
+            and x.roots[0] in morphology
+            and not x.fused_prefix
+            and not y.fused_prefix
+        ):
             return f"({x.roots[0]})" in (x.stem, y.stem)
     return False
 
@@ -217,12 +241,8 @@ class ClueValidator:
         self.visible_words = {card.text.lower(): card for card in word_list}
         self.lemmatizer = WordNetLemmatizer()
         self.morphology = _morphology()
-        self.visible_lemmas = {
-            word: self._word_lemmas(word) for word in self.visible_words
-        }
-        self.visible_analyses = {
-            word: self._analyses(word) for word in self.visible_words
-        }
+        self.visible_lemmas = {word: self._word_lemmas(word) for word in self.visible_words}
+        self.visible_analyses = {word: self._analyses(word) for word in self.visible_words}
 
     def is_valid(self, clue: ClueEntry) -> tuple[bool, str]:
         """
@@ -259,8 +279,9 @@ class ClueValidator:
             if clue_analyses and self.visible_analyses[word]:
                 reason = self._morpholex_reason(clue, clue_forms, clue_analyses, links, word)
             else:
-                reason = self._fallback_reason(clue, normalized_clue, clue_forms, clue_analyses,
-                                               links, word)
+                reason = self._fallback_reason(
+                    clue, normalized_clue, clue_forms, clue_analyses, links, word
+                )
             if reason:
                 return False, reason
 
@@ -278,9 +299,14 @@ class ClueValidator:
         self.visible_lemmas.pop(normalized, None)
         self.visible_analyses.pop(normalized, None)
 
-    def _morpholex_reason(self, clue: ClueEntry, clue_forms: set[str],
-                          clue_analyses: list[tuple[_Unit, ...]], links: set[tuple[str, str]],
-                          word: str) -> str | None:
+    def _morpholex_reason(
+        self,
+        clue: ClueEntry,
+        clue_forms: set[str],
+        clue_analyses: list[tuple[_Unit, ...]],
+        links: set[tuple[str, str]],
+        word: str,
+    ) -> str | None:
         """
         Checks the clue against a visible word when MorphoLex has both.
 
@@ -300,14 +326,22 @@ class ClueValidator:
         # Derivations that MorphoLex takes for words of their own: "marriage" is {(marriage)}, and
         # WordNet links it to "marry". Only links that keep the spelling are taken, which leaves
         # out the ones that are not a form in the rules' sense ("flight" and "flee").
-        if any(derived in self.visible_lemmas[word] and _shares_spelling(form, derived)
-               for form, derived in links):
+        if any(
+            derived in self.visible_lemmas[word] and _shares_spelling(form, derived)
+            for form, derived in links
+        ):
             return f"'{clue.clue}' is a derived form of the board word '{word}'."
         return None
 
-    def _fallback_reason(self, clue: ClueEntry, normalized_clue: str, clue_forms: set[str],
-                         clue_analyses: list[tuple[_Unit, ...]], links: set[tuple[str, str]],
-                         word: str) -> str | None:
+    def _fallback_reason(
+        self,
+        clue: ClueEntry,
+        normalized_clue: str,
+        clue_forms: set[str],
+        clue_analyses: list[tuple[_Unit, ...]],
+        links: set[tuple[str, str]],
+        word: str,
+    ) -> str | None:
         """
         Checks the clue against a visible word when MorphoLex lacks one of them, or both. It uses
         MorphoLex for the word it has, and WordNet for the rest.
@@ -327,8 +361,10 @@ class ClueValidator:
                 else:
                     is_part = self._is_compound_component(form, word)
                 if is_part and derived:
-                    return (f"'{clue.clue}' is a derived form of '{form}', a component of the "
-                            f"board word '{word}'.")
+                    return (
+                        f"'{clue.clue}' is a derived form of '{form}', a component of the "
+                        f"board word '{word}'."
+                    )
                 if is_part:
                     return f"'{clue.clue}' is a component of the board word '{word}'."
 
@@ -336,20 +372,25 @@ class ClueValidator:
         if clue_analyses:
             contains = self._spells_out(clue_forms, word) and any(
                 _is_part(_root_unit(form), units)
-                for form in self.visible_lemmas[word] | {word} for units in clue_analyses)
+                for form in self.visible_lemmas[word] | {word}
+                for units in clue_analyses
+            )
         else:
             contains = self._is_compound_component(word, normalized_clue)
         if contains:
             return f"'{clue.clue}' contains the board word '{word}'."
         return None
 
-    def _component_reason(self, clue: ClueEntry, clue_forms: set[str],
-                          clue_units: tuple[_Unit, ...], word: str) -> str:
+    def _component_reason(
+        self, clue: ClueEntry, clue_forms: set[str], clue_units: tuple[_Unit, ...], word: str
+    ) -> str:
         """The reason for a clue that is a part of a visible compound, or a form of a part."""
         if len(clue_units) == 1 and clue_units[0].stem not in {f"({form})" for form in clue_forms}:
             part = "".join(clue_units[0].roots)
-            return (f"'{clue.clue}' is a derived form of '{part}', a component of the board word "
-                    f"'{word}'.")
+            return (
+                f"'{clue.clue}' is a derived form of '{part}', a component of the board word "
+                f"'{word}'."
+            )
         return f"'{clue.clue}' is a component of the board word '{word}'."
 
     def _spells_out(self, clue_forms: set[str], word: str) -> bool:
@@ -378,9 +419,7 @@ class ClueValidator:
         :param word: The word to lemmatize.
         :return: A set of lemmas for the word.
         """
-        return {
-            self.lemmatizer.lemmatize(word, pos=pos) for pos in ['n', 'v', 'a', 'r']
-        }
+        return {self.lemmatizer.lemmatize(word, pos=pos) for pos in ["n", "v", "a", "r"]}
 
     def _analyses(self, word: str) -> list[tuple[_Unit, ...]]:
         """
@@ -441,9 +480,9 @@ class ClueValidator:
 
         remainders = []
         if compound.startswith(part):
-            remainders.append(compound[len(part):])
+            remainders.append(compound[len(part) :])
         if compound.endswith(part):
-            remainders.append(compound[:-len(part)])
+            remainders.append(compound[: -len(part)])
         return any(
             (len(remaining) >= 3 or remaining in _PARTICLES) and self._is_english_word(remaining)
             for remaining in remainders

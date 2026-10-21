@@ -44,6 +44,10 @@ target-version = "py312"
 # board_generator/ is a project of its own, with its own ruff configuration.
 extend-exclude = ["board_generator"]
 
+[tool.ruff.format]
+# A migration that was applied stays as it was written.
+exclude = ["backend/migrations/versions/*"]
+
 [tool.ruff.lint]
 # pycodestyle, pyflakes and bugbear to start with; long lines (E501) are not checked yet.
 select = ["E", "W", "F", "B"]

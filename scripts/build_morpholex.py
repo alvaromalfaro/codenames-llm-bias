@@ -86,8 +86,9 @@ def read_segmentations(xlsx: Path) -> tuple[dict[str, str], int]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("xlsx", type=Path, help="path to MorphoLEX_en.xlsx")
-    parser.add_argument("--out", type=Path, default=_DEFAULT_OUT,
-                        help=f"output TSV (default: {_DEFAULT_OUT})")
+    parser.add_argument(
+        "--out", type=Path, default=_DEFAULT_OUT, help=f"output TSV (default: {_DEFAULT_OUT})"
+    )
     args = parser.parse_args(argv)
 
     segmentations, dropped = read_segmentations(args.xlsx)

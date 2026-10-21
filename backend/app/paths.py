@@ -3,6 +3,7 @@
 Every path the code reads or writes by default hangs off ``REPO_ROOT``, found from this file, so a
 script or a test runs the same from any directory.
 """
+
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

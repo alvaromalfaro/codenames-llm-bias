@@ -1,5 +1,6 @@
 """Tests for the resume flags of scripts/run_batch.py: what they need, and what the CLI hands the
 batch. The batch itself is a stub here; tests/unit/test_run_batch.py covers the resume."""
+
 import importlib.util
 import sys
 from pathlib import Path
@@ -15,9 +16,14 @@ sys.modules["run_batch_cli"] = cli
 _SPEC.loader.exec_module(cli)
 
 _RUN_ID = "11111111-1111-4111-8111-111111111111"
-_RUN = StoredRun(run_id=_RUN_ID, master_seed=2026, temperature=0.7,
-                 prompt_template_version="tpl", code_version="abc1234",
-                 model_registry_snapshot={})
+_RUN = StoredRun(
+    run_id=_RUN_ID,
+    master_seed=2026,
+    temperature=0.7,
+    prompt_template_version="tpl",
+    code_version="abc1234",
+    model_registry_snapshot={},
+)
 
 
 @pytest.fixture
@@ -27,9 +33,17 @@ def batch(monkeypatch):
 
     async def fake_run_batch(**kwargs):
         calls.append(kwargs)
-        return BatchReport(run_id=_RUN_ID, master_seed=kwargs["master_seed"], attempted=0,
-                           completed=0, errored=0, pairings_aborted=0, pairings=[],
-                           resumed=kwargs["resume_run_id"] is not None)
+        return BatchReport(
+            run_id=_RUN_ID,
+            master_seed=kwargs["master_seed"],
+            attempted=0,
+            completed=0,
+            errored=0,
+            pairings_aborted=0,
+            pairings=[],
+            resumed=kwargs["resume_run_id"] is not None,
+        )
+
     monkeypatch.setattr(cli, "_load_bank", lambda: ["a board"])
     monkeypatch.setattr(cli, "run_batch", fake_run_batch)
     monkeypatch.setattr(cli, "load_run", lambda run_id: _RUN if run_id == _RUN_ID else None)
@@ -59,30 +73,37 @@ def test_an_unknown_run_is_a_precondition_failure(batch, capsys) -> None:
     assert "no run 22222222" in capsys.readouterr().err and batch == []
 
 
-def test_reading_the_run_without_a_database_is_a_precondition_failure(batch, monkeypatch,
-                                                                      capsys) -> None:
+def test_reading_the_run_without_a_database_is_a_precondition_failure(
+    batch, monkeypatch, capsys
+) -> None:
     def no_database(run_id):
         raise BatchPreconditionError(f"reading run {run_id} requires DATABASE_URL.")
+
     monkeypatch.setattr(cli, "load_run", no_database)
     assert cli.main(["--resume", _RUN_ID]) == 2
     assert "DATABASE_URL" in capsys.readouterr().err and batch == []
 
 
-def test_a_bank_with_a_file_that_is_not_a_board_is_a_precondition_failure(batch, monkeypatch,
-                                                                          capsys) -> None:
+def test_a_bank_with_a_file_that_is_not_a_board_is_a_precondition_failure(
+    batch, monkeypatch, capsys
+) -> None:
     from backend.app.core.loader import InvalidBoardFileError
 
     def invalid_bank():
         raise InvalidBoardFileError("data/boards/bad.json is not a valid board")
+
     monkeypatch.setattr(cli, "_load_bank", invalid_bank)
     assert cli.main(["--master-seed", "1", "--temperature", "0.7"]) == 2
     assert "bad.json" in capsys.readouterr().err and batch == []
 
 
-@pytest.mark.parametrize("argv, message", [
-    (["--resume", _RUN_ID, "--dry-run"], "--dry-run"),
-    (["--master-seed", "1", "--temperature", "0.7", "--retry-errors"], "goes with --resume"),
-])
+@pytest.mark.parametrize(
+    "argv, message",
+    [
+        (["--resume", _RUN_ID, "--dry-run"], "--dry-run"),
+        (["--master-seed", "1", "--temperature", "0.7", "--retry-errors"], "goes with --resume"),
+    ],
+)
 def test_flags_that_do_not_go_together(batch, argv, message) -> None:
     with pytest.raises(SystemExit, match=message):
         cli.main(argv)

@@ -121,7 +121,9 @@ def test_db_axis_is_sidecar_axis_at_float32_precision(ingested) -> None:
     cos = float(np.dot(a_db, a64) / (np.linalg.norm(a_db) * np.linalg.norm(a64)))
     assert cos > 1 - 1e-6
 
-    print(f"\n[A.6] axis max abs deviation (DB float32 vs sidecar float32 image) = {max_abs_dev:.3e}")
+    print(
+        f"\n[A.6] axis max abs deviation (DB float32 vs sidecar float32 image) = {max_abs_dev:.3e}"
+    )
 
 
 # ------------------------------------------------------------------------------------------------
@@ -164,11 +166,15 @@ def test_all_28_sealed_boards_resolve_to_this_frame(ingested) -> None:
         ).scalar_one()
         assert joined == 28
 
-        distinct = session.execute(
-            select(BoardModel.measurement_frame_id)
-            .where(BoardModel.measurement_frame_id.isnot(None))
-            .distinct()
-        ).scalars().all()
+        distinct = (
+            session.execute(
+                select(BoardModel.measurement_frame_id)
+                .where(BoardModel.measurement_frame_id.isnot(None))
+                .distinct()
+            )
+            .scalars()
+            .all()
+        )
         assert distinct == [_TARGET]
 
 

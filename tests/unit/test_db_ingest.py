@@ -10,7 +10,10 @@ from pathlib import Path
 import pytest
 
 from backend.app.db.ingest_boards import (
-    InvalidBoardFileError, StaleBoardError, board_artifact_to_orm, board_content_sha256,
+    InvalidBoardFileError,
+    StaleBoardError,
+    board_artifact_to_orm,
+    board_content_sha256,
     ingest_boards_if_absent,
 )
 from backend.app.db.models import BoardModel
@@ -124,9 +127,7 @@ def test_measurement_frame_id_absent_maps_to_none():
 
 def test_measurement_frame_id_present_is_carried():
     """A sealed artifact's ``measurement_frame_id`` flows through onto the ORM model."""
-    board, _ = board_artifact_to_orm(
-        _minimal_artifact(measurement_frame_id="test-frame-abc")
-    )
+    board, _ = board_artifact_to_orm(_minimal_artifact(measurement_frame_id="test-frame-abc"))
 
     assert board.measurement_frame_id == "test-frame-abc"
 
@@ -182,6 +183,7 @@ class _FakeSession:
         class _Result:
             def scalars(self):
                 return iter(cards)
+
         return _Result()
 
     def add(self, row):
@@ -231,11 +233,14 @@ def test_a_board_stored_without_a_hash_gets_it_when_its_file_agrees(tmp_path):
     assert stored.content_sha256 == board_content_sha256(data)
 
 
-@pytest.mark.parametrize("change, where", [
-    (lambda d: d["cards"][4].update(text="ELSEWHERE"), "card 4.text"),  # not a dilemma word
-    (lambda d: d["cards"][7]["covariates"].update(length=99), "card 7.length"),
-    (lambda d: d.update(category="another"), "board.category"),
-])
+@pytest.mark.parametrize(
+    "change, where",
+    [
+        (lambda d: d["cards"][4].update(text="ELSEWHERE"), "card 4.text"),  # not a dilemma word
+        (lambda d: d["cards"][7]["covariates"].update(length=99), "card 7.length"),
+        (lambda d: d.update(category="another"), "board.category"),
+    ],
+)
 def test_a_board_stored_without_a_hash_that_differs_stops_the_ingestion(tmp_path, change, where):
     data = _load(PROBE_FILE)
     stored, cards = board_artifact_to_orm(data)
@@ -246,11 +251,14 @@ def test_a_board_stored_without_a_hash_that_differs_stops_the_ingestion(tmp_path
     assert stored.content_sha256 is None
 
 
-@pytest.mark.parametrize("content", [
-    "not json",
-    json.dumps({"no": "board_id"}),
-    json.dumps({**_load(CONTROL_FILE), "cards": []}),
-])
+@pytest.mark.parametrize(
+    "content",
+    [
+        "not json",
+        json.dumps({"no": "board_id"}),
+        json.dumps({**_load(CONTROL_FILE), "cards": []}),
+    ],
+)
 def test_a_file_of_the_bank_that_is_not_a_board_stops_the_ingestion(tmp_path, content):
     (tmp_path / "bad.json").write_text(content, encoding="utf-8")
     with pytest.raises(InvalidBoardFileError, match="bad.json"):
@@ -281,13 +289,17 @@ def test_a_board_stored_before_the_hash_is_checked_against_its_file(tmp_path):
     try:
         with session_scope() as session:
             assert ingest_boards_if_absent(session, bank) == 1
-            session.execute(update(BoardModel).where(BoardModel.board_id == data["board_id"])
-                            .values(content_sha256=None))
+            session.execute(
+                update(BoardModel)
+                .where(BoardModel.board_id == data["board_id"])
+                .values(content_sha256=None)
+            )
         with session_scope() as session:
             assert ingest_boards_if_absent(session, bank) == 0
         with session_scope() as session:
-            assert session.get(BoardModel, data["board_id"]).content_sha256 == \
-                board_content_sha256(data)
+            assert session.get(BoardModel, data["board_id"]).content_sha256 == board_content_sha256(
+                data
+            )
 
         data["cards"][0]["text"] = "ELSEWHERE"
         with pytest.raises(StaleBoardError):

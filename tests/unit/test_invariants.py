@@ -1,6 +1,7 @@
 """Tests for the invariant checker (backend.app.core.invariants): a game played by the rules stays
 clean after every play, each kind of broken state is reported, and the guard the game runner holds
 logs a breach, and raises it when strict."""
+
 import logging
 
 import pytest
@@ -24,14 +25,16 @@ def test_a_game_played_by_the_rules_breaks_no_invariant(valid_board_data: dict):
     engine = _engine(valid_board_data)
     plays = [
         lambda: engine.receive_clue("battle", 2, LLM),
-        lambda: engine.resolve_guess(card_id=1, player_id=HUMAN),   # BRICK, shared agent
-        lambda: engine.resolve_guess(card_id=5, player_id=HUMAN),   # CAVE, beige for the LLM
+        lambda: engine.resolve_guess(card_id=1, player_id=HUMAN),  # BRICK, shared agent
+        lambda: engine.resolve_guess(card_id=5, player_id=HUMAN),  # CAVE, beige for the LLM
         lambda: engine.receive_clue("insect", 1, HUMAN),
-        lambda: engine.resolve_guess(card_id=5, player_id=LLM),     # CAVE, under the human's token
+        lambda: engine.resolve_guess(card_id=5, player_id=LLM),  # CAVE, under the human's token
         lambda: engine.pass_turn(LLM),
-        lambda: engine.receive_clue("bucket", 7, LLM),              # invalid: a visible word
-        *[lambda card_id=card_id: engine.resolve_guess(card_id=card_id, player_id=HUMAN)
-          for card_id in (4, 8, 11, 12, 15, 17, 19, 24)],          # the human's last 8 words
+        lambda: engine.receive_clue("bucket", 7, LLM),  # invalid: a visible word
+        *[
+            lambda card_id=card_id: engine.resolve_guess(card_id=card_id, player_id=HUMAN)
+            for card_id in (4, 8, 11, 12, 15, 17, 19, 24)
+        ],  # the human's last 8 words
     ]
     assert check_invariants(engine) == []
     for play in plays:
@@ -43,6 +46,7 @@ def test_a_game_played_by_the_rules_breaks_no_invariant(valid_board_data: dict):
 
 def test_broken_states_are_reported(valid_board_data: dict):
     """Each corruption of the state is caught, with a message naming it."""
+
     def problems(corrupt) -> str:
         engine = _engine(valid_board_data)
         corrupt(engine)

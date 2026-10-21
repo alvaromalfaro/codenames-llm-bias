@@ -14,6 +14,7 @@ class CardRole(str, Enum):
         - CIVILIAN: A card that causes the end of turn and the loss of a time point if guessed by
             the other player.
     """
+
     AGENT = "agent"
     ASSASSIN = "assassin"
     CIVILIAN = "civilian"
@@ -21,6 +22,7 @@ class CardRole(str, Enum):
 
 class Covariates(BaseModel):
     """Per-word covariates emitted by the board generator (used for balance diagnostics)."""
+
     model_config = ConfigDict(extra="forbid")
 
     subtlex_freq: Optional[float] = None  # SUBTLEX log-frequency of the word
@@ -46,6 +48,7 @@ class WordCard(BaseModel):
       whose clue-giving no longer needs to target it. It is bookkeeping for the clue-giver side and
       says nothing about who may touch the card.
     """
+
     model_config = ConfigDict(extra="forbid")
 
     id: int  # Unique identifier for the card
@@ -109,6 +112,7 @@ class WordCard(BaseModel):
 
 class Grid(BaseModel):
     """Board dimensions as emitted by the generator."""
+
     model_config = ConfigDict(extra="forbid")
 
     rows: int
@@ -117,6 +121,7 @@ class Grid(BaseModel):
 
 class Arbiters(BaseModel):
     """Semantic arbiter models used by the generator's consensus."""
+
     model_config = ConfigDict(extra="forbid")
 
     consensus: list[str]  # e.g. ["model@rev", ...]
@@ -125,6 +130,7 @@ class Arbiters(BaseModel):
 
 class ArbiterScore(BaseModel):
     """Per-arbiter cosine proximities of the dilemma target to each bridge."""
+
     model_config = ConfigDict(extra="forbid")
 
     arbiter: str
@@ -138,6 +144,7 @@ class Dilemma(BaseModel):
     The dilemma triple placed on the LLM's agent cells (probe boards only): a target word plus a
     neutral bridge and a stereotypical bridge of comparable semantic proximity.
     """
+
     model_config = ConfigDict(extra="forbid")
 
     target: str
@@ -149,6 +156,7 @@ class Dilemma(BaseModel):
 
 class PerPerspective(BaseModel):
     """Card counts per key-card role, as audited by the generator."""
+
     model_config = ConfigDict(extra="forbid")
 
     agent: int
@@ -158,6 +166,7 @@ class PerPerspective(BaseModel):
 
 class KeycardAudit(BaseModel):
     """Generator self-audit that the key card is valid and role/gender independent."""
+
     model_config = ConfigDict(extra="forbid")
 
     per_perspective: PerPerspective
@@ -234,9 +243,7 @@ class Board(BaseModel):
         # Card ids (0..24, in board order)
         ids = [card.id for card in cards]
         if ids != list(range(len(cards))):
-            raise ValueError(
-                f"Card ids must be 0..24 in board order; got {ids}."
-            )
+            raise ValueError(f"Card ids must be 0..24 in board order; got {ids}.")
 
         # Distinct words, ignoring case
         words = [card.text.lower() for card in cards]
@@ -248,23 +255,33 @@ class Board(BaseModel):
             )
 
         # Agent cards (9 for both LLM and human players, with 3 shared between them)
-        agents_llm = set(
-            card.id for card in cards if card.llm_perspective_role == CardRole.AGENT)
+        agents_llm = set(card.id for card in cards if card.llm_perspective_role == CardRole.AGENT)
         agents_human = set(
-            card.id for card in cards if card.human_perspective_role == CardRole.AGENT)
+            card.id for card in cards if card.human_perspective_role == CardRole.AGENT
+        )
 
-        if len(agents_llm) != 9 or len(agents_human) != 9 or len(agents_llm.intersection(agents_human)) != 3:
+        if (
+            len(agents_llm) != 9
+            or len(agents_human) != 9
+            or len(agents_llm.intersection(agents_human)) != 3
+        ):
             raise ValueError(
                 "There must be exactly 9 agent cards for both LLM and human players (3 shared between them)."
             )
 
         # Assassin cards (3 for both LLM and human players, with 1 shared between them)
         assassins_llm = set(
-            card.id for card in cards if card.llm_perspective_role == CardRole.ASSASSIN)
+            card.id for card in cards if card.llm_perspective_role == CardRole.ASSASSIN
+        )
         assassins_human = set(
-            card.id for card in cards if card.human_perspective_role == CardRole.ASSASSIN)
+            card.id for card in cards if card.human_perspective_role == CardRole.ASSASSIN
+        )
 
-        if len(assassins_llm) != 3 or len(assassins_human) != 3 or len(assassins_llm.intersection(assassins_human)) != 1:
+        if (
+            len(assassins_llm) != 3
+            or len(assassins_human) != 3
+            or len(assassins_llm.intersection(assassins_human)) != 1
+        ):
             raise ValueError(
                 "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human)."
             )
@@ -300,22 +317,14 @@ class Board(BaseModel):
 
         if self.type == "probe":
             if self.dilemma is None or self.specification is None:
-                raise ValueError(
-                    "A probe board must have a dilemma and a specification."
-                )
+                raise ValueError("A probe board must have a dilemma and a specification.")
             if not any(card.category in {"male", "female"} for card in self.cards):
-                raise ValueError(
-                    "A probe board must have at least one male or female card."
-                )
+                raise ValueError("A probe board must have at least one male or female card.")
         elif self.type == "control":
             if self.dilemma is not None or self.specification is not None:
-                raise ValueError(
-                    "A control board must not have a dilemma or a specification."
-                )
+                raise ValueError("A control board must not have a dilemma or a specification.")
             if any(card.category != "neutral" for card in self.cards):
-                raise ValueError(
-                    "Every card on a control board must be neutral."
-                )
+                raise ValueError("Every card on a control board must be neutral.")
 
         if self.dilemma is not None:
             dilemma_words = (
@@ -324,16 +333,11 @@ class Board(BaseModel):
                 self.dilemma.stereotypical_bridge,
             )
             for word in dilemma_words:
-                card = next(
-                    (c for c in self.cards if c.text.lower() == word.lower()), None)
+                card = next((c for c in self.cards if c.text.lower() == word.lower()), None)
                 if card is None:
-                    raise ValueError(
-                        f"Dilemma word '{word}' does not appear on any card."
-                    )
+                    raise ValueError(f"Dilemma word '{word}' does not appear on any card.")
                 if card.llm_perspective_role != CardRole.AGENT:
-                    raise ValueError(
-                        f"Dilemma word '{word}' must sit on an LLM-agent card."
-                    )
+                    raise ValueError(f"Dilemma word '{word}' must sit on an LLM-agent card.")
 
         return self
 
@@ -366,6 +370,7 @@ class ResolvedTarget(BaseModel):
     An unmappable word (not on the board) yields ``card_id``/``giver_role``/``revealed_at_clue`` all
     ``None`` - the snapshot itself is the malformation diagnostic (no separate flag fields).
     """
+
     word: str  # The target word exactly as emitted by the clue-giver
     # Board card id, via Board.get_card_id_by_word; None if unmappable
     card_id: Optional[int] = None
@@ -384,6 +389,7 @@ class RankedCard(BaseModel):
     remaining agents in sudden death). Confidence is clamped to [0, 1] by the parser before this
     model is constructed.
     """
+
     word: str  # The unrevealed board word being scored
     confidence: float = Field(ge=0.0, le=1.0)
 
@@ -395,6 +401,7 @@ class ConfidenceRanking(BaseModel):
     never used for game rules and never influences play. Missing cards (the model omitted some) are
     a derivable malformation - the list simply holds fewer entries, with no flag fields.
     """
+
     reasoning: Optional[str] = None
     # Ordered (word, confidence) entries, one per unrevealed card the model scored.
     rankings: list[RankedCard] = Field(default_factory=list)
@@ -447,9 +454,9 @@ class SuddenDeathEntry(BaseModel):
     handoff), so the store is per-(game, seat): ``rankings_by_seat`` maps the guesser seat -> its
     ranking.
     """
+
     # Guesser seat (0 or 1) -> its SD ranking.
-    rankings_by_seat: dict[int, ConfidenceRanking] = Field(
-        default_factory=dict)
+    rankings_by_seat: dict[int, ConfidenceRanking] = Field(default_factory=dict)
 
 
 class GameState(BaseModel):

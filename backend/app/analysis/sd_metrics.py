@@ -89,8 +89,7 @@ SD_PHASE = "sudden_death"
 COMPLETED = "completed"
 AGENT_ROLE = "agent"
 
-SD_FAILURE_RESULTS: frozenset[str] = frozenset(
-    {"loss_civilian_sd", "loss_assassin_sd"})
+SD_FAILURE_RESULTS: frozenset[str] = frozenset({"loss_civilian_sd", "loss_assassin_sd"})
 
 # Pre-registered before seeing results: below this many admissible SD games a model's conc-SD is
 # reported as EXPLORATORY, not PRIMARY. Applied mechanically from the counts, never adjusted.
@@ -135,10 +134,8 @@ class DataGaps:
 
     def merged_with(self, other: DataGaps) -> DataGaps:
         return DataGaps(
-            unmatched_ranking_words=self.unmatched_ranking_words +
-            other.unmatched_ranking_words,
-            cards_without_embedding=self.cards_without_embedding +
-            other.cards_without_embedding,
+            unmatched_ranking_words=self.unmatched_ranking_words + other.unmatched_ranking_words,
+            cards_without_embedding=self.cards_without_embedding + other.cards_without_embedding,
             clue_words_without_embedding=(
                 self.clue_words_without_embedding + other.clue_words_without_embedding
             ),
@@ -250,9 +247,7 @@ class SdReport:
 
 
 # Perspective (the trap)
-def partner_clue_history(
-    clues: Sequence[tuple[int, str]], guesser_seat: int
-) -> tuple[str, ...]:
+def partner_clue_history(clues: Sequence[tuple[int, str]], guesser_seat: int) -> tuple[str, ...]:
     """The clue history H_g the guesser at seat ``s`` RECEIVED: clues given by the partner (1 - s).
 
     The seat's OWN clues are never part of its received history. ``clues`` are ``(giver_seat, word)``
@@ -261,9 +256,7 @@ def partner_clue_history(
     return tuple(word for seat, word in clues if seat == 1 - guesser_seat)
 
 
-def non_agent_words(
-    board_roles: Mapping[str, Mapping[str, str]], guesser_seat: int
-) -> set[str]:
+def non_agent_words(board_roles: Mapping[str, Mapping[str, str]], guesser_seat: int) -> set[str]:
     """The non-agent card set A^c_g from the sudden-death guesser's perspective.
 
     The guesser at seat ``s`` hunts the *partner's* agents, so the relevant key column is
@@ -354,13 +347,11 @@ def load_sd_seat_records(session: Session, *, master_seed: int) -> list[SdSeatRe
     ).all():
         if confidence is None:
             continue
-        ranking_by_proposal[proposal_id].append(
-            (word.lower(), float(confidence)))
+        ranking_by_proposal[proposal_id].append((word.lower(), float(confidence)))
 
     records: list[SdSeatRecord] = []
     for _turn_id, game_id, proposal_id, guesser_seat, model_ref, board_id, board_type in seat_rows:
-        partner_clues = partner_clue_history(
-            clues_by_game.get(game_id, ()), guesser_seat)
+        partner_clues = partner_clue_history(clues_by_game.get(game_id, ()), guesser_seat)
         records.append(
             SdSeatRecord(
                 game_id=game_id,
@@ -444,8 +435,7 @@ def collect_sd_observations(
             if group != CONGRUENT and group != INCONGRUENT:
                 dead_zone[record.model_ref] += 1
                 continue
-            sims = [geometry.thematic_sim(word, clue)
-                    for clue in embedded_clues]
+            sims = [geometry.thematic_sim(word, clue) for clue in embedded_clues]
             observations.append(
                 SdObservation(
                     model_ref=record.model_ref,
@@ -516,8 +506,7 @@ def assign_bands_by_board_type(
     banded_by_id: dict[int, dict[str, int]] = defaultdict(dict)
     for board_type, group in sorted(by_type.items()):
         for variant in SIM_VARIANTS:
-            cuts = compute_tercile_cuts(
-                [_similarity(card, variant) for card in group])
+            cuts = compute_tercile_cuts([_similarity(card, variant) for card in group])
             cuts_by_key[f"{board_type}_{variant}"] = cuts
             c33, c66 = cuts
             for card in group:
@@ -701,8 +690,7 @@ def load_sd_reach(session: Session, *, master_seed: int) -> dict[str, tuple[int,
         .join(BoardModel, BoardModel.board_id == GameModel.board_id)
         .outerjoin(
             TurnModel,
-            (TurnModel.game_id == GameModel.id) & (
-                TurnModel.phase == SD_PHASE),
+            (TurnModel.game_id == GameModel.id) & (TurnModel.phase == SD_PHASE),
         )
         .where(
             RunModel.master_seed == master_seed,
@@ -892,8 +880,7 @@ def compute_sd_metrics(
         bootstrap=bootstrap,
         sd_reach=load_sd_reach(session, master_seed=master_seed),
         seat_rankings=seat_ranking_counts(records),
-        fg_check=directional_fg_check(
-            session, geometry, master_seed=master_seed),
+        fg_check=directional_fg_check(session, geometry, master_seed=master_seed),
         diagnostics=[diagnostics[key] for key in sorted(diagnostics)],
         n_observations=len(cards),
     )

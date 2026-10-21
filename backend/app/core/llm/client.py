@@ -6,7 +6,10 @@ from collections.abc import Awaitable, Callable
 from typing import Optional
 from pydantic import BaseModel
 from backend.app.models.llm_errors import (
-    LLMError, LLMEmptyResponseError, LLMDegenerateResponseError, LLMTruncatedResponseError,
+    LLMError,
+    LLMEmptyResponseError,
+    LLMDegenerateResponseError,
+    LLMTruncatedResponseError,
     LLMMalformedResponseError,
 )
 from backend.app.models.llm_schemas import LLMRequest, LLMResponse
@@ -57,8 +60,12 @@ def redraw_seed(seed: Optional[int], draw: int) -> Optional[int]:
 
 
 async def generate_with_retries(
-    attempt: Callable[[LLMRequest], Awaitable[LLMResponse]], request: LLMRequest, *,
-    max_retries: int, provider: str, model: str,
+    attempt: Callable[[LLMRequest], Awaitable[LLMResponse]],
+    request: LLMRequest,
+    *,
+    max_retries: int,
+    provider: str,
+    model: str,
 ) -> LLMResponse:
     """Send ``request`` with ``attempt``, with a bounded retry of retriable LLM errors.
 
@@ -104,15 +111,30 @@ async def generate_with_retries(
             if bad_draw is not None:
                 resamples[bad_draw] += 1
                 current = request.model_copy(
-                    update={"seed": redraw_seed(request.seed, sum(resamples.values()))})
+                    update={"seed": redraw_seed(request.seed, sum(resamples.values()))}
+                )
                 logger.warning(
                     "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; drawing again "
-                    "with seed %s", provider, model, n, max_retries + 1, exc, current.seed)
+                    "with seed %s",
+                    provider,
+                    model,
+                    n,
+                    max_retries + 1,
+                    exc,
+                    current.seed,
+                )
             else:
                 backoff = _RETRY_BACKOFF_BASE_S * (2 ** (n - 1))
                 logger.warning(
                     "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; retrying after "
-                    "%.2fs", provider, model, n, max_retries + 1, exc, backoff)
+                    "%.2fs",
+                    provider,
+                    model,
+                    n,
+                    max_retries + 1,
+                    exc,
+                    backoff,
+                )
                 await asyncio.sleep(backoff)
         else:
             # Stamp the re-sample counts onto the response that finally succeeded, so the audit trail
@@ -126,8 +148,9 @@ class LLMClient(ABC):
     model_name: str
 
     @abstractmethod
-    async def generate(self, request: LLMRequest,
-                       expected_format: type[BaseModel] | None = None) -> LLMResponse:
+    async def generate(
+        self, request: LLMRequest, expected_format: type[BaseModel] | None = None
+    ) -> LLMResponse:
         """
         Abstract method to generate a response from the LLM based on the given request. This method
         must be implemented by any concrete subclass of LLMClient.

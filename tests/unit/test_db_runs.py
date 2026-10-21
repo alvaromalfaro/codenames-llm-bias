@@ -2,6 +2,7 @@
 
 The database tests (marked ``db``) run on the test session's Postgres (tests/conftest.py). Each
 inserts its own board, runs and games (unique ids) and deletes them afterwards."""
+
 import uuid
 from decimal import Decimal
 
@@ -29,17 +30,34 @@ def two_runs():
 
     board_id = f"test-runs-{uuid.uuid4()}"
     run_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
-    snapshot = {"0": {"provider": "ollama", "model_name": "m", "identity_kind": "ollama_digest",
-                      "identity": "abc"}}
+    snapshot = {
+        "0": {
+            "provider": "ollama",
+            "model_name": "m",
+            "identity_kind": "ollama_digest",
+            "identity": "abc",
+        }
+    }
     with session_scope() as s:
         s.add(BoardModel(board_id=board_id))
-        s.add(RunModel(id=run_ids[0], master_seed=Decimal(2026), temperature=0.8,
-                       code_version="abc1234", prompt_template_version="tpl",
-                       model_registry_snapshot=snapshot, notes="a note"))
+        s.add(
+            RunModel(
+                id=run_ids[0],
+                master_seed=Decimal(2026),
+                temperature=0.8,
+                code_version="abc1234",
+                prompt_template_version="tpl",
+                model_registry_snapshot=snapshot,
+                notes="a note",
+            )
+        )
         s.flush()
         for status in ("completed", "completed", "error"):
-            s.add(GameModel(id=str(uuid.uuid4()), run_id=run_ids[0], board_id=board_id,
-                            game_status=status))
+            s.add(
+                GameModel(
+                    id=str(uuid.uuid4()), run_id=run_ids[0], board_id=board_id, game_status=status
+                )
+            )
     with session_scope() as s:
         s.add(RunModel(id=run_ids[1], temperature=0.4))
     yield run_ids, snapshot
@@ -55,7 +73,11 @@ def test_a_run_is_read_back_with_its_games_by_status(two_runs) -> None:
 
     run = get_run(first)
     assert (run.run_id, run.master_seed, run.temperature, run.code_version) == (
-        first, 2026, 0.8, "abc1234")
+        first,
+        2026,
+        0.8,
+        "abc1234",
+    )
     assert run.prompt_template_version == "tpl" and run.model_registry_snapshot == snapshot
     assert run.notes == "a note" and run.created_at.tzinfo is not None
     assert run.games_by_status == {"completed": 2, "error": 1} and run.games == 3
