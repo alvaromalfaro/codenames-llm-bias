@@ -261,7 +261,7 @@ override it as above. The rest translates one-for-one:
 | bash | PowerShell |
 |---|---|
 | `VAR=value command` | `$env:VAR = "value"; command` |
-| `.venv/bin/pip install -e .` | `.venv\Scripts\pip install -e .` |
+| `.venv/bin/python` | `.venv\Scripts\python.exe` |
 | activate the venv | `.venv\Scripts\Activate.ps1` (or prefix commands with `uv run`) |
 | `python3` | `python` (or `py`) |
 | `curl -s localhost:11434/api/tags \| python3 -m json.tool` | `(Invoke-RestMethod http://localhost:11434/api/tags).models \| Select-Object name, digest` |
