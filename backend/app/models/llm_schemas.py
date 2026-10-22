@@ -120,6 +120,12 @@ class LLMResponse(BaseModel):
     # providers: a local (ollama) one is the server's total_duration, which includes loading the
     # model; an API (OpenRouter) one is the wall-clock time of the call, network included.
     latency_ms: int = Field(ge=0)
+    # The server's breakdown of latency_ms, in milliseconds: loading the model (0 when it was
+    # loaded already; a reload when the two models of a pairing do not fit in VRAM together),
+    # reading the prompt, and writing the answer. Reported by ollama only: None for an API call.
+    load_ms: Optional[int] = None
+    prompt_eval_ms: Optional[int] = None
+    eval_ms: Optional[int] = None
     # Optional token usage information for the request and response
     usage: Optional[TokenUsage] = None
     # Optional finish reason for the response (e.g., "stop", "length", "timeout", etc.)
@@ -191,6 +197,9 @@ class LLMCallRecord(BaseModel):
     prompt_tokens: Optional[int] = None
     completion_tokens: Optional[int] = None
     latency_ms: Optional[int] = None
+    load_ms: Optional[int] = None
+    prompt_eval_ms: Optional[int] = None
+    eval_ms: Optional[int] = None
     finish_reason: Optional[str] = None
     model_used: Optional[str] = None
     provider: Optional[str] = None

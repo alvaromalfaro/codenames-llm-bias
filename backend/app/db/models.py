@@ -344,6 +344,11 @@ class LlmCallModel(Base):
     requested_temperature: Mapped[float | None] = mapped_column(Double, nullable=True)
     requested_seed: Mapped[Decimal | None] = mapped_column(Numeric(20, 0), nullable=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The server's breakdown of latency_ms (ollama only; NULL for an API call): loading the model,
+    # reading the prompt, writing the answer. A load_ms well above 0 is a reload.
+    load_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prompt_eval_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    eval_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     finish_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

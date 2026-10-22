@@ -799,13 +799,13 @@ Add `--json` to any script to capture machine-readable output for downstream agg
 | Stimulus | `board`, `word_card` | Ingested board artifacts and their 25 cards with per-seat roles, WEAT sets and covariates. |
 | Play | `game`, `game_seat`, `turn`, `clue`, `clue_target`, `reveal_event` | One row per game / seat / turn / clue / resolved intended target / engine card resolution. |
 | Belief | `guess_proposal`, `guess_proposal_item` | The guesser's ordered proposals with self-reported confidence, split by `kind` into `play` and `measurement`. |
-| Telemetry | `llm_call` | Per-invocation sampling telemetry for every model call. |
+| Telemetry | `llm_call` | Per-invocation sampling telemetry for every model call, with the server's breakdown of a local call's latency (`load_ms`, `prompt_eval_ms`, `eval_ms`). |
 | Geometry | `embedding_mpnet`, `embedding_llama`, `embedding_mistral`, `word_load` | Extrinsic φ\* vectors keyed by `(frame, text)`, intrinsic vectors keyed by `(recipe, text)`, and derived per-word gender load `rho`. |
 
 **Migrations.** Alembic is wired to `Base.metadata` and reads `DATABASE_URL` from the environment.
 
 ```sh
-alembic -c backend/alembic.ini upgrade head      # apply (head: 0007_stimulus_and_cleanup)
+alembic -c backend/alembic.ini upgrade head      # apply (head: 0008_llm_call_durations)
 alembic -c backend/alembic.ini current           # inspect
 alembic -c backend/alembic.ini revision --autogenerate -m "..."   # after editing db/models.py
 ```

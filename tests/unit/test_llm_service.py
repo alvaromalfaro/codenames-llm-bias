@@ -780,6 +780,7 @@ def _mock_ollama_chat_response(content: str) -> MagicMock:
     r = MagicMock()
     r.message.content = content
     r.total_duration = 3200
+    r.load_duration = r.prompt_eval_duration = r.eval_duration = None
     r.prompt_eval_count = 10
     r.eval_count = 20
     r.done_reason = "stop"

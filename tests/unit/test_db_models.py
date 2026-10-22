@@ -162,6 +162,14 @@ def test_0007_columns():
         assert tables["run"].c[cname].nullable is True
 
 
+def test_0008_columns():
+    """0008: the server's breakdown of a call's latency, nullable (NULL for an API call)."""
+    llm_call = Base.metadata.tables["llm_call"]
+    for cname in ("load_ms", "prompt_eval_ms", "eval_ms"):
+        col = llm_call.c[cname]
+        assert isinstance(col.type, sa.Integer) and col.nullable is True, cname
+
+
 def test_the_columns_nothing_wrote_are_gone():
     """0007 dropped them: their defaults read as data (time_marker_placed was always false)."""
     tables = Base.metadata.tables

@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from json import JSONDecodeError
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 import httpx
 from backend.app import config
 from backend.app.core.llm.client import (
@@ -45,6 +45,11 @@ def _daemon_error(e: Exception) -> LLMError:
         return LLMProviderUnavailableError(**context)
     # An error reported mid-answer has no status (-1).
     return error_for_status(e.status_code if e.status_code > 0 else None, **context)
+
+
+def _ms(ns: Optional[int]) -> Optional[int]:
+    """A duration ollama reports in nanoseconds, in milliseconds; None when it reports none."""
+    return None if ns is None else round(ns / 1_000_000)
 
 
 class LLMClientLocal(LLMClient):
@@ -177,12 +182,10 @@ class LLMClientLocal(LLMClient):
             return LLMResponse(
                 text=content,
                 model_used=self.model_name,
-                # Convert ns -> ms
-                latency_ms=(
-                    round(ollama_response.total_duration / 1_000_000)
-                    if ollama_response.total_duration is not None
-                    else 0
-                ),
+                latency_ms=_ms(ollama_response.total_duration) or 0,
+                load_ms=_ms(ollama_response.load_duration),
+                prompt_eval_ms=_ms(ollama_response.prompt_eval_duration),
+                eval_ms=_ms(ollama_response.eval_duration),
                 # The ollama client types both counts as optional: one the server leaves out is
                 # recorded as None (and the total with it), never summed as if it were 0.
                 usage=TokenUsage(

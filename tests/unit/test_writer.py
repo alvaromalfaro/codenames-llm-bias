@@ -31,6 +31,9 @@ def _call(role, retry_index=0, temperature=0.5, seed=7):
         requested_seed=seed,
         prompt_tokens=10,
         completion_tokens=5,
+        load_ms=43598,
+        prompt_eval_ms=2755,
+        eval_ms=1695,
     )
 
 
@@ -198,6 +201,7 @@ def test_persist_normal_game_maps_all_rows():
         accepted = next(c for c in calls if c.retry_index == 1)
         rejected = next(c for c in calls if c.retry_index == 0)
         assert clue.llm_call_id == accepted.id
+        assert (accepted.load_ms, accepted.prompt_eval_ms, accepted.eval_ms) == (43598, 2755, 1695)
         assert clue.llm_call_id != rejected.id
 
         targets = (

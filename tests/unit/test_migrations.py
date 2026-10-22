@@ -49,3 +49,50 @@ def test_the_models_and_the_migrated_schema_agree() -> None:
     with get_engine().connect() as connection:
         differences = compare_metadata(MigrationContext.configure(connection), Base.metadata)
     assert differences == []
+
+
+@pytest.mark.db
+def test_0008_fills_the_durations_of_the_calls_recorded_before_it() -> None:
+    """Its backfill, run on a temporary llm_call that shadows the table: an ollama call's durations
+    come from its raw_payload, in milliseconds; a key ollama left out, and an API call, stay
+    NULL."""
+    import json
+
+    from sqlalchemy import text
+
+    from backend.app.db.session import get_engine
+
+    backfill = _SCRIPTS.get_revision("0008_llm_call_durations").module.BACKFILL
+    ollama = {
+        "total_duration": 5_312_078_605,
+        "load_duration": 201_789_487,
+        "prompt_eval_duration": 2_754_571_000,
+        "eval_duration": 1_695_363_000,
+    }
+    payloads = [ollama, {**ollama, "load_duration": None}, {"id": "gen-1", "provider": "xAI"}]
+
+    with get_engine().connect() as connection:
+        connection.execute(
+            text(
+                "CREATE TEMP TABLE llm_call "
+                "(id int, raw_payload jsonb, load_ms int, prompt_eval_ms int, eval_ms int)"
+            )
+        )
+        for i, payload in enumerate(payloads):
+            connection.execute(
+                text(
+                    "INSERT INTO llm_call (id, raw_payload) VALUES (:id, CAST(:payload AS jsonb))"
+                ),
+                {"id": i, "payload": json.dumps(payload)},
+            )
+        connection.execute(text(backfill))
+        filled = connection.execute(
+            text("SELECT load_ms, prompt_eval_ms, eval_ms FROM llm_call ORDER BY id")
+        ).all()
+        connection.rollback()
+
+    assert [tuple(row) for row in filled] == [
+        (202, 2755, 1695),
+        (None, 2755, 1695),
+        (None, None, None),
+    ]

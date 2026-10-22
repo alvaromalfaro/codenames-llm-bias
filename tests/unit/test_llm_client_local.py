@@ -54,6 +54,9 @@ async def test_llm_client_local_generate_success(llm_request_cg):
     mock_response = MagicMock()
     mock_response.message.content = mock_content
     mock_response.total_duration = 3200
+    mock_response.load_duration = None
+    mock_response.prompt_eval_duration = None
+    mock_response.eval_duration = None
     mock_response.prompt_eval_count = 10
     mock_response.eval_count = 20
     mock_response.done_reason = "stop"
@@ -210,6 +213,9 @@ async def test_llm_client_local_missing_token_count(llm_request_cg, prompt_count
     mock_response = MagicMock()
     mock_response.message.content = mock_content
     mock_response.total_duration = 3200
+    mock_response.load_duration = None
+    mock_response.prompt_eval_duration = None
+    mock_response.eval_duration = None
     mock_response.prompt_eval_count = prompt_count
     mock_response.eval_count = answer_count
     mock_response.done_reason = "stop"
@@ -235,6 +241,9 @@ async def test_llm_client_local_generate_think_false(llm_request_cg):
     mock_response = MagicMock()
     mock_response.message.content = mock_content
     mock_response.total_duration = 3200
+    mock_response.load_duration = None
+    mock_response.prompt_eval_duration = None
+    mock_response.eval_duration = None
     mock_response.prompt_eval_count = 10
     mock_response.eval_count = 20
     mock_response.done_reason = "stop"
@@ -307,6 +316,9 @@ async def test_llm_client_local_generate_without_expected_format(llm_request_cg)
     mock_response = MagicMock()
     mock_response.message.content = mock_content
     mock_response.total_duration = 3200
+    mock_response.load_duration = None
+    mock_response.prompt_eval_duration = None
+    mock_response.eval_duration = None
     mock_response.prompt_eval_count = 10
     mock_response.eval_count = 20
     mock_response.done_reason = "stop"
@@ -331,6 +343,9 @@ def _mock_ollama_response(model: str | None = None) -> MagicMock:
     mock_response = MagicMock()
     mock_response.message.content = mock_content
     mock_response.total_duration = 3200
+    mock_response.load_duration = None
+    mock_response.prompt_eval_duration = None
+    mock_response.eval_duration = None
     mock_response.prompt_eval_count = 10
     mock_response.eval_count = 20
     mock_response.done_reason = "stop"
@@ -460,6 +475,41 @@ async def test_llm_client_local_latency_ms_converts_nanoseconds(llm_request_cg):
 
         assert result.latency_ms == 42707  # round(42_706_620_491 / 1e6)
         assert result.latency_ms <= _MAX_INT4  # fits the int4 column, no overflow
+
+
+@pytest.mark.asyncio
+async def test_the_latency_is_broken_down_as_the_server_reports_it(llm_request_cg):
+    """Loading the model, reading the prompt and writing the answer, in milliseconds: a load well
+    above 0 is a reload, when the two models of a pairing do not fit in VRAM together."""
+    mock_response = _mock_ollama_response()
+    mock_response.total_duration = 48_406_620_491
+    mock_response.load_duration = 43_598_120_000
+    mock_response.prompt_eval_duration = 2_754_571_000
+    mock_response.eval_duration = 1_695_363_000
+
+    with _patch_ollama() as MockClient:
+        MockClient.return_value.chat.return_value = mock_response
+        client = LLMClientLocal("ollama3.2:latest")
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert (result.latency_ms, result.load_ms, result.prompt_eval_ms, result.eval_ms) == (
+        48407,
+        43598,
+        2755,
+        1695,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_duration_the_server_leaves_out_is_unknown(llm_request_cg):
+    with _patch_ollama() as MockClient:
+        MockClient.return_value.chat.return_value = _mock_ollama_response()
+        client = LLMClientLocal("ollama3.2:latest")
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert result.load_ms is None and result.prompt_eval_ms is None and result.eval_ms is None
 
 
 @pytest.mark.asyncio
@@ -678,6 +728,9 @@ def _mock_empty_ollama_response(content: str = "") -> MagicMock:
     mock_response = MagicMock()
     mock_response.message.content = content
     mock_response.total_duration = 3200
+    mock_response.load_duration = None
+    mock_response.prompt_eval_duration = None
+    mock_response.eval_duration = None
     mock_response.prompt_eval_count = 10
     mock_response.eval_count = 0
     mock_response.done_reason = "stop"
