@@ -1232,3 +1232,69 @@ def test_every_bad_draw_is_a_retriable_parse_error():
     """A bad draw that is not retriable is never drawn again: the game ends on it."""
     for kind in client_module._BAD_DRAWS:
         assert issubclass(kind, LLMParseError) and kind.retriable, kind.__name__
+
+
+# the JSON of an answer, out of markdown or prose
+
+_CLUE = '{"reasoning": "r", "clue": "battle", "count": 2}'
+
+
+@pytest.mark.parametrize(
+    "answer, expected",
+    [
+        (_CLUE, _CLUE),
+        (f"  {_CLUE}\n", _CLUE),
+        (f"```json\n{_CLUE}\n```", _CLUE),
+        (f"```JSON\n{_CLUE}\n```", _CLUE),
+        (f"```\n{_CLUE}\n```", _CLUE),
+        (f"```json {_CLUE}```", _CLUE),
+        (f"Here is my clue:\n```json\n{_CLUE}\n```\nGood luck!", _CLUE),
+        (f"Here is my clue: {_CLUE} Good luck!", _CLUE),
+        ('Note {not json}, then {"clue": "a {b}", "count": 1}', '{"clue": "a {b}", "count": 1}'),
+        ("```json\n```", ""),
+        ('{"reasoning": "r", "clue": "batt', '{"reasoning": "r", "clue": "batt'),
+        ("no JSON here", "no JSON here"),
+    ],
+    ids=[
+        "json",
+        "padded",
+        "fenced-json",
+        "fenced-JSON",
+        "fenced-untagged",
+        "fenced-one-line",
+        "fenced-in-prose",
+        "in-prose",
+        "first-object",
+        "empty-block",
+        "cut",
+        "no-json",
+    ],
+)
+def test_extract_json(answer, expected):
+    assert client_module.extract_json(answer) == expected
+
+
+@pytest.mark.asyncio
+async def test_an_answer_in_an_untagged_code_block_is_read(llm_request_cg):
+    """Only ```json blocks used to be unwrapped: an untagged one was a malformed draw."""
+    with _patch_ollama() as MockClient:
+        MockClient.return_value.chat.side_effect = [
+            _mock_empty_ollama_response(f"```\n{_CLUE}\n```")
+        ]
+        client = LLMClientLocal("ollama3.2:latest")
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert result.parsed.clue == "battle" and result.text == _CLUE
+
+
+@pytest.mark.asyncio
+async def test_an_answer_without_content_is_an_empty_draw(llm_request_cg):
+    """The ollama client types message.content as optional: an answer without one is an empty draw,
+    not a TypeError that no retry or error code would know."""
+    with _patch_ollama() as MockClient:
+        MockClient.return_value.chat.side_effect = [_mock_empty_ollama_response(None)]
+        client = LLMClientLocal("ollama3.2:latest")
+
+        with pytest.raises(LLMEmptyResponseError):
+            await client.generate(llm_request_cg, expected_format=ClueJSONFormat)

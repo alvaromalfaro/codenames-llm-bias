@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
+import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Awaitable, Callable
@@ -46,6 +48,44 @@ def redraw_seed(seed: Optional[int], draw: int) -> Optional[int]:
     h.update(b"redraw")
     h.update(draw.to_bytes(8, "big"))
     return int.from_bytes(h.digest(), "big") & _MASK64
+
+
+# A markdown code block: its fence, an optional language tag (```json, ```JSON, or none), and what
+# it holds, up to the closing fence.
+_FENCED_BLOCK = re.compile(r"```[\w+-]*\s*(.*?)```", re.DOTALL)
+
+_JSON_DECODER = json.JSONDecoder()
+
+
+def extract_json(answer: str) -> str:
+    """The JSON of a model's answer, out of the markdown or the prose the model may have wrapped it
+    in; the clients validate what this returns.
+
+    - An answer that is JSON already is kept as it is (stripped). With a schema sent as ``format``,
+      ollama's always is.
+    - Else, the content of its first fenced code block, with or without a language tag. A block with
+      nothing in it is an empty answer ("").
+    - Else, its first JSON object.
+    - Else, the answer itself (stripped), for the validation to reject.
+
+    An answer cut before its JSON closes has no JSON object: it is returned as it is.
+    """
+    text = answer.strip()
+    try:
+        json.loads(text)
+        return text
+    except ValueError:
+        pass
+    block = _FENCED_BLOCK.search(text)
+    if block:
+        return block.group(1).strip()
+    for start in (i for i, char in enumerate(text) if char == "{"):
+        try:
+            _, end = _JSON_DECODER.raw_decode(text, start)
+        except ValueError:
+            continue
+        return text[start:end]
+    return text
 
 
 async def generate_with_retries(

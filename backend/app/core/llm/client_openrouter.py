@@ -12,7 +12,7 @@ from openai import (
 )
 from openai.types.chat import ChatCompletionMessageParam
 from openai.types.chat.completion_create_params import ResponseFormat
-from backend.app.core.llm.client import LLMClient, generate_with_retries
+from backend.app.core.llm.client import LLMClient, extract_json, generate_with_retries
 from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMAuthError,
@@ -95,7 +95,8 @@ class LLMClientOpenRouter(LLMClient):
             )
             latency_ms = int((time.monotonic() - start) * 1000)
 
-            content = response.choices[0].message.content or ""
+            answer = response.choices[0].message.content or ""
+            content = extract_json(answer)
 
             # The answer reached max_tokens and its JSON is unfinished: a bad draw, re-sampled
             # within the caller's budget (see LLMTruncatedResponseError).
@@ -103,7 +104,7 @@ class LLMClientOpenRouter(LLMClient):
                 logger.debug(
                     "openrouter %s answer cut at max_tokens; discarded draw:\n%s",
                     self.model_name,
-                    content,
+                    answer,
                 )
                 raise LLMTruncatedResponseError(
                     provider="openrouter", raw_payload=response.model_dump(), execution_mode="api"
@@ -122,7 +123,7 @@ class LLMClientOpenRouter(LLMClient):
                         self.model_name,
                         expected_format.__name__,
                         e,
-                        content,
+                        answer,
                     )
                     raise LLMMalformedResponseError(
                         provider="openrouter",
@@ -140,7 +141,7 @@ class LLMClientOpenRouter(LLMClient):
                         "openrouter %s response is degenerate (%s); discarded draw:\n%s",
                         self.model_name,
                         reason,
-                        content,
+                        answer,
                     )
                     raise LLMDegenerateResponseError(
                         message=(

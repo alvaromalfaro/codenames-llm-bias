@@ -183,6 +183,23 @@ async def test_openrouter_draws_a_malformed_answer_again_and_counts_it(llm_reque
 
 
 @pytest.mark.asyncio
+async def test_openrouter_reads_the_json_out_of_a_code_block(llm_request_cg):
+    """A provider that does not honour response_format may wrap the answer in markdown and prose:
+    its JSON is read, not drawn again as malformed."""
+    wrapped = _mock_openai_response()
+    clue = wrapped.choices[0].message.content
+    wrapped.choices[0].message.content = f"Here it is:\n```json\n{clue}\n```"
+
+    with patch("backend.app.core.llm.client_openrouter.AsyncOpenAI") as MockOpenAI:
+        MockOpenAI.return_value.chat.completions.create = AsyncMock(return_value=wrapped)
+        client = LLMClientOpenRouter("openrouter/some-model")
+
+        result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert result.parsed.clue == "battle" and result.text == clue
+
+
+@pytest.mark.asyncio
 async def test_openrouter_draws_a_degenerate_answer_again_and_counts_it(llm_request_cg):
     """A well-formed answer that cannot build a domain object (an empty proposals list) is a bad
     draw, as from the local client: drawn again with the next derived seed and counted on the

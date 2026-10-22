@@ -3,11 +3,10 @@ import json
 import logging
 import os
 from json import JSONDecodeError
-import re
 from typing import Any, Literal
 import httpx
 from backend.app import config
-from backend.app.core.llm.client import LLMClient, generate_with_retries
+from backend.app.core.llm.client import LLMClient, extract_json, generate_with_retries
 from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMError,
@@ -181,10 +180,11 @@ class LLMClientLocal(LLMClient):
                 **chat_kwargs,
             )
 
-            # Convert the Ollama response to JSON
+            # Convert the Ollama response to JSON. The client types the content as optional: an
+            # answer without one is an empty answer.
             response_json = json.loads(ollama_response.model_dump_json())
-            content = response_json.get("message", {}).get("content", "")
-            content = self._remove_markdown_code_blocks(content)
+            answer = response_json.get("message", {}).get("content") or ""
+            content = extract_json(answer)
 
             # An empty / whitespace-only draw is a stochastic non-answer, not malformed output:
             # raised as the retriable parse error so generate_with_retries re-samples it within the
@@ -203,7 +203,7 @@ class LLMClientLocal(LLMClient):
                     self.model_name,
                     ollama_response.prompt_eval_count,
                     ollama_response.eval_count,
-                    content,
+                    answer,
                 )
                 raise LLMTruncatedResponseError(
                     provider="ollama", raw_payload=response_json, execution_mode="local"
@@ -224,7 +224,7 @@ class LLMClientLocal(LLMClient):
                         self.model_name,
                         expected_format.__name__,
                         e,
-                        content,
+                        answer,
                     )
                     raise LLMMalformedResponseError(
                         provider="ollama",
@@ -243,7 +243,7 @@ class LLMClientLocal(LLMClient):
                         "ollama %s response is degenerate (%s); discarded draw:\n%s",
                         self.model_name,
                         reason,
-                        content,
+                        answer,
                     )
                     raise LLMDegenerateResponseError(
                         message=(
@@ -306,10 +306,3 @@ class LLMClientLocal(LLMClient):
 
     async def close(self) -> None:
         await self._client.close()
-
-    def _remove_markdown_code_blocks(self, text: str) -> str:
-        """
-        Utility method to extract JSON content from a string, especially if it's wrapped in markdown
-        code blocks.
-        """
-        return re.sub(r"```json(.*?)```", r"\1", text, flags=re.DOTALL).strip()
