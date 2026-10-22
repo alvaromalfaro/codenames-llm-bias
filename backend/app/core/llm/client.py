@@ -44,6 +44,20 @@ _BAD_DRAWS: tuple[type[LLMError], ...] = (
 
 _MASK64 = (1 << 64) - 1
 
+# The seeds a provider is sent: 31 bits, the largest seed every provider uses as it is sent.
+# OpenRouter takes a 32-bit signed seed. Ollama reads the seed as a float64, then an int64, and its
+# sampler keeps 32 bits: a 64-bit seed is not the seed it samples with, and every seed of 2**63 or
+# more (half of the 64-bit seeds the game derives) samples as the same one.
+SEED_MASK = 0x7FFFFFFF
+
+
+def provider_seed(seed: Optional[int]) -> Optional[int]:
+    """The seed a provider is sent, and its call records, for a request seeded ``seed``: masked to
+    31 bits (``SEED_MASK``). The game derives 64-bit seeds; two calls of a batch of ten thousand
+    share their 31 bits by chance in about one batch in fifty. An unseeded request stays
+    unseeded."""
+    return None if seed is None else seed & SEED_MASK
+
 
 def redraw_seed(seed: Optional[int], draw: int) -> Optional[int]:
     """The seed of the ``draw``-th new draw (1, 2, ...) of a request whose own seed is ``seed``:

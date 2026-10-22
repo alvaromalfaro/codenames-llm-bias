@@ -74,6 +74,23 @@ EXPECTED_LOCAL_DIGESTS = {
 # the test games (prompt plus answer) took 1925 tokens.
 OLLAMA_NUM_CTX = 8192
 
+# How many layers of every local model ollama puts on the GPU (its num_gpu): all of them, as any
+# number above a model's layer count means. Left to ollama, the split depends on the VRAM free when
+# the model loads, and the split changes the answer: from the same request and seed,
+# mistral-small3.2:24b wrote one clue with 36 of its 41 layers on the GPU (what ollama picks on a
+# 16 GB card), another with 32 and a third with 24, and its answer with all 41 differed from the
+# first; with the same split, the same answer every time. With all of them it is also faster
+# (mistral: 55 tokens/s against 20). A model that does not fit is no longer split behind the
+# batch's back: its load fails for lack of memory, or, on Windows, the driver lends the GPU shared
+# system memory.
+OLLAMA_NUM_GPU = 999
+
+# The batch ollama reads a prompt in, for every local model (its num_batch, and llama-server's
+# n_ubatch with it). Left to ollama, it is 1024 for a model loaded alone and 512 for one loaded next
+# to another, and the answer changes with it: gemma4:12b answered the same request, with the same
+# seed, otherwise in each case. 512 is ollama's own default.
+OLLAMA_NUM_BATCH = 512
+
 # How long, in seconds, a local (Ollama) call may wait for its answer before it fails as a timeout,
 # which is retried after a backoff (see LLMTimeoutError). Without a limit, a hung daemon would stop
 # the batch for good. The answer is not streamed, so the wait covers the whole call: loading the

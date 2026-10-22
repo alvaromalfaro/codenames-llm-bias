@@ -363,13 +363,33 @@ derived by SHA-256 from it (`seed_game`, `seed_engine`, `seed_play(seat, turn)`,
 `seed_meas(seat, turn)`). A bad draw — an empty, degenerate or cut answer, or one that does not
 match the response schema — is drawn again with a seed derived the same way from the call's own
 (`redraw_seed(seed, k)` for the k-th new draw), since with the same seed a local model gives the
-same answer again; `llm_call.requested_seed` holds the
-seed of the answer kept. `run_id` is deliberately *not* an input to identity — it is bookkeeping. A
+same answer again. A provider is sent the seed masked to 31 bits (`client.provider_seed`): Ollama
+reads a seed as a float64 and samples with 32 bits of it, and every 64-bit seed of 2⁶³ or more
+sampled as the same one. `llm_call.requested_seed` holds the seed sent for the answer kept.
+`run_id` is deliberately *not* an input to identity — it is bookkeeping. A
 consequence worth internalising: re-running the same `(master_seed, game_index)` re-derives the same
 `game_id` and therefore **collides on the primary key**. That is the intended "this experiment is
 already recorded" signal; to legitimately re-run, delete the run first (see below). The same
 determinism is what lets a batch that stopped continue under its own run (`--resume`): the games
 still to play are the games the run would have played.
+
+**The same answer whatever came before.** A local model's answer to a request also depended on how
+Ollama loaded the model and on what its server had read before. On Ollama 0.40.2, the same request
+with the same seed got another answer with another split of the model's layers between GPU and CPU
+(which Ollama picks from the free VRAM), with another batch for reading the prompt (1024 for a model
+loaded alone, 512 next to another), and after another request than the one before (a cold load,
+another request, the same one: three answers). So:
+
+* `config.OLLAMA_NUM_CTX`, `OLLAMA_NUM_GPU` (every layer on the GPU) and `OLLAMA_NUM_BATCH` pin how
+  every local model is loaded, and the run's `model_registry_snapshot` records them;
+* `docker-compose.yml` turns off llama-server's RAM prompt cache (`LLAMA_ARG_CACHE_RAM=0`), which
+  would bring an older prompt back;
+* the local client sends a fixed request to the model just before each draw, so its one slot always
+  holds the same prompt when the draw's is read (15-50 ms).
+
+The golden games, recorded twice from two states of the daemon (no model loaded, and the models of
+other games loaded, in another order), come out the same. A native Ollama the batch runs against
+needs `LLAMA_ARG_CACHE_RAM=0` in its environment too.
 
 **The digest gate.** `config.EXPECTED_LOCAL_DIGESTS` pins the exact local weights the batch is
 validated against, and `config.EXPECTED_OLLAMA_VERSION` the Ollama release they were validated with
@@ -460,7 +480,7 @@ change. Measured on an RTX 5080 (16 GB, ~1.2 GB taken by the Windows desktop) wi
 | `llama3.1:8b` | 5.9 GB | all |
 | `gemma4:12b` | 8.4 GB | all |
 | `qwen2.5:14b` | 10.4 GB | all |
-| `mistral-small3.2:24b` | 16.1 GB | 13.7 GB; the rest runs on the CPU |
+| `mistral-small3.2:24b` | 15.6 GB | all, with `OLLAMA_NUM_GPU`; left to Ollama, 36 of its 41 layers (13.7 GB), the rest on the CPU and 2.7 times slower |
 
 Only `llama3.1:8b` + `gemma4:12b` stay loaded together; the other five pairings reload a model at
 every turn. Raising `OLLAMA_MAX_LOADED_MODELS` or `keep_alive` changes nothing here: Ollama already
@@ -666,6 +686,7 @@ quitting the tray app:
 ```powershell
 $env:OLLAMA_MODELS = (Resolve-Path docker_volumes\ollama_data\models).Path
 $env:OLLAMA_NOPRUNE = "1"   # never delete files from the shared model directory
+$env:LLAMA_ARG_CACHE_RAM = "0"   # no RAM prompt cache, as in docker-compose.yml
 ollama serve
 ```
 
@@ -933,10 +954,13 @@ Changing the Ollama release means updating `EXPECTED_OLLAMA_VERSION`, the image 
 same file sets what every request is sent with:
 * `OLLAMA_NUM_CTX`, the context window of every local request. Without it, ollama picks one from
   the GPU's memory, so the same batch would run differently on another machine.
+* `OLLAMA_NUM_GPU` and `OLLAMA_NUM_BATCH`, the layers of every local model on the GPU (all) and the
+  batch its prompts are read in. Left to ollama, both depend on the free memory, and both change the
+  answer (see [Determinism](#the-experiment)).
 * `LLM_MAX_OUTPUT_TOKENS`, the answer cap for every provider. An answer cut at the cap (a model
   that loops) is drawn again with a new seed, like an empty or a degenerate one.
 
-The run's `model_registry_snapshot` records both with each local model.
+The run's `model_registry_snapshot` records them with each local model.
 
 **Devcontainer**: `.devcontainer/devcontainer.json` attaches VS Code to the Compose `app` service,
 as `appuser`, in the bind-mounted repo at `/workspace` (not `/app`, the copy baked into the image).

@@ -16,6 +16,7 @@ from backend.app.core.llm.client import (
     LLMClient,
     error_for_status,
     generate_with_retries,
+    provider_seed,
     read_answer,
 )
 from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, TokenUsage
@@ -31,9 +32,6 @@ from backend.app.models.llm_errors import (
 logger = logging.getLogger(__name__)
 
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-
-# OpenRouter takes a seed that fits a 32-bit signed integer.
-_SEED_MASK = 0x7FFFFFFF
 
 
 def provider_routing(model_name: str) -> Optional[dict[str, Any]]:
@@ -152,8 +150,9 @@ class LLMClientOpenRouter(LLMClient):
         else:
             response_format = {"type": "json_object"}
 
-        # The request's seed is masked to fit, and the seed recorded is the one sent.
-        seed = request.seed & _SEED_MASK if request.seed is not None else None
+        # OpenRouter takes a 32-bit signed seed: the request's is masked (see provider_seed), and
+        # the seed recorded is the one sent.
+        seed = provider_seed(request.seed)
 
         context: dict[str, Any] = {"provider": "openrouter", "execution_mode": "api"}
         try:

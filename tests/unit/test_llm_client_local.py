@@ -763,7 +763,7 @@ async def test_llm_client_local_empty_response_resampled_then_succeeds(
         assert result.raw_payload["empty_response_resamples"] == 1
         # The new draw has a new seed, derived from the request's own.
         seeds = [call.kwargs["options"]["seed"] for call in mock_chat.call_args_list]
-        assert seeds == [123, client_module.redraw_seed(123, 1)]
+        assert seeds == [123, _sent(client_module.redraw_seed(123, 1))]
 
 
 @pytest.mark.asyncio
@@ -813,7 +813,7 @@ async def test_llm_client_local_malformed_answer_is_drawn_again_and_counted(llm_
     assert result.raw_payload["malformed_response_resamples"] == 1
     assert result.raw_payload["empty_response_resamples"] == 0
     seeds = [call.kwargs["options"]["seed"] for call in mock_chat.call_args_list]
-    assert seeds == [123, client_module.redraw_seed(123, 1)]
+    assert seeds == [123, _sent(client_module.redraw_seed(123, 1))]
 
 
 @pytest.mark.asyncio
@@ -1154,9 +1154,11 @@ async def test_empty_rankings_are_not_treated_as_degenerate(llm_request_cg):
 
 
 @pytest.mark.asyncio
-async def test_every_request_carries_the_fixed_context_and_the_answer_cap(llm_request_cg):
-    """The context window is set by config, never left to ollama (which picks it from the GPU's
-    memory), and the answer is capped at the request's max_tokens."""
+async def test_every_request_carries_the_fixed_context_the_answer_cap_and_the_split(
+    llm_request_cg,
+):
+    """The context window and the layers on the GPU are set by config, never left to ollama (which
+    picks them from the GPU's memory), and the answer is capped at the request's max_tokens."""
     with _patch_ollama() as MockClient:
         MockClient.return_value.chat.return_value = _mock_ollama_response()
         client = LLMClientLocal("ollama3.2:latest")
@@ -1166,6 +1168,8 @@ async def test_every_request_carries_the_fixed_context_and_the_answer_cap(llm_re
         options = MockClient.return_value.chat.call_args.kwargs["options"]
         assert options["num_ctx"] == config.OLLAMA_NUM_CTX
         assert options["num_predict"] == llm_request_cg.max_tokens
+        assert options["num_gpu"] == config.OLLAMA_NUM_GPU
+        assert options["num_batch"] == config.OLLAMA_NUM_BATCH
 
 
 def _mock_cut_ollama_response() -> MagicMock:
@@ -1230,7 +1234,7 @@ async def test_each_new_draw_of_a_bad_answer_has_its_own_seed(llm_request_cg):
 
         result = await client.generate(request, expected_format=GuessJSONFormat)
 
-    redraws = [client_module.redraw_seed(123, k) for k in (1, 2, 3)]
+    redraws = [_sent(client_module.redraw_seed(123, k)) for k in (1, 2, 3)]
     assert _sent_seeds(mock_chat) == [123, *redraws]
     assert len(set(_sent_seeds(mock_chat))) == 4
     assert result.requested_seed == redraws[-1]
@@ -1255,7 +1259,7 @@ async def test_a_transient_failure_after_a_bad_draw_resends_that_draw(llm_reques
 
         await client.generate(request, expected_format=ClueJSONFormat)
 
-    redraw = client_module.redraw_seed(123, 1)
+    redraw = _sent(client_module.redraw_seed(123, 1))
     assert _sent_seeds(mock_chat) == [123, redraw, redraw]
 
 
@@ -1270,6 +1274,27 @@ async def test_an_unseeded_request_is_drawn_again_unseeded(llm_request_cg):
         await client.generate(request, expected_format=ClueJSONFormat)
 
     assert _sent_seeds(mock_chat) == [None, None]
+
+
+def _sent(seed: int) -> int:
+    """The seed ollama is sent for a request seeded ``seed``: its 31 low bits."""
+    return seed & 0x7FFFFFFF
+
+
+@pytest.mark.asyncio
+async def test_the_seed_sent_and_recorded_is_the_requests_masked_to_31_bits(llm_request_cg):
+    """Ollama reads a seed as a float64 and samples with 32 bits of it: every seed of 2**63 or more
+    sampled as the same one. The request's 64-bit seed is masked, and the call records the seed
+    sent."""
+    request = llm_request_cg.model_copy(update={"seed": 2**63 + 5})
+    with _patch_ollama() as MockClient:
+        mock_chat = MockClient.return_value.chat
+        mock_chat.return_value = _mock_ollama_response()
+        client = LLMClientLocal("ollama3.2:latest")
+
+        result = await client.generate(request, expected_format=ClueJSONFormat)
+
+    assert _sent_seeds(mock_chat) == [5] and result.requested_seed == 5
 
 
 def test_redraw_seeds_are_deterministic_distinct_and_64_bit():
@@ -1351,3 +1376,23 @@ async def test_an_answer_without_content_is_an_empty_draw(llm_request_cg):
 
         with pytest.raises(LLMEmptyResponseError):
             await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+
+@pytest.mark.asyncio
+async def test_a_fixed_request_precedes_every_draw(llm_request_cg):
+    """The model's one slot holds the same prompt whenever a draw's prompt is read, so a draw's
+    answer does not depend on the calls before it: a redraw too. The fixed request loads the model
+    as the draw would, or it would load it again."""
+    with _patch_ollama() as MockClient:
+        ollama = MockClient.return_value
+        ollama.chat.side_effect = [_mock_cut_ollama_response(), _mock_ollama_response()]
+        client = LLMClientLocal("ollama3.2:latest", max_retries=1)
+
+        await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    calls = [name for name, *_ in ollama.method_calls if name in ("generate", "chat")]
+    assert calls == ["generate", "chat", "generate", "chat"]
+    fixed, draw = ollama.generate.call_args.kwargs, ollama.chat.call_args.kwargs
+    assert fixed["model"] == draw["model"] and fixed["prompt"] == "."
+    for option in ("num_ctx", "num_gpu", "num_batch"):
+        assert fixed["options"][option] == draw["options"][option], option

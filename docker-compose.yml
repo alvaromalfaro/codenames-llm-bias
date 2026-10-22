@@ -31,6 +31,12 @@ services:
     # Loopback only: Ollama has no authentication, so the rest of the network must not reach it.
     ports:
       - "127.0.0.1:11434:11434"
+    environment:
+      # llama-server's RAM prompt cache off: it keeps the prompts a model read and brings back the
+      # likest one for the next request, so an answer would depend on which calls came before it.
+      # The local client sends a fixed request before each draw (client_local._RESET_PROMPT), which
+      # makes the answer the same whatever came before, but only with this cache off.
+      LLAMA_ARG_CACHE_RAM: "0"
     volumes:
       # The models in a named volume, on the Docker VM's own disk: Ollama reloads a model at every
       # turn when the two of a pairing do not fit in VRAM together, and from a Windows folder

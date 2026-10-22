@@ -195,11 +195,14 @@ def build_model_registry_snapshot(
                     "identity": None,
                     "note": _NOTE_OLLAMA_UNAVAILABLE,
                 }
-            # The context window and the answer cap every local request is sent with: ollama
-            # would otherwise pick the context from the GPU's memory, so it is part of what ran.
+            # The context window, the answer cap, the layers on the GPU and the batch every local
+            # request is sent with: ollama would otherwise pick the context, the split and the
+            # batch from the GPU's memory, so they are part of what ran.
             entry["options"] = {
                 "num_ctx": config.OLLAMA_NUM_CTX,
                 "num_predict": config.LLM_MAX_OUTPUT_TOKENS,
+                "num_gpu": config.OLLAMA_NUM_GPU,
+                "num_batch": config.OLLAMA_NUM_BATCH,
             }
         snapshot[str(index)] = entry
     return snapshot

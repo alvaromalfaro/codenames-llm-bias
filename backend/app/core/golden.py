@@ -1,8 +1,9 @@
 """Golden games: record real games at the Ollama daemon, and play them again from the record.
 
 A golden game is a game played by ``run_single_game`` against a real Ollama daemon, recorded at the
-daemon's door: every call the local client made (``show`` for the capability probe, ``chat`` for
-each draw) with what it sent and what came back. Played again, the same client talks to a stand-in
+daemon's door: every call the local client made (``show`` for the capability probe, ``generate``
+for the fixed request that precedes each draw, ``chat`` for each draw) with what it sent and what
+came back. Played again, the same client talks to a stand-in
 for the daemon that serves the recorded answers in order and checks that every request is the one
 recorded. The game must then come out as it did: the same clues, proposals, measurements, reveals,
 redraws and result.
@@ -23,7 +24,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from ollama import ChatResponse, ShowResponse
+from ollama import ChatResponse, GenerateResponse, ShowResponse
 
 from backend.app.db.recorder import GameRecorder
 
@@ -84,6 +85,16 @@ class RecordingOllama:
         )
         return response
 
+    async def generate(self, **kwargs: Any) -> Any:
+        """The fixed request before each draw: recorded as it was sent; its answer is not read."""
+        try:
+            response = await self._inner.generate(**kwargs)
+        except Exception as e:
+            self.failed.append(repr(e))
+            raise
+        self.calls.append({"call": "generate", "request": kwargs})
+        return response
+
     async def close(self) -> None:
         await self._inner.close()
 
@@ -121,6 +132,16 @@ class ReplayOllama:
         # that failed to validate would make it fall back, in silence, to a model that cannot
         # think.
         return ShowResponse.model_construct(capabilities=call["capabilities"])
+
+    async def generate(self, **kwargs: Any) -> GenerateResponse:
+        call = self._next("generate")
+        if kwargs != call["request"]:
+            raise ReplayMismatch(
+                f"seat {self._seat}: request {self.served} (the fixed request before a draw) "
+                f"differs from the recorded one; record the golden games again "
+                f"(scripts/record_golden_game.py)."
+            )
+        return GenerateResponse.model_construct(response="")
 
     async def chat(self, **kwargs: Any) -> ChatResponse:
         call = self._next("chat")

@@ -89,6 +89,13 @@ def test_snapshot_encodes_strong_vs_best_effort_asymmetry():
     assert local["identity_kind"] == "ollama_digest"
     assert local["identity"] == "sha256:m0-digest"
     assert local["note"]
+    # What every local request is sent with, the layers on the GPU included.
+    assert local["options"] == {
+        "num_ctx": config.OLLAMA_NUM_CTX,
+        "num_predict": config.LLM_MAX_OUTPUT_TOKENS,
+        "num_gpu": config.OLLAMA_NUM_GPU,
+        "num_batch": config.OLLAMA_NUM_BATCH,
+    }
 
     api = snap["1"]
     assert api["provider"] == "openrouter" and api["model_name"] == "m1"

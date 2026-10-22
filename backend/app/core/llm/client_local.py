@@ -10,6 +10,7 @@ from backend.app.core.llm.client import (
     LLMClient,
     error_for_status,
     generate_with_retries,
+    provider_seed,
     read_answer,
 )
 from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, TokenUsage
@@ -26,6 +27,15 @@ logger = logging.getLogger(__name__)
 
 # The capability string ollama's /api/show reports for reasoning-capable models.
 _THINKING_CAPABILITY = "thinking"
+
+# What is sent to a model just before each of its draws, so that its one slot holds the same
+# prompt whenever a draw's prompt is read. llama-server reads a prompt from where it stops matching
+# the one its slot holds, and the answer changes with how much of it is read: the same request, with
+# the same seed, got one answer after a cold load, another after a different request, and another
+# after itself. With this request first, it got the same answer after all three. That holds with
+# llama-server's RAM prompt cache off (LLAMA_ARG_CACHE_RAM=0 in docker-compose.yml), which would
+# otherwise bring back an older prompt. It takes 15-50 ms with the model loaded (Ollama 0.40.2).
+_RESET_PROMPT = "."
 
 # What a call to the daemon raises when it fails instead of answering: an error status
 # (ResponseError), the builtin ConnectionError ollama raises when it cannot connect, and the httpx
@@ -45,6 +55,17 @@ def _daemon_error(e: Exception) -> LLMError:
         return LLMProviderUnavailableError(**context)
     # An error reported mid-answer has no status (-1).
     return error_for_status(e.status_code if e.status_code > 0 else None, **context)
+
+
+def _load_options() -> dict[str, Any]:
+    """The options that decide how ollama loads a model, the same in every request to it: left to
+    ollama, the context, the layers on the GPU and the batch would depend on the GPU's free memory,
+    and each changes the answer (see config.OLLAMA_NUM_CTX, OLLAMA_NUM_GPU, OLLAMA_NUM_BATCH)."""
+    return {
+        "num_ctx": config.OLLAMA_NUM_CTX,
+        "num_gpu": config.OLLAMA_NUM_GPU,
+        "num_batch": config.OLLAMA_NUM_BATCH,
+    }
 
 
 def _ms(ns: Optional[int]) -> Optional[int]:
@@ -139,14 +160,16 @@ class LLMClientLocal(LLMClient):
 
         # Ollama ignores sampling settings unless they are passed explicitly via `options`. Always
         # forward the temperature; forward the seed ONLY when set (some ollama-client versions
-        # serialize a `"seed": None`, which would change behaviour).
+        # serialize a `"seed": None`, which would change behaviour), masked to the 31 bits ollama
+        # samples with as it is sent (see provider_seed).
+        seed = provider_seed(request.seed)
         options: dict[str, Any] = {"temperature": request.temperature}
-        if request.seed is not None:
-            options["seed"] = request.seed
-        # A fixed context window, so the game does not depend on the machine (ollama would pick one
-        # from the GPU's memory), and a cap on the answer, so a model that loops is cut instead of
-        # filling the context. A cut answer is drawn again (LLMTruncatedResponseError, below).
-        options["num_ctx"] = config.OLLAMA_NUM_CTX
+        if seed is not None:
+            options["seed"] = seed
+        # The model loaded the same way on every machine and at every load (_load_options), and a
+        # cap on the answer, so a model that loops is cut instead of filling the context. A cut
+        # answer is drawn again (LLMTruncatedResponseError, below).
+        options.update(_load_options())
         options["num_predict"] = request.max_tokens
 
         # Send `think` only to models that advertise the capability, and then send it - omitting it
@@ -157,6 +180,14 @@ class LLMClientLocal(LLMClient):
             chat_kwargs["think"] = self.think
 
         try:
+            # The fixed request first (see _RESET_PROMPT), with the options that load the model as
+            # the draw's do, so that it loads it, or finds it loaded, as the draw would.
+            await self._client.generate(
+                model=self.model_name,
+                prompt=_RESET_PROMPT,
+                options={**_load_options(), "num_predict": 1, "temperature": 0, "seed": 0},
+                **chat_kwargs,
+            )
             ollama_response = await self._client.chat(
                 model=self.model_name,
                 messages=messages,
@@ -198,7 +229,7 @@ class LLMClientLocal(LLMClient):
                 execution_mode="local",
                 provider="ollama",
                 requested_temperature=request.temperature,
-                requested_seed=request.seed,
+                requested_seed=seed,
                 system_fingerprint=None,
                 resolved_model=response_json.get("model") or self.model_name,
                 parsed=parsed,
