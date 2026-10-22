@@ -1352,3 +1352,21 @@ def test_a_run_is_read_back_and_its_resumes_are_noted() -> None:
         delete_run(run_id)
         with session_scope() as s:
             s.query(BoardModel).filter_by(board_id=board_id).delete()
+
+
+def test_a_run_is_not_resumed_on_another_provider(monkeypatch) -> None:
+    """An API model's identity is its model at the provider config pins it to: a run minted on one
+    provider is not continued on another."""
+    from backend.app import config
+    from backend.app.core import provenance
+
+    spec = SeatSpec("openrouter", "m1")
+    monkeypatch.setitem(config.llm_models, "OpenRouter", {"m1": {"provider": "DeepInfra"}})
+    minted = provenance.build_model_registry_snapshot([spec])
+    monkeypatch.setitem(config.llm_models, "OpenRouter", {"m1": {"provider": "Together"}})
+    served = provenance.build_model_registry_snapshot([spec])
+
+    run = _stored_run(model_registry_snapshot=minted)
+    assert batch_runner._served_model_problems(run, served) == [
+        "openrouter:m1: the run was minted on m1@DeepInfra, the provider serves m1@Together"
+    ]

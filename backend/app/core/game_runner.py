@@ -153,6 +153,29 @@ class OllamaVersionMismatchError(ModelDigestMismatchError):
     run-row creation, before any game."""
 
 
+class OpenRouterRoutingError(ModelDigestMismatchError):
+    """An API (OpenRouter) model with no provider pinned in ``config.llm_models["OpenRouter"]``:
+    each of its calls could be served by another provider, or another quantization, so it aborts
+    like a digest that cannot be certified: once, at run-row creation, before any game."""
+
+
+def _enforce_openrouter_routing(snapshot: dict, *, enforce: bool) -> None:
+    """Reproducibility gate over the API seats of the resolved ``model_registry_snapshot``: each
+    must be pinned to a provider (its ``routing``, see ``client_openrouter.provider_routing``). A
+    no-op unless ``enforce``; the client refuses such a model anyway, but only in a game."""
+    if not enforce:
+        return
+    for seat_index in sorted(snapshot):
+        entry = snapshot[seat_index]
+        if entry.get("provider") == "openrouter" and not entry.get("routing"):
+            raise OpenRouterRoutingError(
+                f"seat {seat_index}: API model {entry.get('model_name')!r} has no provider pinned "
+                f"in config.llm_models['OpenRouter'] (its provider, and its quantization if "
+                f"wanted): OpenRouter could serve each call from another one. Pin it, or run "
+                f"without enforcement."
+            )
+
+
 def _enforce_ollama_version(seat_specs, *, enforce: bool) -> None:
     """Reproducibility gate over the Ollama daemon's release, when a seat is local. A no-op unless
     ``enforce``; checked before the digests, since another release is the likelier reason a digest
@@ -249,11 +272,13 @@ def served_registry_snapshot(seat_specs, *, enforce_digests: bool) -> dict:
     """Build the ``model_registry_snapshot`` of the models served now and run the digest gate over
     it (a no-op unless ``enforce_digests``), after the Ollama release's. Minting a run starts here,
     and a resumed batch compares it with the snapshot its run was minted with. Raises
-    ``OllamaVersionMismatchError`` on another Ollama release, and ``ModelDigestMismatchError`` on a
-    served local digest that is not vetted."""
+    ``OllamaVersionMismatchError`` on another Ollama release, ``ModelDigestMismatchError`` on a
+    served local digest that is not vetted, and ``OpenRouterRoutingError`` on an API model pinned to
+    no provider."""
     _enforce_ollama_version(seat_specs, enforce=enforce_digests)
     snapshot = provenance.build_model_registry_snapshot(seat_specs)
     _enforce_local_digests(snapshot, enforce=enforce_digests)
+    _enforce_openrouter_routing(snapshot, enforce=enforce_digests)
     return snapshot
 
 

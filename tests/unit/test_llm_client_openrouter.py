@@ -12,8 +12,9 @@ import httpx
 import pytest
 from openai import AsyncOpenAI
 from unittest.mock import patch
+from backend.app import config
 from backend.app.core.llm import client as client_module
-from backend.app.core.llm.client_openrouter import LLMClientOpenRouter
+from backend.app.core.llm.client_openrouter import LLMClientOpenRouter, provider_routing
 from backend.app.models.llm_errors import (
     LLMAuthError,
     LLMEmptyResponseError,
@@ -89,9 +90,24 @@ def api_key(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
 
 
+@pytest.fixture(autouse=True)
+def route(monkeypatch):
+    """The test model, "m", pinned to a provider as config must pin every OpenRouter model."""
+    monkeypatch.setitem(config.llm_models, "OpenRouter", {"m": {"provider": "DeepInfra"}})
+
+
 @pytest.fixture
 def no_backoff(monkeypatch):
     monkeypatch.setattr(client_module, "_RETRY_BACKOFF_BASE_S", 0.0)
+
+
+def test_a_model_pinned_to_no_provider_is_refused(monkeypatch):
+    """OpenRouter could serve each of its calls from another provider: the client is not built."""
+    monkeypatch.setitem(config.llm_models, "OpenRouter", {"m": {}})
+
+    assert provider_routing("m") is None
+    with pytest.raises(LLMInvalidRequestError, match="no provider pinned"):
+        LLMClientOpenRouter("m")
 
 
 def test_a_client_without_a_key_is_an_auth_error(monkeypatch):
@@ -115,6 +131,11 @@ async def test_the_request_carries_the_seed_the_temperature_and_the_schema(llm_r
 
     assert sent[0]["seed"] == 321
     assert sent[0]["temperature"] == request.temperature
+    assert sent[0]["provider"] == {
+        "order": ["DeepInfra"],
+        "allow_fallbacks": False,
+        "require_parameters": True,
+    }
     assert sent[0]["response_format"] == {
         "type": "json_schema",
         "json_schema": {
@@ -123,6 +144,17 @@ async def test_the_request_carries_the_seed_the_temperature_and_the_schema(llm_r
             "strict": False,
         },
     }
+
+
+async def test_the_request_pins_the_quantization_config_names(llm_request_cg, monkeypatch):
+    route = {"m": {"provider": "DeepInfra", "quantization": "fp8"}}
+    monkeypatch.setitem(config.llm_models, "OpenRouter", route)
+
+    with _answering(_completion()) as sent:
+        await LLMClientOpenRouter("m").generate(llm_request_cg, expected_format=ClueJSONFormat)
+
+    assert sent[0]["provider"]["order"] == ["DeepInfra"]
+    assert sent[0]["provider"]["quantizations"] == ["fp8"]
 
 
 async def test_the_seed_recorded_is_the_seed_sent(llm_request_cg):

@@ -14,6 +14,12 @@
 #     },
 #     ...
 # }
+#
+# An OpenRouter model must name the provider that serves it ("provider", as OpenRouter names it),
+# and may name the quantization ("quantization", e.g. "fp8"). Every call is sent to that provider,
+# with no fallback to another, and only if it honours the seed and the response format; a batch
+# with an OpenRouter model that names none refuses to start (client_openrouter.provider_routing,
+# game_runner._enforce_openrouter_routing).
 
 llm_models = {
     "Ollama": {
@@ -27,8 +33,8 @@ llm_models = {
         "mistral-small3.2:24b": {"think": False},
     },
     # "OpenRouter": {
-    #     "x-ai/grok-4.3": {},
-    #     "google/gemini-3.5-flash": {},
+    #     "x-ai/grok-4.3": {"provider": "xAI"},
+    #     "google/gemini-3.5-flash": {"provider": "Google AI Studio"},
     # },
 }
 

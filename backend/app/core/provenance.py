@@ -23,6 +23,7 @@ from typing import Callable, Optional, Sequence
 import httpx
 
 from backend.app import config
+from backend.app.core.llm.client_openrouter import provider_routing
 from backend.app.paths import MORPHOLEX_PATH, REPO_ROOT
 
 logger = logging.getLogger(__name__)
@@ -108,10 +109,20 @@ _NOTE_OLLAMA_UNAVAILABLE = (
     "not pulled); only the requested model name is known."
 )
 _NOTE_OPENROUTER = (
-    "Best-effort: API providers expose no pre-run resolvable identity. Effective "
-    "identity is captured per call in llm_call.resolved_model / system_fingerprint, "
-    "which surfaces a provider silently swapping the model mid-experiment."
+    "Best-effort: API providers expose no pre-run resolvable identity. The requested model is "
+    "pinned to the provider (and quantization) config names, if any ('routing'). Effective "
+    "identity is captured per call in llm_call.resolved_model / system_fingerprint, and the "
+    "provider that served the call in llm_call.raw_payload, which surfaces a provider silently "
+    "swapping the model mid-experiment."
 )
+
+
+def _routed_identity(model_name: str, routing: dict) -> str:
+    """What serves an API seat: its model, at the provider it is pinned to, and the quantization if
+    one is pinned (e.g. ``mistralai/mistral-small-3.2-24b-instruct@DeepInfra/fp8``)."""
+    identity = f"{model_name}@{routing['order'][0]}"
+    quantizations = routing.get("quantizations")
+    return f"{identity}/{quantizations[0]}" if quantizations else identity
 
 
 def build_model_registry_snapshot(
@@ -126,8 +137,11 @@ def build_model_registry_snapshot(
     - ``ollama`` (local): the digest is queryable from the daemon ->
       ``identity_kind="ollama_digest"`` with the real digest (or ``"ollama_digest_unavailable"`` +
       null identity if the lookup failed).
-    - ``openrouter`` (API): no pre-run identity exists -> ``identity_kind="requested_model_string"``
-      with the requested model string; effective identity lives per call in ``llm_call``.
+    - ``openrouter`` (API): no pre-run identity exists. The model pinned to a provider by config
+      (``routing``, see ``client_openrouter.provider_routing``) -> ``identity_kind=
+      "requested_model_and_route"`` with ``model@provider[/quantization]``; one with no provider
+      pinned -> ``"requested_model_string"`` with the requested model string, which the batch's
+      gate refuses. Effective identity lives per call in ``llm_call``.
 
     The strong/best-effort distinction is explicit in ``identity_kind`` (data), not just prose.
     ``digest_resolver`` is injectable so tests can supply a deterministic digest without a daemon;
@@ -140,11 +154,17 @@ def build_model_registry_snapshot(
         provider = spec.provider
         model_name = spec.model_name
         if provider == "openrouter":
+            routing = provider_routing(model_name)
             entry = {
                 "provider": provider,
                 "model_name": model_name,
-                "identity_kind": "requested_model_string",
-                "identity": model_name,
+                "identity_kind": (
+                    "requested_model_string" if routing is None else "requested_model_and_route"
+                ),
+                "identity": model_name
+                if routing is None
+                else _routed_identity(model_name, routing),
+                "routing": routing,
                 "note": _NOTE_OPENROUTER,
             }
         else:  # ollama / any local provider

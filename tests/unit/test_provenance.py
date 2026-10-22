@@ -99,6 +99,24 @@ def test_snapshot_encodes_strong_vs_best_effort_asymmetry():
     assert local["identity_kind"] != api["identity_kind"]
 
 
+def test_an_api_seat_pinned_to_a_provider_records_its_route(monkeypatch):
+    """What serves an API seat is its model at the provider (and quantization) config pins it to:
+    its identity, so a batch resumed on another provider is told apart."""
+    route = {"m1": {"provider": "DeepInfra", "quantization": "fp8"}}
+    monkeypatch.setitem(config.llm_models, "OpenRouter", route)
+
+    api = provenance.build_model_registry_snapshot([SeatSpec("openrouter", "m1")])["0"]
+
+    assert api["identity_kind"] == "requested_model_and_route"
+    assert api["identity"] == "m1@DeepInfra/fp8"
+    assert api["routing"] == {
+        "order": ["DeepInfra"],
+        "allow_fallbacks": False,
+        "require_parameters": True,
+        "quantizations": ["fp8"],
+    }
+
+
 def test_snapshot_digest_failure_records_null_identity_returning_normally():
     """Record-only: a resolver that returns None (daemon unreachable) yields a null identity + note
     without raising - a game must never abort over provenance."""

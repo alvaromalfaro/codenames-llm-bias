@@ -11,6 +11,7 @@ from openai import (
 )
 from openai.types.chat import ChatCompletionMessageParam
 from openai.types.chat.completion_create_params import ResponseFormat
+from backend.app import config
 from backend.app.core.llm.client import (
     LLMClient,
     error_for_status,
@@ -21,6 +22,7 @@ from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, T
 from backend.app.models.llm_errors import (
     LLMAuthError,
     LLMError,
+    LLMInvalidRequestError,
     LLMRefusalError,
     LLMTimeoutError,
     LLMProviderUnavailableError,
@@ -32,6 +34,29 @@ _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # OpenRouter takes a seed that fits a 32-bit signed integer.
 _SEED_MASK = 0x7FFFFFFF
+
+
+def provider_routing(model_name: str) -> Optional[dict[str, Any]]:
+    """The ``provider`` object OpenRouter is sent for ``model_name``, from the model's entry in
+    ``config.llm_models["OpenRouter"]``; None when the entry pins no provider.
+
+    Unless told otherwise, OpenRouter may serve each call from another provider, or another
+    quantization. The object pins the provider the entry names (and its quantization, if it names
+    one), with no fallback to another, and only if that provider honours every parameter sent
+    (``seed``, ``response_format``): a call it cannot serve fails, instead of being served
+    otherwise."""
+    models = cast("dict[str, dict[str, Any]]", config.llm_models).get("OpenRouter", {})
+    entry = models.get(model_name) or {}
+    if not entry.get("provider"):
+        return None
+    routing: dict[str, Any] = {
+        "order": [entry["provider"]],
+        "allow_fallbacks": False,
+        "require_parameters": True,
+    }
+    if entry.get("quantization"):
+        routing["quantizations"] = [entry["quantization"]]
+    return routing
 
 
 def _status_error(status: Optional[int], message: Optional[str] = None, **context: Any) -> LLMError:
@@ -67,6 +92,15 @@ class LLMClientOpenRouter(LLMClient):
         # Bounded retry of retriable LLM errors (0 = one attempt, the default). The game runner
         # passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
         self.max_retries = max_retries
+        # Every call of the model is served by the provider its config pins (see provider_routing).
+        routing = provider_routing(model_name)
+        if routing is None:
+            raise LLMInvalidRequestError(
+                f"{model_name} has no provider pinned in config.llm_models['OpenRouter'].",
+                provider="openrouter",
+                execution_mode="api",
+            )
+        self._routing = routing
         # The SDK refuses to build a client without a key, with an error of its own.
         api_key = os.environ.get("OPENROUTER_API_KEY")
         if not api_key:
@@ -132,6 +166,7 @@ class LLMClientOpenRouter(LLMClient):
                 max_tokens=request.max_tokens,
                 timeout=request.timeout_s,
                 response_format=response_format,
+                extra_body={"provider": self._routing},
             )
             # Wall-clock time of the call, network included (see LLMResponse.latency_ms).
             latency_ms = int((time.monotonic() - start) * 1000)

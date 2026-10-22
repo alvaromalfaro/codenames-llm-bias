@@ -130,7 +130,7 @@ codenames-llm-bias/
   (`.python-version` names the exact release, 3.12.13). [`uv`](https://docs.astral.sh/uv/) installs
   it and the dependencies at the versions of `uv.lock`, which the image installs too.
 * Disk: the four default models are ~35 GB of weights under `docker_volumes/ollama_data/`.
-* An **OpenRouter API key** only if you enable API-hosted seats (the shipped roster is all-local).
+* An **OpenRouter API key** only if you enable API-hosted seats (the shipped roster is all-local). Each OpenRouter model in `config.llm_models` must name the provider that serves it (and may name its quantization); the batch refuses to start on one that does not.
 
 ---
 

@@ -16,8 +16,10 @@ from backend.app import config
 from backend.app.core import game_runner, provenance
 from backend.app.core.game_runner import (
     ModelDigestMismatchError,
+    OpenRouterRoutingError,
     SeatSpec,
     _enforce_local_digests,
+    _enforce_openrouter_routing,
     run_single_game,
 )
 
@@ -209,6 +211,7 @@ async def test_run_proceeds_on_matching_digest_when_enforcing(monkeypatch):
     """enforce_digests=True with a matching served digest lets the game play to completion - the
     gate passes (and prefix-normalisation holds: bare-hex served vs sha256:-prefixed config)."""
     monkeypatch.setattr(game_runner, "_db_enabled", lambda: False)
+    monkeypatch.setitem(config.llm_models, "OpenRouter", {"m1": {"provider": "DeepInfra"}})
     monkeypatch.setattr(
         provenance, "resolve_ollama_digest", lambda model_name, host=None: _SERVED_OK
     )
@@ -248,3 +251,28 @@ async def test_run_proceeds_on_unavailable_digest_when_not_enforcing(monkeypatch
         client_factory=lambda i, spec: clients[i],
     )
     assert res.status == "completed" and res.result == "loss_assassin"
+
+
+# the API seats' routing (game_runner._enforce_openrouter_routing)
+def _served(monkeypatch, routes):
+    """The snapshot of _SPECS served now, with ``routes`` as config's OpenRouter models."""
+    monkeypatch.setitem(config.llm_models, "OpenRouter", routes)
+    return provenance.build_model_registry_snapshot(_SPECS, digest_resolver=lambda m: _SERVED_OK)
+
+
+def test_the_gate_stops_on_an_api_model_pinned_to_no_provider(monkeypatch):
+    """OpenRouter could serve each of its calls from another provider: the batch does not start,
+    and its callers read it as a digest that cannot be certified."""
+    with pytest.raises(OpenRouterRoutingError, match="'m1'") as excinfo:
+        _enforce_openrouter_routing(_served(monkeypatch, {}), enforce=True)
+    assert isinstance(excinfo.value, ModelDigestMismatchError)
+
+
+def test_the_gate_passes_an_api_model_pinned_to_a_provider(monkeypatch):
+    _enforce_openrouter_routing(
+        _served(monkeypatch, {"m1": {"provider": "DeepInfra"}}), enforce=True
+    )
+
+
+def test_the_routing_gate_is_a_noop_when_not_enforcing(monkeypatch):
+    _enforce_openrouter_routing(_served(monkeypatch, {}), enforce=False)
