@@ -707,7 +707,7 @@ async def test_llm_client_local_empty_response_resampled_then_succeeds(
 
         assert isinstance(result, LLMResponse)
         assert mock_chat.call_count == 2
-        assert result.raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 1
+        assert result.raw_payload["empty_response_resamples"] == 1
         # The new draw has a new seed, derived from the request's own.
         seeds = [call.kwargs["options"]["seed"] for call in mock_chat.call_args_list]
         assert seeds == [123, client_module.redraw_seed(123, 1)]
@@ -757,8 +757,8 @@ async def test_llm_client_local_malformed_answer_is_drawn_again_and_counted(llm_
 
         result = await client.generate(request, expected_format=ClueJSONFormat)
 
-    assert result.raw_payload[client_module.MALFORMED_RESAMPLE_KEY] == 1
-    assert result.raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 0
+    assert result.raw_payload["malformed_response_resamples"] == 1
+    assert result.raw_payload["empty_response_resamples"] == 0
     seeds = [call.kwargs["options"]["seed"] for call in mock_chat.call_args_list]
     assert seeds == [123, client_module.redraw_seed(123, 1)]
 
@@ -791,7 +791,7 @@ async def test_llm_client_local_no_empty_draws_records_zero(llm_request_cg):
 
         result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
 
-        assert result.raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 0
+        assert result.raw_payload["empty_response_resamples"] == 0
 
 
 # thinking-capability gate
@@ -943,9 +943,9 @@ async def test_degenerate_empty_proposals_is_resampled_then_succeeds(llm_request
 
         assert isinstance(result, LLMResponse)
         assert mock_chat.call_count == 2
-        assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 1
+        assert result.raw_payload["degenerate_response_resamples"] == 1
         # Counted apart: this was not an empty-content draw.
-        assert result.raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 0
+        assert result.raw_payload["empty_response_resamples"] == 0
 
 
 @pytest.mark.asyncio
@@ -997,7 +997,7 @@ async def test_a_blank_proposed_word_is_degenerate_and_drawn_again(llm_request_c
         result = await client.generate(llm_request_cg, expected_format=GuessJSONFormat)
 
     assert mock_chat.call_count == 2
-    assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 1
+    assert result.raw_payload["degenerate_response_resamples"] == 1
 
 
 @pytest.mark.parametrize(
@@ -1039,7 +1039,7 @@ async def test_a_confidence_out_of_range_is_malformed_and_drawn_again(llm_reques
         result = await client.generate(llm_request_cg, expected_format=fmt)
 
     assert mock_chat.call_count == 2
-    assert result.raw_payload[client_module.MALFORMED_RESAMPLE_KEY] == 1
+    assert result.raw_payload["malformed_response_resamples"] == 1
     assert json.loads(result.text) == json.loads(good)
 
 
@@ -1065,7 +1065,7 @@ async def test_degenerate_clue_is_resampled_then_succeeds(llm_request_cg, bad_cl
         result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
 
         assert mock_chat.call_count == 2, label
-        assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 1
+        assert result.raw_payload["degenerate_response_resamples"] == 1
 
 
 @pytest.mark.asyncio
@@ -1077,7 +1077,7 @@ async def test_healthy_response_records_zero_degenerate_resamples(llm_request_cg
 
         result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
 
-        assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 0
+        assert result.raw_payload["degenerate_response_resamples"] == 0
 
 
 @pytest.mark.asyncio
@@ -1094,7 +1094,7 @@ async def test_empty_rankings_are_not_treated_as_degenerate(llm_request_cg):
         result = await client.generate(llm_request_cg, expected_format=ConfidenceRankingJSONFormat)
 
         assert mock_chat.call_count == 1
-        assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 0
+        assert result.raw_payload["degenerate_response_resamples"] == 0
 
 
 # The context window and the answer cap, and an answer cut at that cap (E1 of the test-game report)
@@ -1136,9 +1136,9 @@ async def test_an_answer_cut_at_the_limit_is_drawn_again(llm_request_cg):
         result = await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
 
         assert mock_chat.call_count == 2
-        assert result.raw_payload[client_module.TRUNCATED_RESAMPLE_KEY] == 1
-        assert result.raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 0
-        assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 0
+        assert result.raw_payload["truncated_response_resamples"] == 1
+        assert result.raw_payload["empty_response_resamples"] == 0
+        assert result.raw_payload["degenerate_response_resamples"] == 0
 
 
 @pytest.mark.asyncio
@@ -1181,8 +1181,8 @@ async def test_each_new_draw_of_a_bad_answer_has_its_own_seed(llm_request_cg):
     assert _sent_seeds(mock_chat) == [123, *redraws]
     assert len(set(_sent_seeds(mock_chat))) == 4
     assert result.requested_seed == redraws[-1]
-    assert result.raw_payload[client_module.DEGENERATE_RESAMPLE_KEY] == 2
-    assert result.raw_payload[client_module.TRUNCATED_RESAMPLE_KEY] == 1
+    assert result.raw_payload["degenerate_response_resamples"] == 2
+    assert result.raw_payload["truncated_response_resamples"] == 1
 
 
 @pytest.mark.asyncio
@@ -1226,3 +1226,9 @@ def test_redraw_seeds_are_deterministic_distinct_and_64_bit():
     assert all(0 <= s < 2**64 for s in seeds)
     assert client_module.redraw_seed(7, 1) != client_module.redraw_seed(8, 1)
     assert client_module.redraw_seed(None, 1) is None
+
+
+def test_every_bad_draw_is_a_retriable_parse_error():
+    """A bad draw that is not retriable is never drawn again: the game ends on it."""
+    for kind in client_module._BAD_DRAWS:
+        assert issubclass(kind, LLMParseError) and kind.retriable, kind.__name__

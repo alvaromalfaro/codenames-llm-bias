@@ -384,6 +384,13 @@ def test_every_llm_error_code_has_a_kind(cls) -> None:
     assert batch_runner._classify_error(str(exc), exc.code) in {"provider", "model"}
 
 
+def test_every_llm_error_has_a_code_of_its_own() -> None:
+    """A subclass that does not set ``code`` inherits its parent's, and its games would be counted
+    as the parent's."""
+    codes = [cls.code for cls in _llm_error_classes()]
+    assert len(codes) == len(set(codes))
+
+
 @pytest.mark.parametrize(
     "code, kind",
     [

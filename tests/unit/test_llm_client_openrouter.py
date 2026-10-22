@@ -177,7 +177,7 @@ async def test_openrouter_draws_a_malformed_answer_again_and_counts_it(llm_reque
 
         result = await client.generate(request, expected_format=ClueJSONFormat)
 
-    assert result.raw_payload[client_module.MALFORMED_RESAMPLE_KEY] == 1
+    assert result.raw_payload["malformed_response_resamples"] == 1
     seeds = [call.kwargs["seed"] for call in mock_create.call_args_list]
     assert seeds == [321, client_module.redraw_seed(321, 1) & 0x7FFFFFFF]
 

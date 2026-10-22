@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 from abc import ABC, abstractmethod
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from typing import Optional
 from pydantic import BaseModel
@@ -19,28 +20,17 @@ logger = logging.getLogger(__name__)
 # Exponential backoff base for the client-side transient retry: 15s, 30s, 60s, ...
 _RETRY_BACKOFF_BASE_S = 15
 
-# Key under which the empty-response re-sample count is stamped into the returned response's
-# raw_payload. That payload is copied verbatim onto LLMCallRecord.raw_payload and written to the
-# JSONB llm_call.raw_payload column, so the count is auditable downstream with no schema change.
-EMPTY_RESAMPLE_KEY = "empty_response_resamples"
-
-# Same, for WELL-FORMED but degenerate draws (e.g. an empty proposals list). Counted apart from
-# EMPTY_RESAMPLE_KEY because "returned nothing" and "returned a well-formed refusal to guess" are
-# different model behaviours, and both are data about the model, not noise.
-DEGENERATE_RESAMPLE_KEY = "degenerate_response_resamples"
-
-# Same, for answers cut at the output limit (a model that loops until it is stopped).
-TRUNCATED_RESAMPLE_KEY = "truncated_response_resamples"
-
-# Same, for answers that do not match the response schema (a field missing, a value out of range).
-MALFORMED_RESAMPLE_KEY = "malformed_response_resamples"
-
-# The bad draws, each with the key it is counted under.
-_BAD_DRAWS = (
-    (LLMEmptyResponseError, EMPTY_RESAMPLE_KEY),
-    (LLMDegenerateResponseError, DEGENERATE_RESAMPLE_KEY),
-    (LLMTruncatedResponseError, TRUNCATED_RESAMPLE_KEY),
-    (LLMMalformedResponseError, MALFORMED_RESAMPLE_KEY),
+# The bad draws: a model's answer that cannot be used, drawn again with a new seed. Each kind is
+# counted apart, because each is a different model behaviour (data about the model, not noise), and
+# its count is stamped into the kept response's raw_payload under "<code>_resamples" (e.g.
+# "empty_response_resamples"), 0 included. That payload is copied verbatim onto
+# LLMCallRecord.raw_payload and written to the JSONB llm_call.raw_payload column, so the counts are
+# auditable downstream with no schema change.
+_BAD_DRAWS: tuple[type[LLMError], ...] = (
+    LLMEmptyResponseError,
+    LLMDegenerateResponseError,
+    LLMTruncatedResponseError,
+    LLMMalformedResponseError,
 )
 
 _MASK64 = (1 << 64) - 1
@@ -91,12 +81,12 @@ async def generate_with_retries(
     not model behavior, unlike clue-legality retries).
 
     Bad draws are model behavior, so the number of each kind absorbed by this call is stamped onto
-    the successful response's ``raw_payload`` (``EMPTY_RESAMPLE_KEY``, ``DEGENERATE_RESAMPLE_KEY``,
-    ``TRUNCATED_RESAMPLE_KEY``, ``MALFORMED_RESAMPLE_KEY``) and rides the existing audit path to
-    ``llm_call.raw_payload``. Their sum is the ``k`` of the kept answer's seed.
+    the successful response's ``raw_payload`` (``"<code>_resamples"``, one key per kind in
+    ``_BAD_DRAWS``) and rides the existing audit path to ``llm_call.raw_payload``. Their sum is the
+    ``k`` of the kept answer's seed.
     """
     n = 0
-    resamples = {key: 0 for _, key in _BAD_DRAWS}
+    bad_draws: Counter[str] = Counter()
     current = request
     while True:
         try:
@@ -106,12 +96,11 @@ async def generate_with_retries(
                 raise
             # A bad draw is not a network transient: it is drawn again at once with a new seed. Only
             # a transient backs off, and re-sends the same request.
-            bad_draw = next((key for kind, key in _BAD_DRAWS if isinstance(exc, kind)), None)
             n += 1
-            if bad_draw is not None:
-                resamples[bad_draw] += 1
+            if isinstance(exc, _BAD_DRAWS):
+                bad_draws[exc.code] += 1
                 current = request.model_copy(
-                    update={"seed": redraw_seed(request.seed, sum(resamples.values()))}
+                    update={"seed": redraw_seed(request.seed, bad_draws.total())}
                 )
                 logger.warning(
                     "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; drawing again "
@@ -139,7 +128,9 @@ async def generate_with_retries(
         else:
             # Stamp the re-sample counts onto the response that finally succeeded, so the audit
             # trail records how many bad draws this single call absorbed (0 for the common case).
-            response.raw_payload.update(resamples)
+            response.raw_payload.update(
+                {f"{kind.code}_resamples": bad_draws[kind.code] for kind in _BAD_DRAWS}
+            )
             return response
 
 

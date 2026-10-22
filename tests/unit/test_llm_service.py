@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from backend.app.core import llm_service
 from backend.app.core.llm_service import GuesserView, LLMService
 from backend.app.paths import PROMPT_TEMPLATES_DIR
-from backend.app.core.llm import client as client_module
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.models.llm_errors import LLMEmptyResponseError
@@ -817,7 +816,7 @@ async def test_propose_clue_survives_empty_draw_and_audits_the_resample(game_sta
         # separate call.
         assert len(result.llm_calls) == 1
         assert result.llm_calls[0].retry_index == 0
-        assert result.llm_calls[0].raw_payload[client_module.EMPTY_RESAMPLE_KEY] == 1
+        assert result.llm_calls[0].raw_payload["empty_response_resamples"] == 1
 
 
 @pytest.mark.asyncio
