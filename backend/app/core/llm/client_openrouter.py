@@ -1,32 +1,64 @@
 import logging
 import os
 import time
-from typing import cast
+from typing import Any, Optional, cast
 
 from openai import (
     AsyncOpenAI,
-    AuthenticationError,
-    RateLimitError,
-    APITimeoutError,
     APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
 )
 from openai.types.chat import ChatCompletionMessageParam
 from openai.types.chat.completion_create_params import ResponseFormat
-from backend.app.core.llm.client import LLMClient, extract_json, generate_with_retries
+from backend.app.core.llm.client import (
+    LLMClient,
+    error_for_status,
+    generate_with_retries,
+    read_answer,
+)
 from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMAuthError,
-    LLMRateLimitError,
+    LLMError,
+    LLMRefusalError,
     LLMTimeoutError,
     LLMProviderUnavailableError,
-    LLMTruncatedResponseError,
-    LLMMalformedResponseError,
-    LLMDegenerateResponseError,
 )
 
 logger = logging.getLogger(__name__)
 
 _OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+# OpenRouter takes a seed that fits a 32-bit signed integer.
+_SEED_MASK = 0x7FFFFFFF
+
+
+def _status_error(status: Optional[int], message: Optional[str] = None, **context: Any) -> LLMError:
+    """The taxonomy error for an error status from OpenRouter, the response's or one in its body.
+
+    As ``error_for_status``, but for a 403: OpenRouter's says that the moderation the chosen model
+    requires flagged the input. That is a refusal of the content (``LLMRefusalError``), which the
+    same input would meet again, not a rejected key."""
+    if status == 403:
+        context["http_status"] = status
+        return LLMRefusalError(message, **context)
+    return error_for_status(status, message, **context)
+
+
+def _body_error(error: Any, **context: Any) -> LLMError:
+    """The taxonomy error for an error OpenRouter reports in the body of a 200, by its code.
+
+    OpenRouter answers with the error's status only when it rejects the request; an error once the
+    response has started (the upstream model failed, or its provider) comes in a 200, as an
+    ``{"code", "message"}`` in place of the choices, or in the choice."""
+    error = error if isinstance(error, dict) else {}
+    code, message = error.get("code"), error.get("message")
+    return _status_error(
+        code if isinstance(code, int) else None,
+        f"OpenRouter reported an error: {message}" if message else None,
+        **context,
+    )
 
 
 class LLMClientOpenRouter(LLMClient):
@@ -35,18 +67,23 @@ class LLMClientOpenRouter(LLMClient):
         # Bounded retry of retriable LLM errors (0 = one attempt, the default). The game runner
         # passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
         self.max_retries = max_retries
-        self._client = AsyncOpenAI(
-            base_url=_OPENROUTER_BASE_URL,
-            api_key=os.environ.get("OPENROUTER_API_KEY", ""),
-        )
+        # The SDK refuses to build a client without a key, with an error of its own.
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        if not api_key:
+            raise LLMAuthError(
+                "OPENROUTER_API_KEY is not set.", provider="openrouter", execution_mode="api"
+            )
+        # No retries of the SDK's own (it retries twice by default): generate_with_retries is the
+        # only retry, so every attempt is one call and is counted.
+        self._client = AsyncOpenAI(base_url=_OPENROUTER_BASE_URL, api_key=api_key, max_retries=0)
 
     async def generate(
         self, request: LLMRequest, expected_format: type[LLMFormat] | None = None
     ) -> LLMResponse:
         """Generate a response, retrying retriable errors per ``self.max_retries``.
 
-        A cut, malformed or degenerate answer is drawn again with a new seed, and a transient
-        failure re-sends the same request; see ``generate_with_retries``."""
+        A bad draw (empty, cut, malformed or degenerate) is drawn again with a new seed, and a
+        transient failure re-sends the same request; see ``generate_with_retries``."""
         return await generate_with_retries(
             lambda req: self._generate_once(req, expected_format),
             request,
@@ -66,127 +103,90 @@ class LLMClientOpenRouter(LLMClient):
 
         response_format: ResponseFormat
         if expected_format:
+            # Not strict: OpenAI's strict mode needs every field required and no other field
+            # allowed, which the formats do not say (``targets`` has a default), and changing them
+            # would change the schema ollama is sent and the run's fingerprint. The schema is sent
+            # as ollama gets it, and the validation of the answer holds the model to it.
             response_format = {
                 "type": "json_schema",
                 "json_schema": {
                     "name": expected_format.__name__,
                     "schema": expected_format.model_json_schema(),
-                    "strict": True,
+                    "strict": False,
                 },
             }
         else:
             response_format = {"type": "json_object"}
 
+        # The request's seed is masked to fit, and the seed recorded is the one sent.
+        seed = request.seed & _SEED_MASK if request.seed is not None else None
+
+        context: dict[str, Any] = {"provider": "openrouter", "execution_mode": "api"}
         try:
             start = time.monotonic()
-
-            # The OpenRouter API uses a 32-bit signed integer for the seed, so we need to mask it to
-            # ensure it's within that range.
-            safe_seed = request.seed & 0x7FFFFFFF if request.seed is not None else None
-
             response = await self._client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
                 temperature=request.temperature,
-                seed=safe_seed,
+                seed=seed,
                 max_tokens=request.max_tokens,
                 timeout=request.timeout_s,
                 response_format=response_format,
             )
+            # Wall-clock time of the call, network included (see LLMResponse.latency_ms).
             latency_ms = int((time.monotonic() - start) * 1000)
-
-            answer = response.choices[0].message.content or ""
-            content = extract_json(answer)
-
-            # The answer reached max_tokens and its JSON is unfinished: a bad draw, re-sampled
-            # within the caller's budget (see LLMTruncatedResponseError).
-            if response.choices[0].finish_reason == "length":
-                logger.debug(
-                    "openrouter %s answer cut at max_tokens; discarded draw:\n%s",
-                    self.model_name,
-                    answer,
-                )
-                raise LLMTruncatedResponseError(
-                    provider="openrouter", raw_payload=response.model_dump(), execution_mode="api"
-                )
-
-            parsed = None
-            if expected_format:
-                try:
-                    parsed = expected_format.model_validate_json(content)
-                except Exception as e:
-                    # A bad draw, drawn again within the caller's budget. Only its count reaches the
-                    # database, so it is logged whole (max_tokens bounds it), at a level the batch's
-                    # log keeps.
-                    logger.warning(
-                        "openrouter %s response does not match %s (%s); discarded draw:\n%s",
-                        self.model_name,
-                        expected_format.__name__,
-                        e,
-                        answer,
-                    )
-                    raise LLMMalformedResponseError(
-                        provider="openrouter",
-                        raw_payload=response.model_dump(),
-                        cause=e,
-                        execution_mode="api",
-                    ) from e
-
-                # Well-formed but degenerate (e.g. an empty proposals list): a bad draw, drawn again
-                # within the caller's budget instead of failing in llm_service, outside the retry
-                # loop (see LLMFormat.degenerate_reason).
-                reason = parsed.degenerate_reason()
-                if reason is not None:
-                    logger.debug(
-                        "openrouter %s response is degenerate (%s); discarded draw:\n%s",
-                        self.model_name,
-                        reason,
-                        answer,
-                    )
-                    raise LLMDegenerateResponseError(
-                        message=(
-                            f"The LLM returned a well-formed but degenerate response: {reason}."
-                        ),
-                        provider="openrouter",
-                        raw_payload=response.model_dump(),
-                        execution_mode="api",
-                    )
-
-            usage = response.usage
-            raw_payload = response.model_dump()
-
-            return LLMResponse(
-                text=content,
-                model_used=response.model,
-                latency_ms=latency_ms,
-                # Without a usage block the counts are unknown: None, not 0.
-                usage=TokenUsage(
-                    prompt_tokens=usage.prompt_tokens if usage else None,
-                    completion_tokens=usage.completion_tokens if usage else None,
-                    total_tokens=usage.total_tokens if usage else None,
-                ),
-                finish_reason=response.choices[0].finish_reason,
-                raw_payload=raw_payload,
-                request_id=response.id,
-                execution_mode="api",
-                provider="openrouter",
-                requested_temperature=request.temperature,
-                requested_seed=request.seed,
-                system_fingerprint=getattr(response, "system_fingerprint", None),
-                resolved_model=response.model,
-                parsed=parsed,
-            )
-
-        except AuthenticationError as e:
-            raise LLMAuthError(provider="openrouter", cause=e, execution_mode="api") from e
-        except RateLimitError as e:
-            raise LLMRateLimitError(provider="openrouter", cause=e, execution_mode="api") from e
         except APITimeoutError as e:
-            raise LLMTimeoutError(provider="openrouter", cause=e, execution_mode="api") from e
+            raise LLMTimeoutError(cause=e, **context) from e
         except APIConnectionError as e:
-            raise LLMProviderUnavailableError(
-                provider="openrouter", cause=e, execution_mode="api"
-            ) from e
+            raise LLMProviderUnavailableError(cause=e, **context) from e
+        except APIStatusError as e:
+            raise _status_error(e.status_code, cause=e, request_id=e.request_id, **context) from e
+
+        raw_payload = response.model_dump()
+        context.update(raw_payload=raw_payload, request_id=response.id)
+
+        # An error once the response had started: in place of the choices, or in the choice.
+        if not response.choices:
+            raise _body_error(getattr(response, "error", None), **context)
+        choice = response.choices[0]
+        if choice.finish_reason == "error" or getattr(choice, "error", None):
+            raise _body_error(getattr(choice, "error", None), **context)
+
+        # A model that refuses under structured output says so in a field of its own, not in the
+        # content: the model's behaviour, which the same input would meet again.
+        if choice.message.refusal:
+            raise LLMRefusalError(f"The LLM refused: {choice.message.refusal}", **context)
+
+        content, parsed = read_answer(
+            choice.message.content or "",
+            cut=choice.finish_reason == "length",
+            expected_format=expected_format,
+            model=self.model_name,
+            **context,
+        )
+
+        usage = response.usage
+        return LLMResponse(
+            text=content,
+            model_used=response.model,
+            latency_ms=latency_ms,
+            # Without a usage block the counts are unknown: None, not 0.
+            usage=TokenUsage(
+                prompt_tokens=usage.prompt_tokens if usage else None,
+                completion_tokens=usage.completion_tokens if usage else None,
+                total_tokens=usage.total_tokens if usage else None,
+            ),
+            finish_reason=choice.finish_reason,
+            raw_payload=raw_payload,
+            request_id=response.id,
+            execution_mode="api",
+            provider="openrouter",
+            requested_temperature=request.temperature,
+            requested_seed=seed,
+            system_fingerprint=getattr(response, "system_fingerprint", None),
+            resolved_model=response.model,
+            parsed=parsed,
+        )
 
     async def close(self) -> None:
         await self._client.close()

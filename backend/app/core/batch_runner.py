@@ -139,6 +139,7 @@ _PROVIDER_ERROR_CODES = frozenset(
         "rate_limit",
         "provider_unavailable",
         "auth",
+        "insufficient_credits",
         "model_not_provided",
         "model_not_found",
         "invalid_request",

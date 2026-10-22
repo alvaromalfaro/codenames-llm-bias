@@ -6,22 +6,19 @@ from json import JSONDecodeError
 from typing import Any, Literal
 import httpx
 from backend.app import config
-from backend.app.core.llm.client import LLMClient, extract_json, generate_with_retries
+from backend.app.core.llm.client import (
+    LLMClient,
+    error_for_status,
+    generate_with_retries,
+    read_answer,
+)
 from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMError,
     LLMModelNotProvidedError,
     LLMParseError,
-    LLMEmptyResponseError,
-    LLMDegenerateResponseError,
-    LLMTruncatedResponseError,
-    LLMMalformedResponseError,
     LLMTimeoutError,
-    LLMAuthError,
-    LLMRateLimitError,
     LLMProviderUnavailableError,
-    LLMModelNotFoundError,
-    LLMInvalidRequestError,
 )
 from ollama import AsyncClient, RequestError, ResponseError
 
@@ -37,11 +34,8 @@ _DAEMON_ERRORS = (ResponseError, ConnectionError, httpx.TransportError)
 
 
 def _daemon_error(e: Exception) -> LLMError:
-    """The taxonomy error for a call to the daemon that failed with ``e`` (a ``_DAEMON_ERRORS``).
-
-    None of them is a refusal by the model: a model that will not play still answers, in text. An
-    error status is the daemon's or the request's, so nothing here maps to ``LLMRefusalError``,
-    which the batch counts as the model's behaviour."""
+    """The taxonomy error for a call to the daemon that failed with ``e`` (a ``_DAEMON_ERRORS``):
+    by its status when the daemon answered with one (see ``error_for_status``)."""
     context: dict[str, Any] = {"provider": "ollama", "cause": e, "execution_mode": "local"}
     # No answer within config.OLLAMA_TIMEOUT_S, or no connection within the connect limit.
     if isinstance(e, httpx.TimeoutException):
@@ -49,22 +43,8 @@ def _daemon_error(e: Exception) -> LLMError:
     # The daemon is not running, or dropped the connection mid-answer (stopped, or crashed).
     if not isinstance(e, ResponseError):
         return LLMProviderUnavailableError(**context)
-    status = e.status_code
-    context["http_status"] = status if status > 0 else None
-    if status == 404:
-        # The model is not pulled.
-        return LLMModelNotFoundError(**context)
-    if status in (401, 403):
-        return LLMAuthError(**context)
-    if status == 429:
-        return LLMRateLimitError(**context)
-    if 400 <= status < 500:
-        # The daemon rejects what was sent (an option or a parameter the model does not support):
-        # the same request would be rejected again.
-        return LLMInvalidRequestError(**context)
-    # A 5xx: the daemon failed (its runner crashed or ran out of memory, or its queue is full), and
-    # may recover. Also an error reported mid-answer, which has no status.
-    return LLMProviderUnavailableError(**context)
+    # An error reported mid-answer has no status (-1).
+    return error_for_status(e.status_code if e.status_code > 0 else None, **context)
 
 
 class LLMClientLocal(LLMClient):
@@ -183,76 +163,16 @@ class LLMClientLocal(LLMClient):
             # Convert the Ollama response to JSON. The client types the content as optional: an
             # answer without one is an empty answer.
             response_json = json.loads(ollama_response.model_dump_json())
-            answer = response_json.get("message", {}).get("content") or ""
-            content = extract_json(answer)
-
-            # An empty / whitespace-only draw is a stochastic non-answer, not malformed output:
-            # raised as the retriable parse error so generate_with_retries re-samples it within the
-            # caller's budget instead of killing the game on a single bad draw.
-            if not content.strip():
-                raise LLMEmptyResponseError(
-                    provider="ollama", raw_payload=response_json, execution_mode="local"
-                )
-
-            # The answer reached the output limit (num_predict) or filled the context, so its JSON
-            # is unfinished: a bad draw, re-sampled within the caller's budget like the empty one.
-            if ollama_response.done_reason == "length":
-                logger.debug(
-                    "ollama %s answer cut at the output limit (%s prompt + %s answer "
-                    "tokens); discarded draw:\n%s",
-                    self.model_name,
-                    ollama_response.prompt_eval_count,
-                    ollama_response.eval_count,
-                    answer,
-                )
-                raise LLMTruncatedResponseError(
-                    provider="ollama", raw_payload=response_json, execution_mode="local"
-                )
-
-            # Validate the response against the expected format if provided
-            parsed = None
-            if expected_format:
-                try:
-                    parsed = expected_format.model_validate_json(content)
-                except Exception as e:
-                    # A bad draw, drawn again within the caller's budget. Only its count reaches the
-                    # database, and the schema the answer was constrained by should have kept it
-                    # from being written, so it is logged whole (num_predict bounds it), at a level
-                    # the batch's log keeps.
-                    logger.warning(
-                        "ollama %s response does not match %s (%s); discarded draw:\n%s",
-                        self.model_name,
-                        expected_format.__name__,
-                        e,
-                        answer,
-                    )
-                    raise LLMMalformedResponseError(
-                        provider="ollama",
-                        raw_payload=response_json,
-                        cause=e,
-                        execution_mode="local",
-                    ) from e
-
-                # Well-formed but degenerate (e.g. an empty proposals list): the permissive
-                # LLM-facing schema accepts it, the domain model would not. Raised as the RETRIABLE
-                # parse error so the SAME bounded re-sample absorbs it, instead of a fatal
-                # ValidationError escaping from llm_service outside the retry loop.
-                reason = parsed.degenerate_reason()
-                if reason is not None:
-                    logger.debug(
-                        "ollama %s response is degenerate (%s); discarded draw:\n%s",
-                        self.model_name,
-                        reason,
-                        answer,
-                    )
-                    raise LLMDegenerateResponseError(
-                        message=(
-                            f"The LLM returned a well-formed but degenerate response: {reason}."
-                        ),
-                        provider="ollama",
-                        raw_payload=response_json,
-                        execution_mode="local",
-                    )
+            # The answer is cut when it reaches the output limit (num_predict) or fills the context.
+            content, parsed = read_answer(
+                response_json.get("message", {}).get("content") or "",
+                cut=ollama_response.done_reason == "length",
+                expected_format=expected_format,
+                model=self.model_name,
+                provider="ollama",
+                raw_payload=response_json,
+                execution_mode="local",
+            )
 
             return LLMResponse(
                 text=content,

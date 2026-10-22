@@ -6,9 +6,17 @@ import re
 from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Awaitable, Callable
-from typing import Optional
+from typing import Any, Optional
+from pydantic import ValidationError
 from backend.app.models.llm_errors import (
     LLMError,
+    LLMAuthError,
+    LLMInsufficientCreditsError,
+    LLMInvalidRequestError,
+    LLMModelNotFoundError,
+    LLMProviderUnavailableError,
+    LLMRateLimitError,
+    LLMTimeoutError,
     LLMEmptyResponseError,
     LLMDegenerateResponseError,
     LLMTruncatedResponseError,
@@ -86,6 +94,107 @@ def extract_json(answer: str) -> str:
             continue
         return text[start:end]
     return text
+
+
+def error_for_status(
+    status: Optional[int], message: Optional[str] = None, **context: Any
+) -> LLMError:
+    """The taxonomy error for a provider call answered with the HTTP status ``status`` (None for a
+    failure reported without one, e.g. mid-answer); ``context`` is the error's metadata.
+
+    None of them is a refusal by the model: a model that will not play still answers, in text. An
+    error status is the provider's or the request's, so nothing here maps to ``LLMRefusalError``,
+    which the batch counts as the model's behaviour; a client whose provider says otherwise for a
+    status maps that status itself."""
+    context["http_status"] = status
+    if status == 402:
+        return LLMInsufficientCreditsError(message, **context)
+    if status == 404:
+        # The model is not pulled (ollama), or does not exist (OpenRouter).
+        return LLMModelNotFoundError(message, **context)
+    if status in (401, 403):
+        return LLMAuthError(message, **context)
+    if status == 408:
+        return LLMTimeoutError(message, **context)
+    if status == 429:
+        return LLMRateLimitError(message, **context)
+    if status is not None and 400 <= status < 500:
+        # The provider rejects what was sent (an option or a parameter the model does not support):
+        # the same request would be rejected again.
+        return LLMInvalidRequestError(message, **context)
+    # A 5xx: the provider failed (a runner that crashed or ran out of memory, a queue that is full,
+    # an upstream model that is down), and may recover. Also an error reported without a status.
+    return LLMProviderUnavailableError(message, **context)
+
+
+def read_answer(
+    answer: str,
+    *,
+    cut: bool,
+    expected_format: type[LLMFormat] | None,
+    model: str,
+    **context: Any,
+) -> tuple[str, LLMFormat | None]:
+    """A model's ``answer`` as the text to keep (its JSON, see ``extract_json``) and, with an
+    ``expected_format``, that text validated against it; or the bad draw it is, raised. ``cut``
+    says the provider stopped the answer at the output limit; ``context`` is the metadata of the
+    error raised (its provider, raw payload and execution mode).
+
+    The same checks for every provider, in this order: an empty answer
+    (``LLMEmptyResponseError``), one cut before it ended (``LLMTruncatedResponseError``), one that
+    does not match the format (``LLMMalformedResponseError``), and one that matches it but cannot
+    build a legal domain object (``LLMDegenerateResponseError``, see
+    ``LLMFormat.degenerate_reason``). Each is drawn again within the caller's budget; see
+    ``generate_with_retries``.
+    """
+    provider = context.get("provider")
+    content = extract_json(answer)
+
+    # An empty / whitespace-only draw is a stochastic non-answer, not malformed output.
+    if not content:
+        raise LLMEmptyResponseError(**context)
+
+    # The answer reached the output limit or filled the context, so its JSON is unfinished.
+    if cut:
+        logger.debug(
+            "%s %s answer cut at the output limit; discarded draw:\n%s", provider, model, answer
+        )
+        raise LLMTruncatedResponseError(**context)
+
+    if expected_format is None:
+        return content, None
+    try:
+        parsed = expected_format.model_validate_json(content)
+    except ValidationError as e:
+        # Only the count of a malformed draw reaches the database, and a schema the answer was
+        # constrained by should have kept it from being written, so it is logged whole (the output
+        # limit bounds it), at a level the batch's log keeps.
+        logger.warning(
+            "%s %s response does not match %s (%s); discarded draw:\n%s",
+            provider,
+            model,
+            expected_format.__name__,
+            e,
+            answer,
+        )
+        raise LLMMalformedResponseError(cause=e, **context) from e
+
+    # Well-formed but degenerate (e.g. an empty proposals list): the permissive LLM-facing schema
+    # accepts it, the domain model would not. A bad draw here, instead of a fatal ValidationError
+    # in llm_service, outside the retry loop.
+    reason = parsed.degenerate_reason()
+    if reason is not None:
+        logger.debug(
+            "%s %s response is degenerate (%s); discarded draw:\n%s",
+            provider,
+            model,
+            reason,
+            answer,
+        )
+        raise LLMDegenerateResponseError(
+            f"The LLM returned a well-formed but degenerate response: {reason}.", **context
+        )
+    return content, parsed
 
 
 async def generate_with_retries(

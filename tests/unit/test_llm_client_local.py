@@ -289,7 +289,7 @@ async def test_llm_client_local_malformed_answer_keeps_the_answer(llm_request_cg
         MockClient.return_value.chat.return_value = mock_response
         client = LLMClientLocal("ollama3.2:latest")
 
-        with caplog.at_level(logging.WARNING, logger="backend.app.core.llm.client_local"):
+        with caplog.at_level(logging.WARNING, logger="backend.app.core.llm.client"):
             with pytest.raises(LLMMalformedResponseError) as excinfo:
                 await client.generate(llm_request_cg, expected_format=ClueJSONFormat)
 

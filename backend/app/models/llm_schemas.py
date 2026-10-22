@@ -116,7 +116,9 @@ class LLMResponse(BaseModel):
     text: str
     # The LLM model that generated the response
     model_used: str
-    # The latency of the response in milliseconds (must be non-negative)
+    # The latency of the response in milliseconds (must be non-negative). Not comparable across
+    # providers: a local (ollama) one is the server's total_duration, which includes loading the
+    # model; an API (OpenRouter) one is the wall-clock time of the call, network included.
     latency_ms: int = Field(ge=0)
     # Optional token usage information for the request and response
     usage: Optional[TokenUsage] = None

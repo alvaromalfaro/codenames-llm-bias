@@ -122,6 +122,16 @@ class LLMAuthError(LLMError):
     default_message = "Authentication with the LLM provider failed."
 
 
+class LLMInsufficientCreditsError(LLMError):
+    """
+    The provider account has no credits left to pay for the request (HTTP 402 on OpenRouter). Not
+    retriable, as credits must be added before the request can succeed on a subsequent attempt.
+    """
+
+    code = "insufficient_credits"
+    default_message = "The LLM provider account has insufficient credits."
+
+
 class LLMParseError(LLMError):
     """
     The response from the LLM could not be parsed or understood. Raised as such only when the
