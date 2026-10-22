@@ -6,10 +6,9 @@ from json import JSONDecodeError
 import re
 from typing import Any, Literal
 import httpx
-from pydantic import BaseModel
 from backend.app import config
 from backend.app.core.llm.client import LLMClient, generate_with_retries
-from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
+from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMError,
     LLMModelNotProvidedError,
@@ -67,42 +66,6 @@ def _daemon_error(e: Exception) -> LLMError:
     # A 5xx: the daemon failed (its runner crashed or ran out of memory, or its queue is full), and
     # may recover. Also an error reported mid-answer, which has no status.
     return LLMProviderUnavailableError(**context)
-
-
-def degenerate_reason(parsed: BaseModel) -> str | None:
-    """Why this well-formed response cannot yield a legal domain object, or None if it can.
-
-    A model can return JSON that parses cleanly and still be a non-answer. Because the domain object
-    is built in ``llm_service`` outside the client's retry loop, that mismatch would otherwise
-    escape as a fatal ``ValidationError`` mid-game.
-
-    Detecting it here - against the same permissive parse - lets the existing bounded re-sample
-    absorb it. The checks intentionally mirror the domain constraints and nothing more; they never
-    relax a rule, they only decide what is worth re-sampling.
-
-    Measurement rankings are deliberately not checked: an incomplete or empty ranking is parsed
-    permissively downstream by design and must not trigger a re-sample.
-    """
-    data = parsed.model_dump()
-
-    # Guess path: GuessProposal.proposals / .confidence require at least one item, and no blank
-    # word (the schema's minLength lets a word of blanks through).
-    proposals = data.get("proposals")
-    if isinstance(proposals, list) and not proposals:
-        return "empty proposals list"
-    if isinstance(proposals, list) and any(
-        isinstance(p, dict) and not str(p.get("word") or "").strip() for p in proposals
-    ):
-        return "blank proposed word"
-
-    # Clue path: ClueProposal rejects a blank clue and requires count >= 1.
-    if "clue" in data and not str(data.get("clue") or "").strip():
-        return "blank clue"
-    count = data.get("count")
-    if isinstance(count, int) and not isinstance(count, bool) and count < 1:
-        return f"non-positive count ({count})"
-
-    return None
 
 
 class LLMClientLocal(LLMClient):
@@ -165,12 +128,12 @@ class LLMClientLocal(LLMClient):
         return self._thinking_capable
 
     async def generate(
-        self, request: LLMRequest, expected_format: type[BaseModel] | None = None
+        self, request: LLMRequest, expected_format: type[LLMFormat] | None = None
     ) -> LLMResponse:
         """Generate a response, retrying retriable errors per ``self.max_retries``.
 
-        A bad draw (empty, degenerate or cut) is drawn again with a new seed, and a transient
-        failure re-sends the same request; see ``generate_with_retries``."""
+        A bad draw (empty, degenerate, cut or malformed) is drawn again with a new seed, and a
+        transient failure re-sends the same request; see ``generate_with_retries``."""
         return await generate_with_retries(
             lambda req: self._generate_once(req, expected_format),
             request,
@@ -180,7 +143,7 @@ class LLMClientLocal(LLMClient):
         )
 
     async def _generate_once(
-        self, request: LLMRequest, expected_format: type[BaseModel] | None = None
+        self, request: LLMRequest, expected_format: type[LLMFormat] | None = None
     ) -> LLMResponse:
         messages = [
             {"role": message.role, "content": message.content} for message in request.messages
@@ -274,7 +237,7 @@ class LLMClientLocal(LLMClient):
                 # LLM-facing schema accepts it, the domain model would not. Raised as the RETRIABLE
                 # parse error so the SAME bounded re-sample absorbs it, instead of a fatal
                 # ValidationError escaping from llm_service outside the retry loop.
-                reason = degenerate_reason(parsed)
+                reason = parsed.degenerate_reason()
                 if reason is not None:
                     logger.debug(
                         "ollama %s response is degenerate (%s); discarded draw:\n%s",

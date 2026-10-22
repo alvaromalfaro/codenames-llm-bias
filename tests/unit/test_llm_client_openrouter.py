@@ -11,7 +11,7 @@ from backend.app.models.llm_errors import (
     LLMMalformedResponseError,
     LLMTimeoutError,
 )
-from backend.app.models.llm_schemas import LLMResponse, ClueJSONFormat
+from backend.app.models.llm_schemas import LLMResponse, ClueJSONFormat, GuessJSONFormat
 
 
 def _timeout_error() -> APITimeoutError:
@@ -178,6 +178,33 @@ async def test_openrouter_draws_a_malformed_answer_again_and_counts_it(llm_reque
         result = await client.generate(request, expected_format=ClueJSONFormat)
 
     assert result.raw_payload["malformed_response_resamples"] == 1
+    seeds = [call.kwargs["seed"] for call in mock_create.call_args_list]
+    assert seeds == [321, client_module.redraw_seed(321, 1) & 0x7FFFFFFF]
+
+
+@pytest.mark.asyncio
+async def test_openrouter_draws_a_degenerate_answer_again_and_counts_it(llm_request_cg):
+    """A well-formed answer that cannot build a domain object (an empty proposals list) is a bad
+    draw, as from the local client: drawn again with the next derived seed and counted on the
+    answer kept, instead of failing in the service, outside the retry loop."""
+    request = llm_request_cg.model_copy(update={"seed": 321})
+    degenerate, usable = _mock_openai_response(), _mock_openai_response()
+    degenerate.choices[0].message.content = json.dumps(
+        {"reasoning": "r", "stop_reason": "done", "proposals": []}
+    )
+    usable.choices[0].message.content = json.dumps(
+        {"reasoning": "r", "stop_reason": "done", "proposals": [{"word": "apple", "confidence": 1}]}
+    )
+
+    with patch("backend.app.core.llm.client_openrouter.AsyncOpenAI") as MockOpenAI:
+        mock_create = AsyncMock(side_effect=[degenerate, usable])
+        MockOpenAI.return_value.chat.completions.create = mock_create
+        client = LLMClientOpenRouter("openrouter/some-model", max_retries=2)
+
+        result = await client.generate(request, expected_format=GuessJSONFormat)
+
+    assert [p.word for p in result.parsed.proposals] == ["apple"]
+    assert result.raw_payload["degenerate_response_resamples"] == 1
     seeds = [call.kwargs["seed"] for call in mock_create.call_args_list]
     assert seeds == [321, client_module.redraw_seed(321, 1) & 0x7FFFFFFF]
 

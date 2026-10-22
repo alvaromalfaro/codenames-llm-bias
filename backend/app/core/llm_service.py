@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, TypeVar
 
-from pydantic import BaseModel
 from backend.app import config
 from backend.app.paths import PROMPT_TEMPLATES_DIR
 from backend.app.core.llm.client import LLMClient
@@ -19,6 +18,7 @@ from backend.app.models.llm_schemas import (
     ClueJSONFormat,
     GuessJSONFormat,
     ConfidenceRankingJSONFormat,
+    LLMFormat,
 )
 from backend.app.models.game_schemas import (
     ClueEntry,
@@ -83,7 +83,7 @@ def load_templates(directory: Path | None = None) -> dict[str, str]:
 # (Ollama constrains the decoding with it, OpenRouter passes it on), so it is part of what the model
 # is asked, and the template fingerprint covers it. pydantic puts each format's docstring in the
 # schema as its description, so editing one changes the fingerprint too.
-RESPONSE_FORMATS: dict[str, type[BaseModel]] = {
+RESPONSE_FORMATS: dict[str, type[LLMFormat]] = {
     "clue": ClueJSONFormat,
     "guess": GuessJSONFormat,
     "measurement": ConfidenceRankingJSONFormat,
@@ -124,7 +124,7 @@ class GuesserView:
         return "\n".join(f"- {word}" for word in self.words)
 
 
-_Format = TypeVar("_Format", bound=BaseModel)
+_Format = TypeVar("_Format", bound=LLMFormat)
 
 
 def _answer(response: LLMResponse, fmt: type[_Format]) -> _Format:

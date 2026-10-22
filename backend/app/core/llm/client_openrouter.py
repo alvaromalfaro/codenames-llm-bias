@@ -1,7 +1,6 @@
 import logging
 import os
 import time
-from pydantic import BaseModel
 from typing import cast
 
 from openai import (
@@ -14,7 +13,7 @@ from openai import (
 from openai.types.chat import ChatCompletionMessageParam
 from openai.types.chat.completion_create_params import ResponseFormat
 from backend.app.core.llm.client import LLMClient, generate_with_retries
-from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
+from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, TokenUsage
 from backend.app.models.llm_errors import (
     LLMAuthError,
     LLMRateLimitError,
@@ -22,6 +21,7 @@ from backend.app.models.llm_errors import (
     LLMProviderUnavailableError,
     LLMTruncatedResponseError,
     LLMMalformedResponseError,
+    LLMDegenerateResponseError,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,12 +41,12 @@ class LLMClientOpenRouter(LLMClient):
         )
 
     async def generate(
-        self, request: LLMRequest, expected_format: type[BaseModel] | None = None
+        self, request: LLMRequest, expected_format: type[LLMFormat] | None = None
     ) -> LLMResponse:
         """Generate a response, retrying retriable errors per ``self.max_retries``.
 
-        A cut or malformed answer is drawn again with a new seed, and a transient failure re-sends
-        the same request; see ``generate_with_retries``."""
+        A cut, malformed or degenerate answer is drawn again with a new seed, and a transient
+        failure re-sends the same request; see ``generate_with_retries``."""
         return await generate_with_retries(
             lambda req: self._generate_once(req, expected_format),
             request,
@@ -56,7 +56,7 @@ class LLMClientOpenRouter(LLMClient):
         )
 
     async def _generate_once(
-        self, request: LLMRequest, expected_format: type[BaseModel] | None = None
+        self, request: LLMRequest, expected_format: type[LLMFormat] | None = None
     ) -> LLMResponse:
         # LLMMessage.role is one of the roles the API takes (system, user, assistant).
         messages = [
@@ -130,6 +130,26 @@ class LLMClientOpenRouter(LLMClient):
                         cause=e,
                         execution_mode="api",
                     ) from e
+
+                # Well-formed but degenerate (e.g. an empty proposals list): a bad draw, drawn again
+                # within the caller's budget instead of failing in llm_service, outside the retry
+                # loop (see LLMFormat.degenerate_reason).
+                reason = parsed.degenerate_reason()
+                if reason is not None:
+                    logger.debug(
+                        "openrouter %s response is degenerate (%s); discarded draw:\n%s",
+                        self.model_name,
+                        reason,
+                        content,
+                    )
+                    raise LLMDegenerateResponseError(
+                        message=(
+                            f"The LLM returned a well-formed but degenerate response: {reason}."
+                        ),
+                        provider="openrouter",
+                        raw_payload=response.model_dump(),
+                        execution_mode="api",
+                    )
 
             usage = response.usage
             raw_payload = response.model_dump()

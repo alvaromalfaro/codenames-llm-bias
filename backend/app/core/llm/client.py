@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Awaitable, Callable
 from typing import Optional
-from pydantic import BaseModel
 from backend.app.models.llm_errors import (
     LLMError,
     LLMEmptyResponseError,
@@ -13,7 +12,7 @@ from backend.app.models.llm_errors import (
     LLMTruncatedResponseError,
     LLMMalformedResponseError,
 )
-from backend.app.models.llm_schemas import LLMRequest, LLMResponse
+from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +139,7 @@ class LLMClient(ABC):
 
     @abstractmethod
     async def generate(
-        self, request: LLMRequest, expected_format: type[BaseModel] | None = None
+        self, request: LLMRequest, expected_format: type[LLMFormat] | None = None
     ) -> LLMResponse:
         """
         Abstract method to generate a response from the LLM based on the given request. This method

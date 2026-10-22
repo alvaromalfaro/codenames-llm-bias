@@ -272,7 +272,33 @@ class GuessProposal(BaseModel):
         return self
 
 
-class ClueJSONFormat(BaseModel):
+class LLMFormat(BaseModel):
+    """
+    The base of the formats an LLM is asked to answer in (a request's ``expected_format``): the
+    client validates the answer against its format, then asks the answer whether it is usable
+    (``degenerate_reason``).
+
+    It adds no field, so a format's schema is the same as without it. A format's own docstring is
+    its schema's description, which the provider is sent and the run's fingerprint hashes: what
+    concerns only the code goes in comments and in the docstrings of its methods.
+    """
+
+    def degenerate_reason(self) -> str | None:
+        """Why this well-formed answer cannot yield a legal domain object, or None if it can.
+
+        A model can return JSON that matches the (deliberately permissive) format and still be a
+        non-answer. The domain object is built in ``llm_service``, outside the client's retry loop,
+        so that mismatch would otherwise escape as a fatal ``ValidationError`` mid-game. Checked by
+        the client, it is a bad draw instead (``LLMDegenerateResponseError``), which the bounded
+        re-sample absorbs. The checks mirror the domain constraints and nothing more: they never
+        relax a rule, they only decide what is worth drawing again.
+
+        A format whose every well-formed answer is usable keeps this default.
+        """
+        return None
+
+
+class ClueJSONFormat(LLMFormat):
     """
     A model for the expected JSON format of a clue proposal from the LLM. It includes the reasoning
     for the clue, the clue text itself, and the count of how many words are associated with the
@@ -296,6 +322,14 @@ class ClueJSONFormat(BaseModel):
     clue: str
     count: int
     targets: list[str] = []
+
+    def degenerate_reason(self) -> str | None:
+        # ClueProposal rejects a blank clue and requires count >= 1.
+        if not self.clue.strip():
+            return "blank clue"
+        if self.count < 1:
+            return f"non-positive count ({self.count})"
+        return None
 
 
 class ProposalFormat(BaseModel):
@@ -323,7 +357,7 @@ class ProposalFormat(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
-class GuessJSONFormat(BaseModel):
+class GuessJSONFormat(LLMFormat):
     """
     A model for the expected JSON format of a guess proposal from the LLM. It includes the reasoning
     for the guess, the reason why the LLM stopped generating guesses, and a list of proposals.
@@ -341,6 +375,15 @@ class GuessJSONFormat(BaseModel):
     reasoning: str
     stop_reason: str
     proposals: list[ProposalFormat]
+
+    def degenerate_reason(self) -> str | None:
+        # GuessProposal.proposals / .confidence require at least one item, and no blank word (the
+        # schema's minLength lets a word of blanks through).
+        if not self.proposals:
+            return "empty proposals list"
+        if any(not p.word.strip() for p in self.proposals):
+            return "blank proposed word"
+        return None
 
 
 class RankingFormat(BaseModel):
@@ -362,7 +405,7 @@ class RankingFormat(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
 
 
-class ConfidenceRankingJSONFormat(BaseModel):
+class ConfidenceRankingJSONFormat(LLMFormat):
     """
     A model for the expected JSON format of a confidence-ranking measurement response from the LLM.
     This is the out-of-band measurement analogue of ``GuessJSONFormat``: instead of the truncated
@@ -374,5 +417,7 @@ class ConfidenceRankingJSONFormat(BaseModel):
             omits some cards is parsed permissively downstream, never rejected here).
     """
 
+    # Never degenerate (LLMFormat's default): an incomplete or empty ranking is parsed permissively
+    # downstream by design, and must not trigger a re-sample.
     reasoning: str
     rankings: list[RankingFormat]
