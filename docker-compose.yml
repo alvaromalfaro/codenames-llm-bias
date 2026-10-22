@@ -32,7 +32,10 @@ services:
     ports:
       - "127.0.0.1:11434:11434"
     volumes:
-      - ./docker_volumes/ollama_data:/root/.ollama
+      # The models in a named volume, on the Docker VM's own disk: Ollama reloads a model at every
+      # turn when the two of a pairing do not fit in VRAM together, and from a Windows folder
+      # (bind-mounted through 9p, ~200 MB/s, no page cache) each reload took 25-90 s.
+      - ollama_models:/root/.ollama
       - ./ollama_entrypoint.sh:/ollama_entrypoint.sh:ro
       - ./backend/app/config.py:/llm_models.py:ro
 
@@ -57,3 +60,7 @@ services:
     depends_on:
       - db
       - ollama
+
+volumes:
+  # Ollama's model store (see the ollama service). `docker compose down -v` deletes it.
+  ollama_models:

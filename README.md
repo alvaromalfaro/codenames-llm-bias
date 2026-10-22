@@ -129,7 +129,8 @@ codenames-llm-bias/
 * **Python 3.12** on the host for the batch and analysis CLIs, the one the `app` image runs
   (`.python-version` names the exact release, 3.12.13). [`uv`](https://docs.astral.sh/uv/) installs
   it and the dependencies at the versions of `uv.lock`, which the image installs too.
-* Disk: the four default models are ~35 GB of weights under `docker_volumes/ollama_data/`.
+* Disk: the four default models are ~49 GB in the `ollama_models` Docker volume: ~35 GB as pulled,
+  plus the variant Ollama 0.40 converts `mistral-small3.2` into the first time it loads it.
 * An **OpenRouter API key** only if you enable API-hosted seats (the shipped roster is all-local). Each OpenRouter model in `config.llm_models` must name the provider that serves it (and may name its quantization); the batch refuses to start on one that does not.
 
 ---
@@ -166,7 +167,7 @@ experiment with [the batch](#running-the-batch-unattended).
 | Service | Container | Port | Notes |
 |---|---|---|---|
 | `db` | `codenames-db` | 5432 | `pgvector/pgvector:0.8.7-pg15-bookworm`. Data in `./docker_volumes/postgres_data` (root-owned, gitignored). |
-| `ollama` | `codenames-ollama` | 11434 | `ollama/ollama:0.40.2`, the version the pinned digests were validated with. Runs `ollama_entrypoint.sh`, which reads the keys of `llm_models["Ollama"]` from the bind-mounted `backend/app/config.py` and `ollama pull`s each one that is not installed. **The Ollama roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. CPU unless `docker-compose.gpu.yml` is included. |
+| `ollama` | `codenames-ollama` | 11434 | `ollama/ollama:0.40.2`, the version the pinned digests were validated with. Runs `ollama_entrypoint.sh`, which reads the keys of `llm_models["Ollama"]` from the bind-mounted `backend/app/config.py` and `ollama pull`s each one that is not installed. **The Ollama roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. The models live in the `ollama_models` named volume, which `docker compose down -v` deletes. CPU unless `docker-compose.gpu.yml` is included. |
 | `app` | `codenames-backend` | — | The Python environment, over the repo bind-mounted at `/workspace`. It serves nothing and stays up so that the migrations, the batch and the scripts can run in it (`docker compose exec app …`). Reads `.env`. |
 
 **Pinned images.** Both images are pinned, so a `docker compose pull` cannot change Ollama or
@@ -232,6 +233,24 @@ portable). Only the first step differs:
 Copy-Item .env.example .env
 notepad .env
 ```
+
+**The models live in a named volume, not in a Windows folder.** In a game the model changes once
+per turn, and when the two models of a pairing do not fit in VRAM together, Ollama reloads one at
+every change (see [GPU memory](#gpu-memory-and-model-reloads)). From a Windows folder, which Docker
+Desktop mounts through 9p at ~200 MB/s and without page cache, each reload took 25-90 s; from the
+`ollama_models` volume, on the Docker VM's own disk and in its page cache, 3-7 s.
+A store pulled into the old `docker_volumes/ollama_data` folder is copied into the volume once, with
+the `ollama` container stopped. Copying keeps the digests: pulling again could serve another
+`mistral-small3.2` variant than the one `config.EXPECTED_LOCAL_DIGESTS` pins.
+
+```powershell
+docker compose stop ollama
+docker compose run --rm --no-deps --entrypoint sh `
+  -v "${PWD}\docker_volumes\ollama_data:/src:ro" ollama -c "cp -a /src/. /root/.ollama/"
+docker compose up -d ollama
+```
+
+The folder can be deleted afterwards, unless a [native Ollama](#test-games-with-a-full-log) reads it.
 
 > **Paths after `docker compose exec` are container paths** — write them with `/`, never `\`.
 > PowerShell's tab completion produces `.\backend\alembic.ini`, which inside the Linux container is a
@@ -429,6 +448,26 @@ The batch is a long, sequential, GPU-bound job: 192 games, each many model calls
 out-of-band measurement call per guessing turn. On four local models expect **many hours**. Run it
 detached and let the preconditions protect you.
 
+### GPU memory and model reloads
+
+In a game the model changes once per turn: the guesser of a turn gives the next clue. When the two
+models of a pairing do not fit in VRAM together, Ollama unloads one to load the other at every
+change. Measured on an RTX 5080 (16 GB, ~1.2 GB taken by the Windows desktop) with Ollama 0.40.2 and
+`OLLAMA_NUM_CTX` = 8192:
+
+| Model | Loaded size | On the GPU |
+|---|---|---|
+| `llama3.1:8b` | 5.9 GB | all |
+| `gemma4:12b` | 8.4 GB | all |
+| `qwen2.5:14b` | 10.4 GB | all |
+| `mistral-small3.2:24b` | 16.1 GB | 13.7 GB; the rest runs on the CPU |
+
+Only `llama3.1:8b` + `gemma4:12b` stay loaded together; the other five pairings reload a model at
+every turn. Raising `OLLAMA_MAX_LOADED_MODELS` or `keep_alive` changes nothing here: Ollama already
+keeps up to three models, and the memory is the limit. What a reload costs is the read of the model
+from disk, which is why the models live in a named volume (see [Running on
+Windows](#running-on-windows)). `llm_call.load_ms` records each call's load: well above 0, a reload.
+
 ### 1. Pre-flight
 
 ```sh
@@ -619,7 +658,10 @@ broke an invariant. `--master-seed` replays a run; the default seed comes from t
 logged.
 
 **Ollama without Docker.** A native Ollama can serve the models that the `ollama` container already
-pulled, without downloading them again. On Windows, after quitting the tray app:
+pulled, without downloading them again, from a Windows folder: the `docker_volumes/ollama_data` the
+container kept them in before they moved to a volume, or a copy of the volume
+(`docker compose cp ollama:/root/.ollama/models docker_volumes/ollama_data/`). On Windows, after
+quitting the tray app:
 
 ```powershell
 $env:OLLAMA_MODELS = (Resolve-Path docker_volumes\ollama_data\models).Path
