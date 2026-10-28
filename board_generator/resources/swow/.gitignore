@@ -1,0 +1,4 @@
+# SWOW-EN18 cannot be redistributed: everything here stays local except the README.
+*
+!.gitignore
+!README.md

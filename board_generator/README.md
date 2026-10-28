@@ -197,6 +197,7 @@ board_generator/
     neutral.py                read-only denotational-gender candidate enumerator (curation aid)
     load_filter.py            gender-axis load / sign filtering diagnostics
     axis_diagnostics.py       axis diagnostics support
+    external_resources.py     external data pinned by SHA-256 (verify before reading)
   resources/                  tool INPUTS
     words/                    gender_career.csv, gender_science.csv, neutral.csv
     attribute_words/          gender_attributes.csv (WEAT attribute words)
@@ -204,6 +205,9 @@ board_generator/
     frequencies/              subtlex_us.csv (+ SUBTLEX-US-raw.xlsx) — lexical frequency
     neutral_pool/             duet.txt, neutral_candidates.csv (+ .provenance.json)
     dilemmas/                 verified dilemma artifacts (created on first `dilemma` run)
+    glasgow/                  Glasgow Norms (gender load and covariates; CC BY 4.0, see its README)
+    swow/                     SWOW-EN18 for coverability; NOT versioned, downloaded by hand (README)
+    status/                   SIOPS-08 occupational status: source only, values live in the lexicon
   scripts/                    offline reports: balance, load filter, neutral candidates/audit, ...
   tests/                      one test per invariant (offline; `-m integration` for HF-backed)
 

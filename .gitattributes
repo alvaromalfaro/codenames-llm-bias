@@ -2,3 +2,6 @@
 # Windows checkout with core.autocrlf=true (a CRLF shell script breaks bash).
 *.sh        text eol=lf
 Dockerfile  text eol=lf
+
+# External data checked by its SHA-256: stored and checked out byte for byte (CRLF included).
+board_generator/resources/glasgow/glasgow_norms.csv  -text
