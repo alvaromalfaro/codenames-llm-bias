@@ -5,3 +5,5 @@
 a1d72c4d088b40ea6730eacd7d901fb53a249771
 # Wrap every line at 100 columns, and check it (E501)
 eac5b3809c6d3faf1f271744bf1756f8a7809d6d
+# Format board_generator with ruff format
+9c8e9f621af2eba9123a7ccbe9719e7a13ed4f7e
