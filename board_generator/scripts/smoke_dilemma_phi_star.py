@@ -122,7 +122,7 @@ def main() -> int:
     same_cos = all(
         a.cos_target_neutral == b.cos_target_neutral
         and a.cos_target_stereo == b.cos_target_stereo
-        for a, b in zip(rev.arbiter_scores, record.accepted.arbiter_scores)
+        for a, b in zip(rev.arbiter_scores, record.accepted.arbiter_scores, strict=True)
     )
     print(
         f"   reverify consensus_ok matches: {ok}   per-arbiter cosines identical: {same_cos}")

@@ -326,9 +326,10 @@ def _attribute_counts_by_pole(attributes: list[AttributeWord]) -> dict[str, int]
 def _loaded_counts_by_pole(words: list[Word]) -> dict[str, int]:
     """Per-pole counts of the LOADED reference words (``specification is not None``).
 
-    A pure label count over each ``Word.gender_category``, without embedding or re-encoding. These are
-    the majority of the μ̄ reference population and the reason μ̄  sits off the axis; neutral-labelled
-    loaded words (if any) are counted under ``neutral`` so the breakdown stays exhaustive.
+    A pure label count over each ``Word.gender_category``, without embedding or re-encoding. These
+    are the majority of the μ̄ reference population and the reason μ̄  sits off the axis;
+    neutral-labelled loaded words (if any) are counted under ``neutral`` so the breakdown stays
+    exhaustive.
     """
     counts = {"male": 0, "female": 0, "neutral": 0}
     for word in words:

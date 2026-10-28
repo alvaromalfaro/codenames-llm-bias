@@ -897,9 +897,9 @@ mypy                         # types of backend/ and scripts/
 
 CI (`.github/workflows/ci.yml`) runs the same on every push and pull request: ruff (lint and
 `format --check`), mypy, the whole suite (the database tests on the throwaway Postgres) and the
-batch's `--dry-run`. The commits that only reformatted are listed in `.git-blame-ignore-revs`, which
-GitHub's blame skips; `git config blame.ignoreRevsFile .git-blame-ignore-revs` makes yours skip them
-too.
+batch's `--dry-run`; a second job checks `board_generator/` with its own lock. The commits that only
+reformatted are listed in `.git-blame-ignore-revs`, which GitHub's blame skips; `git config
+blame.ignoreRevsFile .git-blame-ignore-revs` makes yours skip them too.
 
 Two kinds of test guard the game itself:
 
@@ -971,8 +971,9 @@ The run's `model_registry_snapshot` records them with each local model.
 **Devcontainer**: `.devcontainer/devcontainer.json` attaches VS Code to the Compose `app` service,
 as `appuser`, in the bind-mounted repo at `/workspace` (not `/app`, the copy baked into the image).
 
-**`board_generator` has its own toolchain** — `uv run pytest`, `uv run ruff check .`, `uv run mypy`
-from inside `board_generator/`. See its README.
+**`board_generator` has its own toolchain** — its own `uv.lock` and `.python-version`; `uv run
+pytest`, `uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy` from inside
+`board_generator/`. See its README.
 
 ---
 

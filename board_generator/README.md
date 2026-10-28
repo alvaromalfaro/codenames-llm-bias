@@ -42,20 +42,27 @@ The CLI (`board-generator`) has two subcommands of opposite natures:
 
 ## Setup
 
-Run everything from inside `board_generator/` (requires Python ≥ 3.12; [uv](https://docs.astral.sh/uv/) recommended):
+Run everything from inside `board_generator/`, with [uv](https://docs.astral.sh/uv/). The project
+has its own lock: `uv.lock` pins every dependency, on the Python of `.python-version` (3.12.13, the
+platform's). The embedding stack (sentence-transformers 5.5.1, transformers, tokenizers, torch,
+huggingface-hub, safetensors) is pinned to the versions of the platform's lock, so that a vector
+encoded here and one encoded by the platform's embedding backfill come from the same code; change
+them together. On Linux, torch comes from PyTorch's CPU index.
 
 ```sh
-uv sync                                    # install runtime + dev deps (creates the venv)
+uv sync --frozen                           # install runtime + dev deps at the versions of uv.lock
 uv run python -m nltk.downloader wordnet   # one-time: WordNet corpus (polysemy covariate)
 
 uv run pytest                              # offline test suite (skips integration by default)
 uv run pytest -m integration               # integration tests (download a real HF model)
 
 uv run ruff check .                        # lint
+uv run ruff format --check .               # format
 uv run mypy                                # type-check
 ```
 
-`uv run ruff check .` and `uv run mypy` are the gates. (`ruff format --check` is not run as a gate.)
+The CI (`.github/workflows/ci.yml`, job `board-generator`) runs lint, format, types and the offline
+suite on every push and pull request, with no access to Hugging Face.
 
 ## End-to-end workflow
 

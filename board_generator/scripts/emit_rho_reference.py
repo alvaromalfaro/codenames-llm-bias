@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Emit the frozen per-word ρ reference fixture for one reference board.
 
-One-time, standalone emitter (run manually). It reads the already re-emitted measurement-frame 
-sidecar (`data/boards/measurement_frame.json`), and for the chosen reference board computes rho_raw /
-rho_cent / rho_weat per card through the real primary φ* (raw path only, never _CenteringEncoder /
+One-time, standalone emitter (run manually). It reads the already re-emitted measurement-frame
+sidecar (`data/boards/measurement_frame.json`), and for the chosen reference board computes rho_raw
+/ rho_cent / rho_weat per card through the real primary φ* (raw path only, never _CenteringEncoder /
 axis_diagnostics). The fixture is keyed by the sidecar's frame_id and written under
 `board_generator/tests/fixtures/`.
 
-The axis and μ̄  rebuilt here from the raw φ* are asserted equal (bit-for-bit) to the vectors 
+The axis and μ̄  rebuilt here from the raw φ* are asserted equal (bit-for-bit) to the vectors
 serialized in the sidecar, so the fixture is computed on the frame's own geometry and its single μ̄.
 
 Usage:

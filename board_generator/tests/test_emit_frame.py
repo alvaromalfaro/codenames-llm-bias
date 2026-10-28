@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -225,7 +226,9 @@ _CLS_POOLING = {"pooling_mode_cls_token": True}
 _ST = "sentence_transformers.models"
 
 
-def _write_snapshot(tmp_path, *, include_normalize: bool, pooling_flags: dict) -> None:
+def _write_snapshot(
+    tmp_path: Path, *, include_normalize: bool, pooling_flags: dict[str, bool]
+) -> None:
     modules = [
         {"idx": 0, "name": "0", "path": "", "type": f"{_ST}.Transformer"},
         {"idx": 1, "name": "1", "path": "1_Pooling", "type": f"{_ST}.Pooling"},
@@ -246,7 +249,7 @@ def _write_snapshot(tmp_path, *, include_normalize: bool, pooling_flags: dict) -
     (pooling_dir / "config.json").write_text(json.dumps(base_flags), encoding="utf-8")
 
 
-def test_recipe_reads_normalize_true_and_mean_pooling(tmp_path) -> None:
+def test_recipe_reads_normalize_true_and_mean_pooling(tmp_path: Path) -> None:
     _write_snapshot(tmp_path, include_normalize=True,
                     pooling_flags=_MEAN_POOLING)
     recipe = recipe_from_snapshot_dir(tmp_path, model_id="m", revision="r")
@@ -254,7 +257,7 @@ def test_recipe_reads_normalize_true_and_mean_pooling(tmp_path) -> None:
                       "pooling": "mean", "normalize": True}
 
 
-def test_recipe_records_normalize_false_when_module_absent(tmp_path) -> None:
+def test_recipe_records_normalize_false_when_module_absent(tmp_path: Path) -> None:
     """Drop the Normalize module -> the emitter records normalize=false."""
     _write_snapshot(tmp_path, include_normalize=False,
                     pooling_flags=_MEAN_POOLING)
@@ -262,7 +265,7 @@ def test_recipe_records_normalize_false_when_module_absent(tmp_path) -> None:
     assert recipe["normalize"] is False
 
 
-def test_recipe_pooling_reflects_config(tmp_path) -> None:
+def test_recipe_pooling_reflects_config(tmp_path: Path) -> None:
     """A cls-pooling config -> the emitter records pooling='cls', not 'mean'."""
     _write_snapshot(tmp_path, include_normalize=True,
                     pooling_flags=_CLS_POOLING)
@@ -270,13 +273,15 @@ def test_recipe_pooling_reflects_config(tmp_path) -> None:
     assert recipe["pooling"] == "cls"
 
 
-def test_recipe_raises_when_no_active_pooling_flag(tmp_path) -> None:
+def test_recipe_raises_when_no_active_pooling_flag(tmp_path: Path) -> None:
     _write_snapshot(tmp_path, include_normalize=True, pooling_flags={})
     with pytest.raises(FrameSnapshotError):
         recipe_from_snapshot_dir(tmp_path, model_id="m", revision="r")
 
 
-def test_read_encoder_recipe_resolves_via_cache(tmp_path, monkeypatch) -> None:
+def test_read_encoder_recipe_resolves_via_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _write_snapshot(tmp_path, include_normalize=True,
                     pooling_flags=_MEAN_POOLING)
     monkeypatch.setattr(
@@ -288,7 +293,7 @@ def test_read_encoder_recipe_resolves_via_cache(tmp_path, monkeypatch) -> None:
     assert recipe["normalize"] is True
 
 
-def test_read_encoder_recipe_raises_when_not_cached(monkeypatch) -> None:
+def test_read_encoder_recipe_raises_when_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "board_generator.emit_frame.try_to_load_from_cache", lambda *a, **k: None
     )

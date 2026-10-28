@@ -1,10 +1,10 @@
 # pyproject.toml - board_generator
 #
-# Self-contained tool that generates the fixed bank of T=30 Codenames Duet boards. Isolated from the 
+# Self-contained tool that generates the fixed bank of Codenames Duet boards. Isolated from the
 # platform: no platform deps here, no shared "common" code.
 #
-# Recommended workflow: uv (https://docs.astral.sh/uv/). `uv sync` installs runtime + dev.
-# pip alternative: `pip install -e .` then install the dev tools separately.
+# Workflow: uv (https://docs.astral.sh/uv/). `uv sync --frozen` installs runtime + dev at the
+# versions of uv.lock, on the Python of .python-version.
 
 [build-system]
 requires = ["hatchling"]
@@ -15,7 +15,7 @@ name = "board-generator"
 version = "0.1.0"
 description = "Fixed-bank Codenames Duet board generator for measuring gender bias in LLMs"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = "==3.12.*"
 authors = [{ name = "Álvaro Martínez Alfaro" }]
 license = "MIT"
 
@@ -31,8 +31,11 @@ dependencies = [
     "statsmodels>=0.14",      # TOST equivalence test (ttost_ind)
 
     # --- External arbiter encoder for cosine / Eq. 4.1 ---
-    # Pulls torch + transformers. MUST stay independent from the evaluated models.
-    "sentence-transformers>=3.0",
+    # Pulls torch + transformers. MUST stay independent from the evaluated models. The same version
+    # as the platform's `embeddings` extra, with the rest of the stack pinned below, so that the
+    # phi* vectors of both projects are comparable.
+    "sentence-transformers==5.5.1",
+    "huggingface-hub>=1.0",   # emit_frame reads the pinned snapshot from the local HF cache
 
     # --- Polysemy covariate = number of WordNet synsets ---
     "nltk>=3.9",
@@ -50,6 +53,29 @@ dev = [
     "mypy>=1.11",
     "pandas-stubs",           # typing for pandas under mypy
 ]
+
+[tool.uv]
+# The embedding stack at the versions of the platform's uv.lock (its `embeddings` extra), so that
+# a vector encoded here and one encoded by scripts/backfill_embeddings.py come from the same code.
+# Change them together with the platform's lock.
+constraint-dependencies = [
+    "transformers==5.19.0",
+    "tokenizers==0.23.2",
+    "torch==2.14.1",
+    "huggingface-hub==1.33.0",
+    "safetensors==0.8.0",
+]
+
+# On Linux (CI, devcontainer) torch comes from PyTorch's CPU index: PyPI's Linux wheel pulls the
+# CUDA libraries, several GB the generator never uses. Windows and macOS wheels on PyPI are CPU
+# builds already.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 # Packaging: the import package is ./board_generator/
 # i.e. board_generator/board_generator/*.py - outer dir is the project, inner is the package.

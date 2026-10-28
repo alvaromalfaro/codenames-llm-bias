@@ -30,6 +30,7 @@ from board_generator.lexicon import _check_playability, load_words
 from board_generator.neutral import (
     EXCLUDED_BY_ALREADY_LOADED,
     EXCLUDED_BY_DENOTATIONAL,
+    Exclusion,
     NeutralCandidatesResult,
     build_neutral_candidates,
     candidates_csv_text,
@@ -129,7 +130,7 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _exclusion(result: NeutralCandidatesResult, token: str) -> object:
+def _exclusion(result: NeutralCandidatesResult, token: str) -> Exclusion:
     matches = [e for e in result.exclusions if e.token == token]
     assert len(matches) == 1, (token, result.exclusions)
     return matches[0]
@@ -145,11 +146,10 @@ def test_g1_stoplist_token_absent_from_candidates(env: dict[str, Path]) -> None:
 def test_g1_stoplist_exclusion_reason_and_detail_is_file_hash(env: dict[str, Path]) -> None:
     result = _build(env)
     mother = _exclusion(result, "mother")
-    # type: ignore[attr-defined]
     assert mother.excluded_by == EXCLUDED_BY_DENOTATIONAL
     # detail is the sha256 of the stoplist file: recompute independently and compare.
     assert mother.detail == _sha256(
-        env["stoplist"])  # type: ignore[attr-defined]
+        env["stoplist"])
 
 
 def test_g1_normalized_match_is_case_insensitive(tmp_path: Path) -> None:
@@ -161,7 +161,6 @@ def test_g1_normalized_match_is_case_insensitive(tmp_path: Path) -> None:
     )
     result = _build(env)
     assert "apple" not in _candidate_texts(result)
-    # type: ignore[attr-defined]
     assert _exclusion(result, "apple").excluded_by == EXCLUDED_BY_DENOTATIONAL
 
 
@@ -173,14 +172,10 @@ def test_g2_loaded_tokens_absent_with_spec_detail(env: dict[str, Path]) -> None:
     texts = _candidate_texts(result)
     assert "executive" not in texts
     assert "math" not in texts
-    # type: ignore[attr-defined]
     assert _exclusion(
         result, "executive").excluded_by == EXCLUDED_BY_ALREADY_LOADED
-    # type: ignore[attr-defined]
     assert _exclusion(result, "executive").detail == "gender-career"
-    # type: ignore[attr-defined]
     assert _exclusion(result, "math").excluded_by == EXCLUDED_BY_ALREADY_LOADED
-    # type: ignore[attr-defined]
     assert _exclusion(result, "math").detail == "gender-science"
 
 

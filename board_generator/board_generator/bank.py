@@ -145,7 +145,13 @@ def build_bank(
         seed = derive_board_seed(manifest.master_seed, board_id)
         try:
             words_25 = compose_probe_words(
-                record, matched[spec], neutral_pool, idx, loaded_index, rng=Random(pool_seed), n_pairs=n_pairs,
+                record,
+                matched[spec],
+                neutral_pool,
+                idx,
+                loaded_index,
+                rng=Random(pool_seed),
+                n_pairs=n_pairs,
             )
             board = assemble_board(
                 board_id, "probe", spec, seed, words_25, DEFAULT_CONSENSUS, record.accepted

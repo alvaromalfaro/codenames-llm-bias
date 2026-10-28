@@ -2,7 +2,7 @@
 """Emit the versioned measurement-frame sidecar to data/boards/measurement_frame.json.
 
 One-time, standalone emitter (run manually); not part of the generator runtime and not wired into
-the `board-generator` CLI. Itt extends the generator's output contract (a new sidecar) without 
+the `board-generator` CLI. Itt extends the generator's output contract (a new sidecar) without
 changing generation logic.
 
 Like the load-filter / sign-filter diagnostics it needs Hugging Face: it loads the real primary
@@ -12,8 +12,8 @@ recipe. The gender axis e_gen and centering mean μ̄  are rebuilt with the same
 generation uses (build_gender_axis / build_mu_bar), then serialized losslessly (float64 big-endian
 hex) and content-hashed into `frame_id`.
 
-Re-running with the same φ* and reference set writes the same `frame_id` (the wall-clock `created_at` 
-and the diagnostic floats sit outside the hashed content subtree).
+Re-running with the same φ* and reference set writes the same `frame_id` (the wall-clock
+`created_at` and the diagnostic floats sit outside the hashed content subtree).
 
 Usage:
     uv run python scripts/emit_frame.py
