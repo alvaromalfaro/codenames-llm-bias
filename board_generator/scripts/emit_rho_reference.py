@@ -44,8 +44,7 @@ def _primary_arbiter() -> Arbiter:
     for arbiter in arbiters:
         if arbiter.ref == DEFAULT_CONSENSUS.primary:
             return arbiter
-    raise RuntimeError(
-        "primary φ* not found in the loaded consensus (should be unreachable)")
+    raise RuntimeError("primary φ* not found in the loaded consensus (should be unreachable)")
 
 
 def emit_rho_reference(
@@ -59,8 +58,7 @@ def emit_rho_reference(
     sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
     frame_id = sidecar["frame_id"]
     encoder = sidecar["encoder"]
-    sidecar_axis = decode_f64_be_hex(
-        sidecar["gender_axis"]["vector_f64_be_hex"])
+    sidecar_axis = decode_f64_be_hex(sidecar["gender_axis"]["vector_f64_be_hex"])
     sidecar_mu_bar = decode_f64_be_hex(sidecar["mu_bar"]["vector_f64_be_hex"])
 
     words = load_words(words_dir, subtlex_path).words
@@ -76,11 +74,9 @@ def emit_rho_reference(
     if phi_star.ref != DEFAULT_CONSENSUS.primary:
         sys.exit("provenance: φ* is not the pinned primary encoder")
     if not np.array_equal(rebuilt_axis, sidecar_axis):
-        sys.exit(
-            "provenance: rebuilt gender axis does not match the sidecar (wrong φ*/geometry)")
+        sys.exit("provenance: rebuilt gender axis does not match the sidecar (wrong φ*/geometry)")
     if not np.array_equal(rebuilt_mu_bar, sidecar_mu_bar):
-        sys.exit(
-            "provenance: rebuilt μ̄ does not match the sidecar (not the frame's single μ̄)")
+        sys.exit("provenance: rebuilt μ̄ does not match the sidecar (not the frame's single μ̄)")
 
     board_id, card_texts = read_board_card_texts(board_path)
     fixture = build_rho_reference(
@@ -136,9 +132,7 @@ def main() -> None:
         if not path.exists():
             sys.exit(f"{label} not found: {path}")
 
-    path = emit_rho_reference(
-        args.words, args.subtlex, args.attributes, args.board, args.sidecar
-    )
+    path = emit_rho_reference(args.words, args.subtlex, args.attributes, args.board, args.sidecar)
     fixture = json.loads(path.read_text(encoding="utf-8"))
     print(
         f"wrote {path}\nframe_id {fixture['frame_id']}\nboard {fixture['board_id']} "

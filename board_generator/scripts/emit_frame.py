@@ -42,13 +42,10 @@ def _primary_arbiter() -> Arbiter:
     for arbiter in arbiters:
         if arbiter.ref == DEFAULT_CONSENSUS.primary:
             return arbiter
-    raise RuntimeError(
-        "primary φ* not found in the loaded consensus (should be unreachable)")
+    raise RuntimeError("primary φ* not found in the loaded consensus (should be unreachable)")
 
 
-def emit_frame(
-    words_dir: Path, subtlex_path: Path, attributes_path: Path, out_dir: Path
-) -> Path:
+def emit_frame(words_dir: Path, subtlex_path: Path, attributes_path: Path, out_dir: Path) -> Path:
     """Load the real pool + attributes, read φ*'s recipe, build the frame, and write the sidecar."""
     result = load_words(words_dir, subtlex_path)
     attributes = read_attribute_words(attributes_path)

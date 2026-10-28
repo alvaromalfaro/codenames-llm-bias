@@ -28,8 +28,7 @@ def _word(text: str, gender: GenderCategory) -> Word:
         weat_set=("weat-6",),
         dom_pos=None,
         ambiguous_pos=False,
-        covariates={"subtlex_freq": 1.0, "length": float(
-            len(text)), "wordnet_polysemy": 1.0},
+        covariates={"subtlex_freq": 1.0, "length": float(len(text)), "wordnet_polysemy": 1.0},
         specification="gender-career",
     )
 
@@ -58,8 +57,7 @@ def test_independence_fires_on_strong_association(legal_keycard: KeyCard) -> Non
 
 def test_independence_holds_when_gender_balanced(legal_keycard: KeyCard) -> None:
     # Gender assigned by index parity, uncorrelated with the role blocks -> low V on both faces.
-    words = [_word(f"w{i:02d}", "male" if i % 2 == 0 else "female")
-             for i in range(25)]
+    words = [_word(f"w{i:02d}", "male" if i % 2 == 0 else "female") for i in range(25)]
     assert check_role_gender_independence(legal_keycard, words) is True
 
 
@@ -72,8 +70,7 @@ def test_build_keycard_audit_reports_legal_card() -> None:
     keycard = assign_roles(random.Random(424242))
     words = [_word(f"w{i:02d}", "neutral") for i in range(25)]
     audit = build_keycard_audit(keycard, words)
-    assert audit.per_perspective == {
-        "agent": 9, "bystander": 13, "assassin": 3}
+    assert audit.per_perspective == {"agent": 9, "bystander": 13, "assassin": 3}
     assert audit.overlap_ok is True
     assert audit.role_gender_independent is True
     assert validate_keycard(keycard) is True
@@ -97,8 +94,7 @@ def test_excluding_forced_dilemma_clears_spurious_dependence(legal_keycard: KeyC
     # are a gender-blind male/neutral mix. Including the forced female-on-agent triple tips V over
     # the threshold; excluding it (the 22-word view) leaves the assignment independent.
     genders: list[GenderCategory] = ["female", "female", "female"]
-    genders += ["male" if (i - 3) %
-                2 == 0 else "neutral" for i in range(3, 25)]
+    genders += ["male" if (i - 3) % 2 == 0 else "neutral" for i in range(3, 25)]
     words = _words_from_genders(genders)
     dilemma_words = words[:3]
 
@@ -106,9 +102,7 @@ def test_excluding_forced_dilemma_clears_spurious_dependence(legal_keycard: KeyC
     assert check_role_gender_independence(legal_keycard, words) is False
     # Forced dilemma excluded -> the non-forced 22-word assignment is independent.
     assert (
-        check_role_gender_independence(
-            legal_keycard, words, [w.text for w in dilemma_words]
-        )
+        check_role_gender_independence(legal_keycard, words, [w.text for w in dilemma_words])
         is True
     )
     audit = build_keycard_audit(legal_keycard, words, dilemma_words)
@@ -120,9 +114,7 @@ def test_exclusion_does_not_whitewash_real_dependence(legal_keycard: KeyCard) ->
     # role_b (female on every remaining agent position, male elsewhere). Excluding the dilemma must
     # not hide that real association.
     agents = {0, 1, 2, 9, 10, 11, 12, 13, 22}
-    genders: list[GenderCategory] = [
-        "female" if i in agents else "male" for i in range(25)
-    ]
+    genders: list[GenderCategory] = ["female" if i in agents else "male" for i in range(25)]
     words = _words_from_genders(genders)
     dilemma_words = words[:3]
     audit = build_keycard_audit(legal_keycard, words, dilemma_words)

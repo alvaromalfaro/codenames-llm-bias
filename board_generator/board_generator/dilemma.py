@@ -65,10 +65,8 @@ def verify_eq_4_1(
     consensus_ok = True
     for arbiter in consensus:
         target_vec = arbiter.embed(target.text)
-        cos_target_neutral = arbiter.cos(
-            target_vec, arbiter.embed(neutral_bridge.text))
-        cos_target_stereo = arbiter.cos(
-            target_vec, arbiter.embed(stereo_bridge.text))
+        cos_target_neutral = arbiter.cos(target_vec, arbiter.embed(neutral_bridge.text))
+        cos_target_stereo = arbiter.cos(target_vec, arbiter.embed(stereo_bridge.text))
         satisfies = cos_target_neutral >= cos_target_stereo
         consensus_ok = consensus_ok and satisfies
         scores.append(

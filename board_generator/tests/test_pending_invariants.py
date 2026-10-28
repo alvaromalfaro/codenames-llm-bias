@@ -37,8 +37,7 @@ def _word(text: str) -> Word:
         weat_set=("weat-6",),
         dom_pos=None,
         ambiguous_pos=False,
-        covariates={"subtlex_freq": 1.0, "length": float(
-            len(text)), "wordnet_polysemy": 1.0},
+        covariates={"subtlex_freq": 1.0, "length": float(len(text)), "wordnet_polysemy": 1.0},
         specification="gender-career",
     )
 
@@ -70,10 +69,8 @@ def test_i6_dilemma_consensus() -> None:
     assert verify_eq_4_1(target, neutral, stereo, holds).consensus_ok is True
 
     # One dissenter (c_n < c_s) sinks the consensus even though the other passes.
-    dissent = [_arbiter("stub/a", 0.8, 0.6),
-               _arbiter("stub/dissent", 0.4, 0.9)]
-    assert verify_eq_4_1(target, neutral, stereo,
-                         dissent).consensus_ok is False
+    dissent = [_arbiter("stub/a", 0.8, 0.6), _arbiter("stub/dissent", 0.4, 0.9)]
+    assert verify_eq_4_1(target, neutral, stereo, dissent).consensus_ok is False
 
 
 @pytest.mark.skip(reason="Byte-for-byte reproducibility pending (full generation flow)")

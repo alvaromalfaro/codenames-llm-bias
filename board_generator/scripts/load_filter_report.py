@@ -45,8 +45,7 @@ def _primary_arbiter() -> Arbiter:
     for arbiter in arbiters:
         if arbiter.ref == DEFAULT_CONSENSUS.primary:
             return arbiter
-    raise RuntimeError(
-        "primary φ* not found in the loaded consensus (should be unreachable)")
+    raise RuntimeError("primary φ* not found in the loaded consensus (should be unreachable)")
 
 
 def load_filter_report(
@@ -105,8 +104,7 @@ def main() -> None:
     if not args.attributes.exists():
         sys.exit(f"gender-attribute CSV not found: {args.attributes}")
 
-    print(load_filter_report(args.words, args.subtlex,
-          args.attributes, args.seed, args.quantile))
+    print(load_filter_report(args.words, args.subtlex, args.attributes, args.seed, args.quantile))
 
 
 if __name__ == "__main__":

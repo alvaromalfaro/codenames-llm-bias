@@ -157,8 +157,7 @@ def randomize_positions(
     chosen: list[int] = []
     if dilemma_words:
         # The 9 LLM-perspective agent positions, in grid-index order.
-        agent_b = [i for i, role in enumerate(
-            keycard.role_b) if role == "agent"]
+        agent_b = [i for i, role in enumerate(keycard.role_b) if role == "agent"]
         # (1) deterministic pick of len(dilemma_words) of the 9 agent positions.
         chosen = rng.sample(agent_b, len(dilemma_words))
         for word, pos in zip(dilemma_words, chosen, strict=True):
@@ -171,8 +170,7 @@ def randomize_positions(
         result[pos] = word
 
     placed = [w for w in result if w is not None]
-    assert len(placed) == len(
-        words), "every position must be filled exactly once"
+    assert len(placed) == len(words), "every position must be filled exactly once"
     return placed
 
 
@@ -212,13 +210,11 @@ def assemble_board(
     if dilemma is not None:
         index = {w.text: w for w in words}
         # Fixed order, mirroring composition's dilemma_block (target, stereo, neutral_bridge).
-        dilemma_texts = (
-            dilemma.target, dilemma.stereotypical_bridge, dilemma.neutral_bridge)
+        dilemma_texts = (dilemma.target, dilemma.stereotypical_bridge, dilemma.neutral_bridge)
         try:
             dilemma_words = [index[text] for text in dilemma_texts]
         except KeyError as exc:
-            raise ValueError(
-                f"dilemma word {exc.args[0]!r} not among the board words") from exc
+            raise ValueError(f"dilemma word {exc.args[0]!r} not among the board words") from exc
     else:
         dilemma_words = []
 
@@ -254,11 +250,9 @@ def assemble_board(
     )
 
     if not validate_board_grid(board):
-        raise ValueError(
-            f"assembled board {board_id!r} failed grid validation")
+        raise ValueError(f"assembled board {board_id!r} failed grid validation")
     if not validate_keycard(keycard):
-        raise ValueError(
-            f"assembled board {board_id!r} has an illegal key card")
+        raise ValueError(f"assembled board {board_id!r} has an illegal key card")
     if dilemma is not None:
         dilemma_texts_set = {w.text for w in dilemma_words}
         for entry in entries:
@@ -332,17 +326,14 @@ def to_json_dict(board: Board) -> dict[str, Any]:
     text, JSON null for missing covariates). Validates cheaply and defensively before emitting; the
     caller relies on this raising rather than writing a malformed board.
     """
-    cards = [_card_dict(entry)
-             for entry in sorted(board.words, key=lambda e: e.index)]
+    cards = [_card_dict(entry) for entry in sorted(board.words, key=lambda e: e.index)]
 
     # Defensive validation: the board file IS the platform contract.
     if len(cards) != 25:
-        raise ValueError(
-            f"board {board.board_id!r} has {len(cards)} cards, expected 25")
+        raise ValueError(f"board {board.board_id!r} has {len(cards)} cards, expected 25")
     ids = sorted(card["id"] for card in cards)
     if ids != list(range(25)):
-        raise ValueError(
-            f"board {board.board_id!r} card ids are not 0..24 unique: {ids}")
+        raise ValueError(f"board {board.board_id!r} card ids are not 0..24 unique: {ids}")
     for card in cards:
         for field in ("human_perspective_role", "llm_perspective_role"):
             if card[field] not in _VALID_CARD_ROLES:
@@ -354,11 +345,9 @@ def to_json_dict(board: Board) -> dict[str, Any]:
     category = _bias_category(board)
     if board.type == "probe":
         if category != "gender":
-            raise ValueError(
-                f"probe board {board.board_id!r} must have category 'gender'")
+            raise ValueError(f"probe board {board.board_id!r} must have category 'gender'")
         if board.dilemma is None:
-            raise ValueError(
-                f"probe board {board.board_id!r} is missing its dilemma")
+            raise ValueError(f"probe board {board.board_id!r} is missing its dilemma")
         card_texts = {card["text"].lower() for card in cards}
         for bridge in (
             board.dilemma.target,
@@ -372,11 +361,9 @@ def to_json_dict(board: Board) -> dict[str, Any]:
         dilemma_block: dict[str, Any] | None = _dilemma_dict(board.dilemma)
     else:
         if category != "neutral":
-            raise ValueError(
-                f"control board {board.board_id!r} must have category 'neutral'")
+            raise ValueError(f"control board {board.board_id!r} must have category 'neutral'")
         if board.dilemma is not None:
-            raise ValueError(
-                f"control board {board.board_id!r} must not carry a dilemma")
+            raise ValueError(f"control board {board.board_id!r} must not carry a dilemma")
         dilemma_block = None
 
     return {
@@ -410,8 +397,7 @@ def write_board(board: Board, out_dir: Path = DEFAULT_OUTPUT_DIR) -> Path:
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{_bias_category(board)}_{board.board_id}.json"
-    payload = json.dumps(to_json_dict(board), indent=2,
-                         ensure_ascii=False) + "\n"
+    payload = json.dumps(to_json_dict(board), indent=2, ensure_ascii=False) + "\n"
     path.write_text(payload, encoding="utf-8")
     return path
 

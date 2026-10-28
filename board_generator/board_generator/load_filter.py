@@ -249,8 +249,7 @@ def build_gender_axis(
     male = sorted(w for w, pole in pole_by_word.items() if pole == "male")
     female = sorted(w for w, pole in pole_by_word.items() if pole == "female")
     if not male or not female:
-        raise ValueError(
-            "gender axis needs at least one male and one female attribute")
+        raise ValueError("gender axis needs at least one male and one female attribute")
 
     mean_male = _mean_embedding(male, phi_star)
     mean_female = _mean_embedding(female, phi_star)
@@ -305,8 +304,7 @@ def calibrate_tau_load(
     (nothing to calibrate against).
     """
     if not core_words:
-        raise ValueError(
-            "cannot calibrate τ_load: the specification has no WEAT core words")
+        raise ValueError("cannot calibrate τ_load: the specification has no WEAT core words")
     loads = [
         signed_load_toward_pole(rho(phi_star, e_gen, w.text), _word_pole(w)) for w in core_words
     ]
@@ -361,8 +359,7 @@ def filter_expansion_sign(
     verdicts: list[WordSignLoad] = []
     for word in expansion_words:
         pole = _word_pole(word)
-        rho_value = rho(phi_star, axis_centered, word.text,
-                        centered=True, mu_bar=mu_bar)
+        rho_value = rho(phi_star, axis_centered, word.text, centered=True, mu_bar=mu_bar)
         signed = signed_load_toward_pole(rho_value, pole)
         verdicts.append(
             WordSignLoad(
@@ -403,10 +400,8 @@ def build_load_filter_report(
     survivor_words: list[Word] = []
     for specification in get_args(Specification):
         loaded = [w for w in words if w.specification == specification]
-        core_words = sorted(
-            (w for w in loaded if w.weat_set), key=lambda w: w.text)
-        expansion_words = sorted(
-            (w for w in loaded if not w.weat_set), key=lambda w: w.text)
+        core_words = sorted((w for w in loaded if w.weat_set), key=lambda w: w.text)
+        expansion_words = sorted((w for w in loaded if not w.weat_set), key=lambda w: w.text)
 
         tau = calibrate_tau_load(core_words, phi_star, e_gen, quantile)
         core_loads = [
@@ -420,8 +415,7 @@ def build_load_filter_report(
             )
             for w in core_words
         ]
-        expansion_loads = filter_expansion(
-            expansion_words, tau, phi_star, e_gen)
+        expansion_loads = filter_expansion(expansion_words, tau, phi_star, e_gen)
 
         survivors = [load.text for load in core_loads] + [
             load.text for load in expansion_loads if load.admitted
@@ -478,21 +472,17 @@ def build_sign_filter_report(
     survivors of both specifications and embeds its report.
     """
     loaded_all = [w for w in words if w.specification is not None]
-    reference_texts = [attr.word for attr in attributes] + \
-        [w.text for w in loaded_all]
+    reference_texts = [attr.word for attr in attributes] + [w.text for w in loaded_all]
     mu_bar = build_mu_bar(reference_texts, phi_star)
     n_reference_items = len({text.lower() for text in reference_texts})
-    axis_centered = build_gender_axis(
-        attributes, phi_star, centered=True, mu_bar=mu_bar)
+    axis_centered = build_gender_axis(attributes, phi_star, centered=True, mu_bar=mu_bar)
 
     spec_filters: list[SpecificationSignFilter] = []
     survivor_words: list[Word] = []
     for specification in get_args(Specification):
         loaded = [w for w in words if w.specification == specification]
-        core_words = sorted(
-            (w for w in loaded if w.weat_set), key=lambda w: w.text)
-        expansion_words = sorted(
-            (w for w in loaded if not w.weat_set), key=lambda w: w.text)
+        core_words = sorted((w for w in loaded if w.weat_set), key=lambda w: w.text)
+        expansion_words = sorted((w for w in loaded if not w.weat_set), key=lambda w: w.text)
 
         core_loads = [
             WordSignLoad(
@@ -501,8 +491,7 @@ def build_sign_filter_report(
                 rho_centered=(
                     rho_value := rho(phi_star, axis_centered, w.text, centered=True, mu_bar=mu_bar)
                 ),
-                signed_load_centered=signed_load_toward_pole(
-                    rho_value, _word_pole(w)),
+                signed_load_centered=signed_load_toward_pole(rho_value, _word_pole(w)),
                 grandfathered=True,
                 admitted=True,
             )
@@ -549,8 +538,7 @@ def build_sign_filter_report(
 def _word_pole(word: Word) -> GenderPole:
     """Narrow a loaded Word's gender_category to a pole; neutral words carry no pole."""
     if word.gender_category == "neutral":
-        raise ValueError(
-            f"{word.text!r} is neutral; the load filter handles loaded words only")
+        raise ValueError(f"{word.text!r} is neutral; the load filter handles loaded words only")
     return word.gender_category
 
 
@@ -563,6 +551,5 @@ def _normalize(vec: NDArray[np.float64]) -> NDArray[np.float64]:
     """Return the unit vector; raise on a zero-norm axis (degenerate, no direction)."""
     norm = float(np.linalg.norm(vec))
     if norm == 0.0:
-        raise ValueError(
-            "gender axis has zero norm (male and female means coincide)")
+        raise ValueError("gender axis has zero norm (male and female means coincide)")
     return vec / norm

@@ -72,16 +72,14 @@ def seal_one(path: Path, frame_id: str) -> str:
     payload = json.dumps(after, indent=2, ensure_ascii=False) + "\n"
     # Validate the candidate in memory before touching disk.
     if json.loads(payload) != after:
-        raise AssertionError(
-            f"pre-write parsed-equality failed for {path.name}")
+        raise AssertionError(f"pre-write parsed-equality failed for {path.name}")
 
     path.write_text(payload, encoding="utf-8")
 
     # Binding on-disk guarantee: re-parsed file == parsed_before + exactly the one new key.
     reparsed = json.loads(path.read_text(encoding="utf-8"))
     if reparsed != {**before, SEAL_KEY: frame_id}:
-        raise AssertionError(
-            f"parsed-equality failed after writing {path.name}")
+        raise AssertionError(f"parsed-equality failed after writing {path.name}")
     return "sealed"
 
 

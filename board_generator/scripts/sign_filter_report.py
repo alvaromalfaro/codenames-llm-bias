@@ -52,8 +52,7 @@ def _primary_arbiter() -> Arbiter:
     for arbiter in arbiters:
         if arbiter.ref == DEFAULT_CONSENSUS.primary:
             return arbiter
-    raise RuntimeError(
-        "primary φ* not found in the loaded consensus (should be unreachable)")
+    raise RuntimeError("primary φ* not found in the loaded consensus (should be unreachable)")
 
 
 def sign_filter_report(
@@ -86,8 +85,7 @@ def sign_filter_report(
     ]
     delta_cases = [
         dataclasses.asdict(
-            build_sign_filter_report(
-                result.words, attributes, phi_star, seed=seed, delta=delta)
+            build_sign_filter_report(result.words, attributes, phi_star, seed=seed, delta=delta)
         )
         for delta in deltas
     ]

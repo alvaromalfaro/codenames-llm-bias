@@ -78,8 +78,7 @@ def weat_association(
     vectors too. Inputs are raw φ* embeddings (``Arbiter.embed``), never centered.
     """
     male_mean = float(np.mean([phi_star.cos(word_vec, a) for a in male_vecs]))
-    female_mean = float(
-        np.mean([phi_star.cos(word_vec, b) for b in female_vecs]))
+    female_mean = float(np.mean([phi_star.cos(word_vec, b) for b in female_vecs]))
     return male_mean - female_mean
 
 

@@ -32,8 +32,7 @@ import pandas as pd
 
 # Source column name -> output column name. Selection is by NAME, so the script is robust to extra
 # columns and to column reordering in the source workbook.
-COLUMN_MAP = {"Word": "word", "Zipf-value": "zipf",
-              "Dom_PoS_SUBTLEX": "dom_pos"}
+COLUMN_MAP = {"Word": "word", "Zipf-value": "zipf", "Dom_PoS_SUBTLEX": "dom_pos"}
 
 
 def reduce_subtlex(src: Path, dst: Path) -> None:
@@ -41,8 +40,7 @@ def reduce_subtlex(src: Path, dst: Path) -> None:
         df = pd.read_excel(src, usecols=list(COLUMN_MAP), engine="openpyxl")
     except ValueError as exc:
         # Most often: a header name does not match (e.g. 'Zipf' vs 'Zipf-value').
-        available = pd.read_excel(
-            src, engine="openpyxl", nrows=0).columns.tolist()
+        available = pd.read_excel(src, engine="openpyxl", nrows=0).columns.tolist()
         sys.exit(
             f"could not select the expected columns from {src.name}: {exc}\n"
             f"expected {list(COLUMN_MAP)}, found {available}"
@@ -59,20 +57,17 @@ def reduce_subtlex(src: Path, dst: Path) -> None:
 
     # Resolve case-fold collisions: keep the max-Zipf entry per word.
     n_before = len(df)
-    df = df.sort_values("zipf", ascending=False).drop_duplicates(
-        "word", keep="first")
+    df = df.sort_values("zipf", ascending=False).drop_duplicates("word", keep="first")
     collisions = n_before - len(df)
 
     # deterministic output (stable diffs, reproducibility)
     df = df.sort_values("word")
 
     dst.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(dst, index=False, columns=[
-              "word", "zipf", "dom_pos"], float_format="%.4f")
+    df.to_csv(dst, index=False, columns=["word", "zipf", "dom_pos"], float_format="%.4f")
 
     print(
-        f"wrote {len(df)} rows to {dst} "
-        f"({collisions} case-fold collision(s) resolved by max Zipf)"
+        f"wrote {len(df)} rows to {dst} ({collisions} case-fold collision(s) resolved by max Zipf)"
     )
 
 

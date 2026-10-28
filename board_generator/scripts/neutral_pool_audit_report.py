@@ -60,12 +60,55 @@ from board_generator.lexicon import (
 # Extended royalty/kinship/title probe. Inline-only on purpose: this is a RECALL audit of the
 # enumerator, NOT a curated seed - it must not be added to GENDER_DENOTATIONAL_SEED.
 ROYALTY_KINSHIP_PROBE: tuple[str, ...] = (
-    "king", "queen", "prince", "princess", "knight", "nun", "monk", "lady", "gentleman",
-    "widow", "widower", "niece", "nephew", "uncle", "aunt", "duke", "duchess", "earl",
-    "lord", "dame", "maid", "bachelor", "spinster", "husband", "wife", "son", "daughter",
-    "boy", "girl", "man", "woman", "mr", "mrs", "sir", "madam", "witch", "priest",
-    "priestess", "hostess", "actor", "actress", "hero", "heroine", "god", "goddess",
-    "czar", "emperor", "empress", "queenmother",
+    "king",
+    "queen",
+    "prince",
+    "princess",
+    "knight",
+    "nun",
+    "monk",
+    "lady",
+    "gentleman",
+    "widow",
+    "widower",
+    "niece",
+    "nephew",
+    "uncle",
+    "aunt",
+    "duke",
+    "duchess",
+    "earl",
+    "lord",
+    "dame",
+    "maid",
+    "bachelor",
+    "spinster",
+    "husband",
+    "wife",
+    "son",
+    "daughter",
+    "boy",
+    "girl",
+    "man",
+    "woman",
+    "mr",
+    "mrs",
+    "sir",
+    "madam",
+    "witch",
+    "priest",
+    "priestess",
+    "hostess",
+    "actor",
+    "actress",
+    "hero",
+    "heroine",
+    "god",
+    "goddess",
+    "czar",
+    "emperor",
+    "empress",
+    "queenmother",
 )
 
 
@@ -94,8 +137,7 @@ def report_recall_probe(pool_path: Path) -> None:
     print("=" * 99)
     print(f"pool: {pool_path}")
     print("normalization: lowercase + strip ONLY (no playability filter)")
-    print(
-        f"probe terms: {len(ROYALTY_KINSHIP_PROBE)}   deck tokens: {len(deck)}")
+    print(f"probe terms: {len(ROYALTY_KINSHIP_PROBE)}   deck tokens: {len(deck)}")
     print()
     print(f"PRESENT in deck (recall gaps to review): {len(present)}")
     if present:
@@ -107,8 +149,7 @@ def report_recall_probe(pool_path: Path) -> None:
     print(f"ABSENT from deck (expected): {len(absent)}")
 
     n_probe = len(ROYALTY_KINSHIP_PROBE)
-    print(
-        f"probe terms present in deck: {len(present)}/{n_probe}", file=sys.stderr)
+    print(f"probe terms present in deck: {len(present)}/{n_probe}", file=sys.stderr)
 
 
 # --- REPORT 2 - Playability drop breakdown ---
@@ -137,8 +178,7 @@ def report_playability_drops(pool_path: Path, subtlex_path: Path) -> None:
             continue
         freq_entry = frequency.get(normalized)
         dom_pos = freq_entry[1] if freq_entry is not None else None
-        status, _ambiguous, reason = _check_playability(
-            normalized, "common", dom_pos)
+        status, _ambiguous, reason = _check_playability(normalized, "common", dom_pos)
         if status == "playable":
             n_playable += 1
             continue
@@ -157,8 +197,7 @@ def report_playability_drops(pool_path: Path, subtlex_path: Path) -> None:
     print("real function); the whitespace -> phrase rule is applied at SCRIPT level, matching the")
     print("loader path used by neutral_denotational_report.py. Playability logic is unchanged.")
     print()
-    print(
-        f"normalized tokens: {n_total}   playable: {n_playable}   dropped: {n_dropped}")
+    print(f"normalized tokens: {n_total}   playable: {n_playable}   dropped: {n_dropped}")
     print()
     for category in sorted(dropped):
         tokens = sorted(dropped[category])
@@ -167,10 +206,8 @@ def report_playability_drops(pool_path: Path, subtlex_path: Path) -> None:
             print(f"  - {token}")
         print()
 
-    summary = ", ".join(f"{cat}={len(toks)}" for cat,
-                        toks in sorted(dropped.items()))
-    print(
-        f"playable={n_playable} dropped={n_dropped} ({summary})", file=sys.stderr)
+    summary = ", ".join(f"{cat}={len(toks)}" for cat, toks in sorted(dropped.items()))
+    print(f"playable={n_playable} dropped={n_dropped} ({summary})", file=sys.stderr)
 
 
 # --- REPORT 3 - load_words contract introspection ---
@@ -194,17 +231,14 @@ def report_load_words_contract() -> None:
     print("REPORT 3 - load_words contract introspection (read-only; not executed on data)")
     print("=" * 99)
     print(f"signature: load_words{inspect.signature(load_words)}")
-    print(
-        f"source module: {lexicon.__name__}  ({inspect.getsourcefile(load_words)})")
+    print(f"source module: {lexicon.__name__}  ({inspect.getsourcefile(load_words)})")
     print()
 
     print("(a) CSV columns the loader dereferences, and canonical header order")
     print("    Canonical header (observed in resources/words/*.csv and docstring):")
     print("      word, gender_category, word_kind, source, weat_set, specification")
-    print(
-        f"    required (read as row[\"X\"], KeyError if missing): {', '.join(required)}")
-    print(
-        f"    optional (read as row.get(\"X\"), tolerated if absent): {', '.join(optional)}")
+    print(f'    required (read as row["X"], KeyError if missing): {", ".join(required)}')
+    print(f'    optional (read as row.get("X"), tolerated if absent): {", ".join(optional)}')
     print()
 
     print("(b) How an empty `specification` is encoded")
@@ -214,16 +248,13 @@ def report_load_words_contract() -> None:
     print()
 
     print("(c) Is `source` enum-constrained? Would source='duet' be accepted?")
-    print(
-        "    source is read as (row['source'] or '').strip() - FREE-FORM text, no enum/Literal,")
+    print("    source is read as (row['source'] or '').strip() - FREE-FORM text, no enum/Literal,")
     print("    merged across duplicate rows. source='duet' is accepted as-is; no registration.")
     print("    NUANCE: it is `specification`, NOT `source`, that is enum-constrained:")
     print(f"      Specification = Literal{get_args(Specification)}")
     print("      Putting 'duet' in the specification column WOULD raise (unknown specification).")
-    print(
-        f"    gender_category enum: {get_args(GenderCategory)}  (neutral pool uses 'neutral')")
-    print(
-        f"    word_kind enum:       {get_args(WordKind)}  (single tokens are 'common')")
+    print(f"    gender_category enum: {get_args(GenderCategory)}  (neutral pool uses 'neutral')")
+    print(f"    word_kind enum:       {get_args(WordKind)}  (single tokens are 'common')")
     print()
 
     print("(d) Required vs optional columns; covariate dtypes")
@@ -235,8 +266,7 @@ def report_load_words_contract() -> None:
     print("      subtlex_freq:     float | None  (None when the word is OOV in SUBTLEX-US)")
     print("      length:           int           (len(text))")
     print("      wordnet_polysemy: int           (len(wordnet.synsets(text)))")
-    print(
-        "    All three are stored under Word.covariates: Mapping[str, float | None].")
+    print("    All three are stored under Word.covariates: Mapping[str, float | None].")
     print()
     print("    => neutral.csv rows should look like:")
     print("       word,gender_category,word_kind,source,weat_set,specification")

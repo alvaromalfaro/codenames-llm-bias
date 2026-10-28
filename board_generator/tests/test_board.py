@@ -41,8 +41,7 @@ def _word(text: str, gender: GenderCategory = "neutral", subtlex: float | None =
         weat_set=("weat-6",),
         dom_pos=None,
         ambiguous_pos=False,
-        covariates={"subtlex_freq": subtlex, "length": float(
-            len(text)), "wordnet_polysemy": 1.0},
+        covariates={"subtlex_freq": subtlex, "length": float(len(text)), "wordnet_polysemy": 1.0},
         specification="gender-career",
     )
 
@@ -80,8 +79,13 @@ def _control_words() -> list[Word]:
 def test_probe_dilemma_words_on_llm_agent_positions() -> None:
     words, dilemma = _probe_words()
     board = assemble_board(
-        "probe-career-000", "probe", "gender-career", 20260626,
-        words, _consensus(), dilemma,
+        "probe-career-000",
+        "probe",
+        "gender-career",
+        20260626,
+        words,
+        _consensus(),
+        dilemma,
     )
 
     dilemma_texts = {"nurse", "dress", "hospital"}
@@ -108,8 +112,7 @@ def test_randomize_positions_aligns_with_keycard_roles() -> None:
     words, dilemma = _probe_words()
     keycard = assign_roles(random.Random(99))
     dilemma_words = [words[0], words[1], words[2]]  # nurse, dress, hospital
-    placed = randomize_positions(
-        words, keycard, dilemma_words, random.Random(99))
+    placed = randomize_positions(words, keycard, dilemma_words, random.Random(99))
     assert len(placed) == 25
     assert len({w.text for w in placed}) == 25
     for i, word in enumerate(placed):
@@ -174,8 +177,7 @@ def test_i8_positions_depend_on_roles_consuming_first() -> None:
     keycard = assign_roles(random.Random(seed))
     # nurse, dress, hospital (assemble_board's fixed dilemma order).
     dilemma_words = [words[0], words[1], words[2]]
-    fresh = randomize_positions(
-        words, keycard, dilemma_words, random.Random(seed))
+    fresh = randomize_positions(words, keycard, dilemma_words, random.Random(seed))
     fresh_order = [w.text for w in fresh]
 
     assert real_order != fresh_order
@@ -194,8 +196,7 @@ def test_keycard_legality_preserved_through_assembly() -> None:
     assert counts_a == {"agent": 9, "bystander": 13, "assassin": 3}
     assert counts_b == {"agent": 9, "bystander": 13, "assassin": 3}
     assert joint_counts(keycard) == EXPECTED_JOINT
-    assert board.keycard_audit.per_perspective == {
-        "agent": 9, "bystander": 13, "assassin": 3}
+    assert board.keycard_audit.per_perspective == {"agent": 9, "bystander": 13, "assassin": 3}
     assert board.keycard_audit.overlap_ok is True
 
 
@@ -227,8 +228,7 @@ def test_assemble_rejects_missing_dilemma_word() -> None:
 
 def test_assemble_rejects_duplicate_word() -> None:
     words = _control_words()
-    words[1] = dataclasses.replace(
-        words[1], text=words[0].text)  # duplicate text
+    words[1] = dataclasses.replace(words[1], text=words[0].text)  # duplicate text
     with pytest.raises(ValueError, match="grid validation"):
         assemble_board(
             "control-career-003", "control", "gender-career", 6, words, _consensus(), None

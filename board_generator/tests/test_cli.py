@@ -37,12 +37,18 @@ def test_dilemma_dispatch_passes_explicit_args(
     cli.main(
         [
             "dilemma",
-            "--spec", "gender-career",
-            "--words-dir", str(tmp_path / "words"),
-            "--subtlex-path", str(tmp_path / "subtlex.csv"),
-            "--out-dir", str(tmp_path / "dilemmas"),
-            "--k", "5",
-            "--attempt-cap", "12",
+            "--spec",
+            "gender-career",
+            "--words-dir",
+            str(tmp_path / "words"),
+            "--subtlex-path",
+            str(tmp_path / "subtlex.csv"),
+            "--out-dir",
+            str(tmp_path / "dilemmas"),
+            "--k",
+            "5",
+            "--attempt-cap",
+            "12",
         ]
     )
 

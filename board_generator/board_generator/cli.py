@@ -27,11 +27,9 @@ from board_generator.arbiter import DEFAULT_CONSENSUS, Arbiter, load_consensus
 from board_generator.lexicon import Specification, Word, load_words
 
 # Tool input data defaults (under board_generator/resources/, configurable).
-DEFAULT_WORDS_DIR = Path(__file__).resolve(
-).parent.parent / "resources" / "words"
+DEFAULT_WORDS_DIR = Path(__file__).resolve().parent.parent / "resources" / "words"
 DEFAULT_SUBTLEX_PATH = (
-    Path(__file__).resolve().parent.parent /
-    "resources" / "frequencies" / "subtlex_us.csv"
+    Path(__file__).resolve().parent.parent / "resources" / "frequencies" / "subtlex_us.csv"
 )
 
 
@@ -67,13 +65,9 @@ def _add_bank_subparser(subparsers: argparse._SubParsersAction) -> None:
         "--manifest", required=True, type=Path, help="path to the bank manifest JSON"
     )
     parser.add_argument("--words-dir", type=Path, default=DEFAULT_WORDS_DIR)
-    parser.add_argument("--subtlex-path", type=Path,
-                        default=DEFAULT_SUBTLEX_PATH)
-    parser.add_argument(
-        "--dilemmas-dir", type=Path, default=dilemma_flow.DEFAULT_DILEMMA_DIR
-    )
-    parser.add_argument("--out-dir", type=Path,
-                        default=board.DEFAULT_OUTPUT_DIR)
+    parser.add_argument("--subtlex-path", type=Path, default=DEFAULT_SUBTLEX_PATH)
+    parser.add_argument("--dilemmas-dir", type=Path, default=dilemma_flow.DEFAULT_DILEMMA_DIR)
+    parser.add_argument("--out-dir", type=Path, default=board.DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -95,8 +89,7 @@ def _add_dilemma_subparser(subparsers: argparse._SubParsersAction) -> None:
         help="the dilemma specification",
     )
     parser.add_argument("--words-dir", type=Path, default=DEFAULT_WORDS_DIR)
-    parser.add_argument("--subtlex-path", type=Path,
-                        default=DEFAULT_SUBTLEX_PATH)
+    parser.add_argument("--subtlex-path", type=Path, default=DEFAULT_SUBTLEX_PATH)
     parser.add_argument(
         "--out-dir",
         type=Path,
@@ -116,8 +109,7 @@ def _run_bank(args: argparse.Namespace) -> None:
     """
     manifest = bank.load_manifest(args.manifest)
     records = [
-        dilemma_flow.read_record(args.dilemmas_dir / filename)
-        for filename in manifest.dilemmas
+        dilemma_flow.read_record(args.dilemmas_dir / filename) for filename in manifest.dilemmas
     ]
     boards, report, warnings = bank.build_bank(
         manifest,
@@ -131,8 +123,7 @@ def _run_bank(args: argparse.Namespace) -> None:
             board.write_board(board_record, args.out_dir)
         board.write_balance_report(report, args.out_dir)
 
-    _print_bank_summary(
-        boards, warnings, dry_run=args.dry_run, out_dir=args.out_dir)
+    _print_bank_summary(boards, warnings, dry_run=args.dry_run, out_dir=args.out_dir)
 
 
 def _run_dilemma(args: argparse.Namespace) -> None:
@@ -160,14 +151,12 @@ def _print_bank_summary(
     controls = [b for b in boards if b.type == "control"]
     per_spec = Counter(b.specification for b in probes)
 
-    print(
-        f"\nBuilt {len(boards)} board(s): {len(probes)} probe + {len(controls)} control (50/50).")
+    print(f"\nBuilt {len(boards)} board(s): {len(probes)} probe + {len(controls)} control (50/50).")
     for spec in sorted(per_spec):
         print(f"  probe {spec}: {per_spec[spec]}")
 
     if warnings:
-        print(
-            f"\nWarnings ({len(warnings)} board(s), descriptive - not a gate):")
+        print(f"\nWarnings ({len(warnings)} board(s), descriptive - not a gate):")
         for line in warnings:
             print(f"  {line}")
 
@@ -250,17 +239,13 @@ def run_dilemma_flow(
     while True:
         # Step 2 [Auto] -> 3 [Manual]: neutral bridge.
         neutral_ranked = session.rank_neutral(target, loaded, k=k)
-        _present_candidates(
-            "Neutral-bridge candidates (ranked by cos(φ*)):", neutral_ranked)
-        neutral = _prompt_word("Pick the neutral bridge", [
-                               w for w, _ in neutral_ranked])
+        _present_candidates("Neutral-bridge candidates (ranked by cos(φ*)):", neutral_ranked)
+        neutral = _prompt_word("Pick the neutral bridge", [w for w, _ in neutral_ranked])
 
         # Step 4 [Auto] -> 5 [Manual]: stereotypical bridge (same metadata incl. absolute cosine).
         stereo_ranked = session.rank_stereo(target, loaded, k=k)
-        _present_candidates(
-            "Stereotypical-bridge candidates (ranked by cos(φ*)):", stereo_ranked)
-        stereo = _prompt_word("Pick the stereotypical bridge", [
-                              w for w, _ in stereo_ranked])
+        _present_candidates("Stereotypical-bridge candidates (ranked by cos(φ*)):", stereo_ranked)
+        stereo = _prompt_word("Pick the stereotypical bridge", [w for w, _ in stereo_ranked])
 
         # Step 6 [Auto]: verify Eq. 4.1 under the consensus.
         dilemma = session.attempt(target, neutral, stereo)
@@ -294,8 +279,7 @@ def _primary_arbiter(consensus: list[Arbiter]) -> Arbiter:
     for arbiter in consensus:
         if arbiter.ref == DEFAULT_CONSENSUS.primary:
             return arbiter
-    raise ValueError(
-        "primary φ* not found among the loaded consensus arbiters")
+    raise ValueError("primary φ* not found among the loaded consensus arbiters")
 
 
 if __name__ == "__main__":

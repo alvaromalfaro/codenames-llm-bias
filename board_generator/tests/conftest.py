@@ -40,8 +40,7 @@ def control_board(legal_keycard: KeyCard) -> Board:
             role_b=legal_keycard.role_b[i],
             gender_category="neutral",
             source="test",
-            covariates={"subtlex_freq": 1.0,
-                        "length": 6.0, "wordnet_polysemy": 1.0},
+            covariates={"subtlex_freq": 1.0, "length": 6.0, "wordnet_polysemy": 1.0},
             weat_set=(),
         )
         for i in range(25)

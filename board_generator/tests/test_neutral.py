@@ -77,11 +77,7 @@ def build_env(tmp_path: Path) -> dict[str, Path]:
 
     subtlex = tmp_path / "subtlex.csv"
     subtlex.write_text(
-        "word,zipf,dom_pos\n"
-        "apple,4.5,Noun\n"
-        "river,5.0,Noun\n"
-        "mother,6.0,Noun\n"
-        "executive,4.8,Noun\n",
+        "word,zipf,dom_pos\napple,4.5,Noun\nriver,5.0,Noun\nmother,6.0,Noun\nexecutive,4.8,Noun\n",
         encoding="utf-8",
     )
 
@@ -108,9 +104,7 @@ def build_env(tmp_path: Path) -> dict[str, Path]:
 
 
 def _build(env: dict[str, Path]) -> NeutralCandidatesResult:
-    return build_neutral_candidates(
-        env["pool"], env["subtlex"], env["stoplist"], env["words_dir"]
-    )
+    return build_neutral_candidates(env["pool"], env["subtlex"], env["stoplist"], env["words_dir"])
 
 
 def test_stoplist_token_excluded_denotational(build_env: dict[str, Path]) -> None:
@@ -139,16 +133,14 @@ def test_clean_neutrals_survive_with_exact_row_shape(build_env: dict[str, Path])
         assert word.source == "duet"
         assert word.specification is None
         assert word.weat_set == ()  # legal "no WEAT set" encoding (empty tuple, not None)
-        assert set(word.covariates) == {
-            "subtlex_freq", "length", "wordnet_polysemy"}
+        assert set(word.covariates) == {"subtlex_freq", "length", "wordnet_polysemy"}
 
 
 def test_emitted_csv_row_shape(build_env: dict[str, Path]) -> None:
     csv_text = candidates_csv_text(_build(build_env))
     lines = csv_text.splitlines()
     assert lines[0] == "word,gender_category,word_kind,source,weat_set,specification"
-    assert lines[1:] == ["apple,neutral,common,duet,,",
-                         "river,neutral,common,duet,,"]
+    assert lines[1:] == ["apple,neutral,common,duet,,", "river,neutral,common,duet,,"]
 
 
 def test_candidates_disjoint_from_loaded_pools(build_env: dict[str, Path]) -> None:
@@ -176,8 +168,7 @@ def test_provenance_records_hash_and_no_load_reason(build_env: dict[str, Path]) 
     }
     assert payload["rho_w_used_for_exclusion"] is False
     assert all(
-        e["excluded_by"] in {EXCLUDED_BY_DENOTATIONAL,
-                             EXCLUDED_BY_ALREADY_LOADED}
+        e["excluded_by"] in {EXCLUDED_BY_DENOTATIONAL, EXCLUDED_BY_ALREADY_LOADED}
         for e in payload["exclusions"]
     )
 

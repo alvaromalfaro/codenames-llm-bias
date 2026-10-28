@@ -81,8 +81,7 @@ def main() -> None:
     if not args.words_dir.is_dir():
         sys.exit(f"words directory not found: {args.words_dir}")
 
-    result = build_neutral_candidates(
-        args.pool, args.subtlex, args.stoplist, args.words_dir)
+    result = build_neutral_candidates(args.pool, args.subtlex, args.stoplist, args.words_dir)
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     csv_path = args.out_dir / "neutral_candidates.csv"

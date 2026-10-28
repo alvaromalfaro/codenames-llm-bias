@@ -45,18 +45,13 @@ _SIDECAR = _BOARDS_DIR / "measurement_frame.json"
 _REFERENCE_BOARD = _BOARDS_DIR / "gender_probe-gender-career-000.json"
 
 _ATTRS = [
-    AttributeWord(word="john", gender_pole="male",
-                  source="weat", weat_set="weat-6"),
-    AttributeWord(word="bill", gender_pole="male",
-                  source="weat", weat_set="weat-7"),
-    AttributeWord(word="mary", gender_pole="female",
-                  source="weat", weat_set="weat-8"),
-    AttributeWord(word="anna", gender_pole="female",
-                  source="weat", weat_set="weat-6"),
+    AttributeWord(word="john", gender_pole="male", source="weat", weat_set="weat-6"),
+    AttributeWord(word="bill", gender_pole="male", source="weat", weat_set="weat-7"),
+    AttributeWord(word="mary", gender_pole="female", source="weat", weat_set="weat-8"),
+    AttributeWord(word="anna", gender_pole="female", source="weat", weat_set="weat-6"),
 ]
 
-_ENCODER = {"name": "stub/phi-star", "revision": "rev-test",
-            "pooling": "mean", "normalize": True}
+_ENCODER = {"name": "stub/phi-star", "revision": "rev-test", "pooling": "mean", "normalize": True}
 
 
 def _phi(dim: int = 768) -> Arbiter:
@@ -72,19 +67,19 @@ def _u(x: float, y: float) -> np.ndarray:
 def test_weat_association_sign_matches_male_positive() -> None:
     # male terms along +x, female along −x; s>0 means male-associated.
     vectors = {
-        "m1": _u(1.0, 0.0), "m2": _u(0.8, 0.6),
-        "f1": _u(-1.0, 0.0), "f2": _u(-0.8, 0.6),
-        "male_word": _u(0.9, 0.2), "female_word": _u(-0.9, 0.2),
+        "m1": _u(1.0, 0.0),
+        "m2": _u(0.8, 0.6),
+        "f1": _u(-1.0, 0.0),
+        "f2": _u(-0.8, 0.6),
+        "male_word": _u(0.9, 0.2),
+        "female_word": _u(-0.9, 0.2),
     }
-    phi = Arbiter(ref=ArbiterRef("stub", "r"),
-                  encoder=ScriptedEncoder(vectors))
+    phi = Arbiter(ref=ArbiterRef("stub", "r"), encoder=ScriptedEncoder(vectors))
     male_vecs = np.vstack([phi.embed("m1"), phi.embed("m2")])
     female_vecs = np.vstack([phi.embed("f1"), phi.embed("f2")])
 
-    s_male = weat_association(phi.embed("male_word"),
-                              male_vecs, female_vecs, phi)
-    s_female = weat_association(
-        phi.embed("female_word"), male_vecs, female_vecs, phi)
+    s_male = weat_association(phi.embed("male_word"), male_vecs, female_vecs, phi)
+    s_female = weat_association(phi.embed("female_word"), male_vecs, female_vecs, phi)
     assert s_male > 0.0
     assert s_female < 0.0
     # exact value == mean cos(male) − mean cos(female)
@@ -131,8 +126,7 @@ def test_build_rho_reference_structure() -> None:
     assert [w["text"] for w in fixture["words"]] == ["alpha", "beta", "gamma"]
     for row in fixture["words"]:
         assert set(row) == {"text", "rho_raw", "rho_cent", "rho_weat"}
-        assert all(isinstance(row[k], float)
-                   for k in ("rho_raw", "rho_cent", "rho_weat"))
+        assert all(isinstance(row[k], float) for k in ("rho_raw", "rho_cent", "rho_weat"))
 
 
 def test_build_rho_reference_is_deterministic() -> None:
@@ -161,10 +155,8 @@ def test_reemitted_sidecar_content_hash_is_self_consistent() -> None:
 
 def test_centering_reference_counts_are_arithmetically_consistent() -> None:
     """attr_unique + loaded_unique - collisions == n_reference_items; report the exact numbers."""
-    words = load_words(_RESOURCES / "words", _RESOURCES /
-                       "frequencies" / "subtlex_us.csv").words
-    attrs = read_attribute_words(
-        _RESOURCES / "attribute_words" / "gender_attributes.csv")
+    words = load_words(_RESOURCES / "words", _RESOURCES / "frequencies" / "subtlex_us.csv").words
+    attrs = read_attribute_words(_RESOURCES / "attribute_words" / "gender_attributes.csv")
     loaded = [w for w in words if w.specification is not None]
 
     attr_lower = {a.word.lower() for a in attrs}
@@ -188,11 +180,9 @@ def test_centering_reference_counts_are_arithmetically_consistent() -> None:
 # Frozen fixture on disk — keyed to the sidecar frame_id, sign agreement (offline: reads artifacts)
 def _load_committed_fixture() -> dict:
     sidecar = json.loads(_SIDECAR.read_text(encoding="utf-8"))
-    path = fixture_path(sidecar["frame_id"], out_dir=Path(
-        __file__).resolve().parent / "fixtures")
+    path = fixture_path(sidecar["frame_id"], out_dir=Path(__file__).resolve().parent / "fixtures")
     if not path.is_file():
-        pytest.skip(
-            f"ρ reference fixture not emitted for frame {sidecar['frame_id'][:8]}: {path}")
+        pytest.skip(f"ρ reference fixture not emitted for frame {sidecar['frame_id'][:8]}: {path}")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -238,25 +228,20 @@ def test_real_fixture_regeneration_matches_and_provenance_holds() -> None:
     try:
         read_encoder_recipe(ref.model_id, ref.hf_revision)
     except FrameSnapshotError:
-        pytest.skip(
-            f"φ* snapshot not in local HF cache: {ref.model_id}@{ref.hf_revision}")
+        pytest.skip(f"φ* snapshot not in local HF cache: {ref.model_id}@{ref.hf_revision}")
 
     sidecar = json.loads(_SIDECAR.read_text(encoding="utf-8"))
-    sidecar_axis = decode_f64_be_hex(
-        sidecar["gender_axis"]["vector_f64_be_hex"])
+    sidecar_axis = decode_f64_be_hex(sidecar["gender_axis"]["vector_f64_be_hex"])
     sidecar_mu = decode_f64_be_hex(sidecar["mu_bar"]["vector_f64_be_hex"])
 
-    words = load_words(_RESOURCES / "words", _RESOURCES /
-                       "frequencies" / "subtlex_us.csv").words
-    attrs = read_attribute_words(
-        _RESOURCES / "attribute_words" / "gender_attributes.csv")
+    words = load_words(_RESOURCES / "words", _RESOURCES / "frequencies" / "subtlex_us.csv").words
+    attrs = read_attribute_words(_RESOURCES / "attribute_words" / "gender_attributes.csv")
     phi = _real_phi()
 
     # Fixture geometry is the frame's, computed through the raw pinned φ*.
     assert phi.ref == DEFAULT_CONSENSUS.primary
     rebuilt_axis = build_gender_axis(attrs, phi)
-    reference = [a.word for a in attrs] + \
-        [w.text for w in words if w.specification is not None]
+    reference = [a.word for a in attrs] + [w.text for w in words if w.specification is not None]
     rebuilt_mu = build_mu_bar(reference, phi)
     # raw φ* axis == sidecar axis
     assert np.array_equal(rebuilt_axis, sidecar_axis)
@@ -267,8 +252,13 @@ def test_real_fixture_regeneration_matches_and_provenance_holds() -> None:
 
     def regenerate() -> dict:
         return build_rho_reference(
-            board_id=board_id, card_texts=card_texts, attributes=attrs, phi_star=phi,
-            gender_axis=sidecar_axis, mu_bar=sidecar_mu, encoder=sidecar["encoder"],
+            board_id=board_id,
+            card_texts=card_texts,
+            attributes=attrs,
+            phi_star=phi,
+            gender_axis=sidecar_axis,
+            mu_bar=sidecar_mu,
+            encoder=sidecar["encoder"],
             frame_id=sidecar["frame_id"],
         )
 

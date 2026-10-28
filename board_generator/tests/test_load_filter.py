@@ -91,8 +91,7 @@ _AXIS_ATTRS = [attr("m_attr", "male"), attr("f_attr", "female")]
 
 
 def test_build_gender_axis_is_normalized_mean_difference() -> None:
-    phi = arbiter({"john": vec(1.0), "paul": vec(1.0),
-                  "amy": vec(-1.0), "joan": vec(-1.0)})
+    phi = arbiter({"john": vec(1.0), "paul": vec(1.0), "amy": vec(-1.0), "joan": vec(-1.0)})
     attrs = [
         attr("john", "male"),
         attr("paul", "male"),
@@ -113,8 +112,7 @@ def test_build_gender_axis_is_normalized_mean_difference() -> None:
 
 def test_build_gender_axis_dedups_repeated_pairs() -> None:
     phi = arbiter({"john": vec(1.0), "amy": vec(-1.0)})
-    once = build_gender_axis(
-        [attr("john", "male"), attr("amy", "female")], phi)
+    once = build_gender_axis([attr("john", "male"), attr("amy", "female")], phi)
     # BROTHER/SON/HE-style repeats: a duplicate (word, pole) must not reweight the axis.
     twice = build_gender_axis(
         [attr("john", "male"), attr("john", "male"), attr("amy", "female")], phi
@@ -149,24 +147,19 @@ def test_signed_load_flips_for_female_pole() -> None:
 
 def test_calibrate_tau_load_matches_numpy_quantile() -> None:
     phi = arbiter(
-        {**_AXIS_VECTORS,
-            "executive": vec(0.5), "secretary": vec(-0.5), "boss": vec(0.05)}
+        {**_AXIS_VECTORS, "executive": vec(0.5), "secretary": vec(-0.5), "boss": vec(0.05)}
     )
     e_gen = build_gender_axis(_AXIS_ATTRS, phi)
     core = [
-        make_word("executive", "male", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("secretary", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("boss", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
+        make_word("executive", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("secretary", "female", weat_set=("weat-6",), specification="gender-career"),
+        make_word("boss", "male", weat_set=("weat-6",), specification="gender-career"),
     ]
 
     tau = calibrate_tau_load(core, phi, e_gen, 0.10)
 
     # signed-toward-own-pole: executive 0.5, secretary -(-0.5)=0.5, boss 0.05.
-    assert tau == pytest.approx(
-        float(np.quantile([0.5, 0.5, 0.05], 0.10, method="linear")))
+    assert tau == pytest.approx(float(np.quantile([0.5, 0.5, 0.05], 0.10, method="linear")))
 
 
 def test_calibrate_tau_load_two_specs_independent() -> None:
@@ -181,25 +174,19 @@ def test_calibrate_tau_load_two_specs_independent() -> None:
     )
     e_gen = build_gender_axis(_AXIS_ATTRS, phi)
     career_core = [
-        make_word("executive", "male", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("boss", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
+        make_word("executive", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("boss", "male", weat_set=("weat-6",), specification="gender-career"),
     ]
     science_core = [
-        make_word("math", "male", weat_set=("weat-7",),
-                  specification="gender-science"),
-        make_word("physics", "male", weat_set=("weat-7",),
-                  specification="gender-science"),
+        make_word("math", "male", weat_set=("weat-7",), specification="gender-science"),
+        make_word("physics", "male", weat_set=("weat-7",), specification="gender-science"),
     ]
 
     tau_career = calibrate_tau_load(career_core, phi, e_gen, 0.10)
     tau_science = calibrate_tau_load(science_core, phi, e_gen, 0.10)
 
-    assert tau_career == pytest.approx(
-        float(np.quantile([0.5, 0.3], 0.10, method="linear")))
-    assert tau_science == pytest.approx(
-        float(np.quantile([0.9, 0.7], 0.10, method="linear")))
+    assert tau_career == pytest.approx(float(np.quantile([0.5, 0.3], 0.10, method="linear")))
+    assert tau_science == pytest.approx(float(np.quantile([0.9, 0.7], 0.10, method="linear")))
     assert tau_career != tau_science
 
 
@@ -221,8 +208,7 @@ def test_filter_expansion_admits_at_or_above_tau_rejects_below() -> None:
         make_word("below", "male", weat_set=(), specification="gender-career"),
     ]
 
-    verdicts = {load.text: load.admitted for load in filter_expansion(
-        expansion, 0.5, phi, e_gen)}
+    verdicts = {load.text: load.admitted for load in filter_expansion(expansion, 0.5, phi, e_gen)}
 
     assert verdicts == {"above": True, "below": False}
 
@@ -231,8 +217,7 @@ def test_filter_expansion_exact_tie_at_tau_admitted() -> None:
     # Non-strict '>=' with no margin: a signed load exactly equal to τ passes.
     phi = arbiter({**_AXIS_VECTORS, "tie": vec(0.5)})
     e_gen = build_gender_axis(_AXIS_ATTRS, phi)
-    expansion = [make_word("tie", "male", weat_set=(),
-                           specification="gender-career")]
+    expansion = [make_word("tie", "male", weat_set=(), specification="gender-career")]
 
     (verdict,) = filter_expansion(expansion, 0.5, phi, e_gen)
 
@@ -247,12 +232,10 @@ def test_filter_expansion_rejects_weak_career_bridge_admits_strong() -> None:
     e_gen = build_gender_axis(_AXIS_ATTRS, phi)
     expansion = [
         make_word("work", "male", weat_set=(), specification="gender-career"),
-        make_word("manager", "male", weat_set=(),
-                  specification="gender-career"),
+        make_word("manager", "male", weat_set=(), specification="gender-career"),
     ]
 
-    verdicts = {load.text: load.admitted for load in filter_expansion(
-        expansion, 0.2, phi, e_gen)}
+    verdicts = {load.text: load.admitted for load in filter_expansion(expansion, 0.2, phi, e_gen)}
 
     assert verdicts == {"work": False, "manager": True}
 
@@ -283,38 +266,28 @@ def _report_geometry() -> Arbiter:
 
 def _report_pool() -> list[Word]:
     return [
-        make_word("executive", "male", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("secretary", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("boss", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
-        make_word("manager", "male", weat_set=(),
-                  specification="gender-career"),
+        make_word("executive", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("secretary", "female", weat_set=("weat-6",), specification="gender-career"),
+        make_word("boss", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("manager", "male", weat_set=(), specification="gender-career"),
         make_word("work", "male", weat_set=(), specification="gender-career"),
-        make_word("math", "male", weat_set=("weat-7",),
-                  specification="gender-science"),
-        make_word("poetry", "female", weat_set=(
-            "weat-7",), specification="gender-science"),
-        make_word("physics", "male", weat_set=(),
-                  specification="gender-science"),
-        make_word("dance", "female", weat_set=(),
-                  specification="gender-science"),
+        make_word("math", "male", weat_set=("weat-7",), specification="gender-science"),
+        make_word("poetry", "female", weat_set=("weat-7",), specification="gender-science"),
+        make_word("physics", "male", weat_set=(), specification="gender-science"),
+        make_word("dance", "female", weat_set=(), specification="gender-science"),
     ]
 
 
 def test_build_load_filter_report_survivors_and_embedded_rebalance() -> None:
     phi = _report_geometry()
-    report = build_load_filter_report(
-        _report_pool(), _AXIS_ATTRS, phi, seed=1234567)
+    report = build_load_filter_report(_report_pool(), _AXIS_ATTRS, phi, seed=1234567)
 
     by_spec = {s.specification: s for s in report.specifications}
     career = by_spec["gender-career"]
     science = by_spec["gender-science"]
 
     # Survivors = all core (incl. the weak "boss", grandfathered) + admitted expansion ("manager").
-    assert set(career.survivors) == {
-        "executive", "secretary", "boss", "manager"}
+    assert set(career.survivors) == {"executive", "secretary", "boss", "manager"}
     assert "boss" in career.survivors  # weak core is NOT filtered
     assert "work" not in career.survivors  # weak expansion bridge rejected
     assert science.n_expansion_rejected == 0
@@ -332,8 +305,7 @@ def test_build_load_filter_report_survivors_and_embedded_rebalance() -> None:
 
 def test_build_load_filter_report_serializes_with_allow_nan_false() -> None:
     phi = _report_geometry()
-    report = build_load_filter_report(
-        _report_pool(), _AXIS_ATTRS, phi, seed=1234567)
+    report = build_load_filter_report(_report_pool(), _AXIS_ATTRS, phi, seed=1234567)
 
     # No NaN/Inf anywhere: a strict dump must succeed (the JSON-safety convention holds).
     payload = json.dumps(dataclasses.asdict(report), allow_nan=False)
@@ -345,13 +317,10 @@ def test_build_load_filter_report_serializes_with_allow_nan_false() -> None:
 
 def test_load_filter_is_deterministic() -> None:
     phi = _report_geometry()
-    first = build_load_filter_report(
-        _report_pool(), _AXIS_ATTRS, phi, seed=1234567)
-    second = build_load_filter_report(
-        _report_pool(), _AXIS_ATTRS, phi, seed=1234567)
+    first = build_load_filter_report(_report_pool(), _AXIS_ATTRS, phi, seed=1234567)
+    second = build_load_filter_report(_report_pool(), _AXIS_ATTRS, phi, seed=1234567)
 
-    assert build_gender_axis(_AXIS_ATTRS, phi) == pytest.approx(
-        build_gender_axis(_AXIS_ATTRS, phi))
+    assert build_gender_axis(_AXIS_ATTRS, phi) == pytest.approx(build_gender_axis(_AXIS_ATTRS, phi))
     first_by_spec = {s.specification: s for s in first.specifications}
     second_by_spec = {s.specification: s for s in second.specifications}
     for spec in ("gender-career", "gender-science"):
@@ -381,8 +350,7 @@ def test_build_mu_bar_empty_reference_raises() -> None:
 
 def test_centered_axis_and_rho_are_exact_with_known_mu_bar() -> None:
     # attrs along x => raw axis [1,0]; subtracting μ̄=[0,1] is offset-invariant => same axis.
-    phi = arbiter(
-        {"m_attr": v(3.0, 1.0), "f_attr": v(-3.0, 1.0), "word": v(2.0, 1.0)})
+    phi = arbiter({"m_attr": v(3.0, 1.0), "f_attr": v(-3.0, 1.0), "word": v(2.0, 1.0)})
     attrs = [attr("m_attr", "male"), attr("f_attr", "female")]
     mu_bar = v(0.0, 1.0)
 
@@ -390,8 +358,7 @@ def test_centered_axis_and_rho_are_exact_with_known_mu_bar() -> None:
     assert axis_centered == pytest.approx(np.array([1.0, 0.0]))
 
     # φ̃("word") = [2,1] - [0,1] = [2,0] => cos with [1,0] is exactly 1.
-    rho_centered = rho(phi, axis_centered, "word",
-                       centered=True, mu_bar=mu_bar)
+    rho_centered = rho(phi, axis_centered, "word", centered=True, mu_bar=mu_bar)
     rho_raw = rho(phi, build_gender_axis(attrs, phi), "word")
     assert rho_centered == pytest.approx(1.0)
     assert rho_raw == pytest.approx(2.0 / np.sqrt(5.0))
@@ -400,14 +367,12 @@ def test_centered_axis_and_rho_are_exact_with_known_mu_bar() -> None:
 
 
 def test_centered_path_equals_raw_path_when_mu_bar_is_zero() -> None:
-    phi = arbiter(
-        {"m_attr": v(3.0, 1.0), "f_attr": v(-3.0, 1.0), "word": v(2.0, 1.0)})
+    phi = arbiter({"m_attr": v(3.0, 1.0), "f_attr": v(-3.0, 1.0), "word": v(2.0, 1.0)})
     attrs = [attr("m_attr", "male"), attr("f_attr", "female")]
     zero = np.zeros(2, dtype=np.float64)
 
     axis_raw = build_gender_axis(attrs, phi)
-    axis_centered_zero = build_gender_axis(
-        attrs, phi, centered=True, mu_bar=zero)
+    axis_centered_zero = build_gender_axis(attrs, phi, centered=True, mu_bar=zero)
     assert axis_centered_zero == pytest.approx(axis_raw)
 
     assert rho(phi, axis_raw, "word", centered=True, mu_bar=zero) == pytest.approx(
@@ -436,17 +401,14 @@ def test_filter_expansion_sign_is_strict_around_delta() -> None:
     # float tie from constructing a cosine that lands precisely on δ). Admit iff s > δ.
     phi = arbiter({**_AXIS_VECTORS, "cand": vec(0.6)})
     mu_bar = np.zeros(2, dtype=np.float64)
-    axis_centered = build_gender_axis(
-        _AXIS_ATTRS, phi, centered=True, mu_bar=mu_bar)
-    expansion = [make_word("cand", "male", weat_set=(),
-                           specification="gender-career")]
+    axis_centered = build_gender_axis(_AXIS_ATTRS, phi, centered=True, mu_bar=mu_bar)
+    expansion = [make_word("cand", "male", weat_set=(), specification="gender-career")]
 
     (probe,) = filter_expansion_sign(expansion, 0.0, phi, axis_centered, mu_bar)
     s = probe.signed_load_centered
 
     def admitted(delta: float) -> bool:
-        (load,) = filter_expansion_sign(
-            expansion, delta, phi, axis_centered, mu_bar)
+        (load,) = filter_expansion_sign(expansion, delta, phi, axis_centered, mu_bar)
         return load.admitted
 
     # STRICT '>': just below δ admitted, exactly at δ rejected, just above δ rejected.
@@ -467,20 +429,14 @@ def test_sign_filter_grandfathers_wrong_side_core_word() -> None:
         }
     )
     pool = [
-        make_word("executive", "male", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("wrongcore", "male", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("math", "male", weat_set=("weat-7",),
-                  specification="gender-science"),
-        make_word("poetry", "female", weat_set=(
-            "weat-7",), specification="gender-science"),
+        make_word("executive", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("wrongcore", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("math", "male", weat_set=("weat-7",), specification="gender-science"),
+        make_word("poetry", "female", weat_set=("weat-7",), specification="gender-science"),
     ]
 
-    report = build_sign_filter_report(
-        pool, _AXIS_ATTRS, phi, seed=1234567, delta=0.0)
-    career = next(
-        s for s in report.specifications if s.specification == "gender-career")
+    report = build_sign_filter_report(pool, _AXIS_ATTRS, phi, seed=1234567, delta=0.0)
+    career = next(s for s in report.specifications if s.specification == "gender-career")
 
     wrong = next(c for c in career.core if c.text == "wrongcore")
     assert wrong.grandfathered is True
@@ -500,8 +456,7 @@ def test_sign_filter_admitted_set_is_antitone_in_delta() -> None:
         }
     )
     mu_bar = np.zeros(2, dtype=np.float64)
-    axis_centered = build_gender_axis(
-        _AXIS_ATTRS, phi, centered=True, mu_bar=mu_bar)
+    axis_centered = build_gender_axis(_AXIS_ATTRS, phi, centered=True, mu_bar=mu_bar)
     expansion = [
         make_word("w1", "male", weat_set=(), specification="gender-career"),
         make_word("w2", "male", weat_set=(), specification="gender-career"),
@@ -528,21 +483,14 @@ def test_sign_filter_admitted_set_is_antitone_in_delta() -> None:
 
 def _sign_report_pool() -> list[Word]:
     return [
-        make_word("executive", "male", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("secretary", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("manager", "male", weat_set=(),
-                  specification="gender-career"),
+        make_word("executive", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("secretary", "female", weat_set=("weat-6",), specification="gender-career"),
+        make_word("manager", "male", weat_set=(), specification="gender-career"),
         make_word("work", "male", weat_set=(), specification="gender-career"),
-        make_word("math", "male", weat_set=("weat-7",),
-                  specification="gender-science"),
-        make_word("poetry", "female", weat_set=(
-            "weat-7",), specification="gender-science"),
-        make_word("physics", "male", weat_set=(),
-                  specification="gender-science"),
-        make_word("dance", "female", weat_set=(),
-                  specification="gender-science"),
+        make_word("math", "male", weat_set=("weat-7",), specification="gender-science"),
+        make_word("poetry", "female", weat_set=("weat-7",), specification="gender-science"),
+        make_word("physics", "male", weat_set=(), specification="gender-science"),
+        make_word("dance", "female", weat_set=(), specification="gender-science"),
     ]
 
 
@@ -565,10 +513,8 @@ def _sign_report_geometry() -> Arbiter:
 def test_sign_filter_report_is_deterministic() -> None:
     phi = _sign_report_geometry()
     pool = _sign_report_pool()
-    first = build_sign_filter_report(
-        pool, _AXIS_ATTRS, phi, seed=1234567, delta=0.0)
-    second = build_sign_filter_report(
-        pool, _AXIS_ATTRS, phi, seed=1234567, delta=0.0)
+    first = build_sign_filter_report(pool, _AXIS_ATTRS, phi, seed=1234567, delta=0.0)
+    second = build_sign_filter_report(pool, _AXIS_ATTRS, phi, seed=1234567, delta=0.0)
 
     # Same inputs + the same μ̄ construction => identical centered axis and partitions.
     assert first == second

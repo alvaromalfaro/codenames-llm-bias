@@ -39,8 +39,7 @@ from board_generator.neutral import (
 )
 
 # The writer script lives in scripts/ (no __init__), so load it from its path.
-SCRIPT_PATH = Path(__file__).resolve(
-).parents[1] / "scripts" / "build_neutral_candidates.py"
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "build_neutral_candidates.py"
 
 CANDIDATES_HEADER = "word,gender_category,word_kind,source,weat_set,specification"
 
@@ -117,9 +116,7 @@ def env(tmp_path: Path) -> dict[str, Path]:
 
 
 def _build(env: dict[str, Path]) -> NeutralCandidatesResult:
-    return build_neutral_candidates(
-        env["pool"], env["subtlex"], env["stoplist"], env["words_dir"]
-    )
+    return build_neutral_candidates(env["pool"], env["subtlex"], env["stoplist"], env["words_dir"])
 
 
 def _candidate_texts(result: NeutralCandidatesResult) -> set[str]:
@@ -148,8 +145,7 @@ def test_g1_stoplist_exclusion_reason_and_detail_is_file_hash(env: dict[str, Pat
     mother = _exclusion(result, "mother")
     assert mother.excluded_by == EXCLUDED_BY_DENOTATIONAL
     # detail is the sha256 of the stoplist file: recompute independently and compare.
-    assert mother.detail == _sha256(
-        env["stoplist"])
+    assert mother.detail == _sha256(env["stoplist"])
 
 
 def test_g1_normalized_match_is_case_insensitive(tmp_path: Path) -> None:
@@ -172,8 +168,7 @@ def test_g2_loaded_tokens_absent_with_spec_detail(env: dict[str, Path]) -> None:
     texts = _candidate_texts(result)
     assert "executive" not in texts
     assert "math" not in texts
-    assert _exclusion(
-        result, "executive").excluded_by == EXCLUDED_BY_ALREADY_LOADED
+    assert _exclusion(result, "executive").excluded_by == EXCLUDED_BY_ALREADY_LOADED
     assert _exclusion(result, "executive").detail == "gender-career"
     assert _exclusion(result, "math").excluded_by == EXCLUDED_BY_ALREADY_LOADED
     assert _exclusion(result, "math").detail == "gender-science"
@@ -192,8 +187,7 @@ def test_g2_candidates_disjoint_from_loaded_pools(env: dict[str, Path]) -> None:
 def test_g3_every_emitted_token_is_playable(env: dict[str, Path]) -> None:
     result = _build(env)
     for word in result.candidates:
-        status, _ambiguous, _reason = _check_playability(
-            word.text, "common", word.dom_pos)
+        status, _ambiguous, _reason = _check_playability(word.text, "common", word.dom_pos)
         assert status != "invalid", (word.text, status)
 
 
@@ -204,8 +198,7 @@ def test_g3_emitted_csv_reloads_without_playability_error(
     # pool. Loading a dir holding ONLY the emitted candidates must not raise.
     out_dir = tmp_path / "only_candidates"
     out_dir.mkdir()
-    _write(out_dir / "neutral_candidates.csv",
-           candidates_csv_text(_build(env)))
+    _write(out_dir / "neutral_candidates.csv", candidates_csv_text(_build(env)))
     with warnings.catch_warnings():  # kayak is OOV -> warns; OOV is not under test here
         warnings.simplefilter("ignore")
         load_words(out_dir, env["subtlex"])  # must not raise
@@ -222,8 +215,7 @@ def test_g3_phrase_and_proper_noun_dropped(env: dict[str, Path]) -> None:
 
 
 def test_g4_header_is_exact(env: dict[str, Path]) -> None:
-    assert candidates_csv_text(_build(env)).splitlines()[
-        0] == CANDIDATES_HEADER
+    assert candidates_csv_text(_build(env)).splitlines()[0] == CANDIDATES_HEADER
 
 
 def test_g4_every_row_is_neutral_common_duet_blank(env: dict[str, Path]) -> None:
@@ -240,8 +232,7 @@ def test_g4_every_row_is_neutral_common_duet_blank(env: dict[str, Path]) -> None
 def test_g4_roundtrip_through_load_words(env: dict[str, Path], tmp_path: Path) -> None:
     out_dir = tmp_path / "roundtrip"
     out_dir.mkdir()
-    _write(out_dir / "neutral_candidates.csv",
-           candidates_csv_text(_build(env)))
+    _write(out_dir / "neutral_candidates.csv", candidates_csv_text(_build(env)))
     with warnings.catch_warnings():  # kayak OOV
         warnings.simplefilter("ignore")
         loaded = load_words(out_dir, env["subtlex"])
@@ -273,18 +264,14 @@ def test_g5_provenance_stoplist_hash_matches_file(env: dict[str, Path]) -> None:
 def test_g5_counts_reconcile_arithmetically(env: dict[str, Path]) -> None:
     result = _build(env)
     counts = result.counts
-    stoplist_hits = sum(
-        1 for e in result.exclusions if e.excluded_by == EXCLUDED_BY_DENOTATIONAL
-    )
+    stoplist_hits = sum(1 for e in result.exclusions if e.excluded_by == EXCLUDED_BY_DENOTATIONAL)
     already_loaded_hits = sum(
         1 for e in result.exclusions if e.excluded_by == EXCLUDED_BY_ALREADY_LOADED
     )
-    emitted_rows = len(candidates_csv_text(
-        result).splitlines()) - 1  # minus header
+    emitted_rows = len(candidates_csv_text(result).splitlines()) - 1  # minus header
 
     assert counts["playable"] - stoplist_hits == counts["after_stoplist"]
-    assert counts["after_stoplist"] - \
-        already_loaded_hits == counts["after_already_loaded"]
+    assert counts["after_stoplist"] - already_loaded_hits == counts["after_already_loaded"]
     assert counts["after_already_loaded"] == counts["final_candidates"] == emitted_rows
     # The concrete fixture expectations (would have caught the 331-vs-332 drift by hand).
     assert counts == {
@@ -330,8 +317,7 @@ def test_g6_output_independent_of_deck_order(tmp_path: Path) -> None:
 
 
 def _run_writer(env: dict[str, Path], out_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    spec = importlib.util.spec_from_file_location(
-        "_writer_under_test", SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location("_writer_under_test", SCRIPT_PATH)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -339,11 +325,16 @@ def _run_writer(env: dict[str, Path], out_dir: Path, monkeypatch: pytest.MonkeyP
         "sys.argv",
         [
             "build_neutral_candidates.py",
-            "--pool", str(env["pool"]),
-            "--subtlex", str(env["subtlex"]),
-            "--stoplist", str(env["stoplist"]),
-            "--words-dir", str(env["words_dir"]),
-            "--out-dir", str(out_dir),
+            "--pool",
+            str(env["pool"]),
+            "--subtlex",
+            str(env["subtlex"]),
+            "--stoplist",
+            str(env["stoplist"]),
+            "--words-dir",
+            str(env["words_dir"]),
+            "--out-dir",
+            str(out_dir),
         ],
     )
     module.main()

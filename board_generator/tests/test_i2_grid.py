@@ -12,8 +12,7 @@ def test_i2_legal_board_passes(control_board: Board) -> None:
 
 
 def test_i2_rejects_wrong_word_count(control_board: Board) -> None:
-    truncated = dataclasses.replace(
-        control_board, words=control_board.words[:24])
+    truncated = dataclasses.replace(control_board, words=control_board.words[:24])
     assert validate_board_grid(truncated) is False
 
 

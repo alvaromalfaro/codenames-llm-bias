@@ -36,8 +36,7 @@ from board_generator.lexicon import Specification, Word
 # Intermediate artifacts live under board_generator/ (isolation: never data/boards/). resources/ is
 # the tool's own data folder, a sibling of the import package. Configurable everywhere; this is only
 # the default.
-DEFAULT_DILEMMA_DIR = Path(__file__).resolve(
-).parent.parent / "resources" / "dilemmas"
+DEFAULT_DILEMMA_DIR = Path(__file__).resolve().parent.parent / "resources" / "dilemmas"
 
 # Default candidate count for the ranked presentations; configurable.
 DEFAULT_K = 8
@@ -70,9 +69,7 @@ class DilemmaRecord:
 
 def neutral_pool(neutral_words: Sequence[Word], target: Word) -> list[Word]:
     """Neutral-bridge candidate pool: gender-neutral words, target excluded by text."""
-    return [
-        w for w in neutral_words if w.gender_category == "neutral" and w.text != target.text
-    ]
+    return [w for w in neutral_words if w.gender_category == "neutral" and w.text != target.text]
 
 
 def congruent_pool(loaded_words: Sequence[Word], target: Word) -> list[Word]:
@@ -124,8 +121,7 @@ class DilemmaSession:
         pool = neutral_pool(neutral_words, target)
         _warn_if_thin(pool, k, "neutral")
         ranked = rank_neutral_bridges(target, pool, self.phi_star, k)
-        assert all(w.text != target.text for w,
-                   _ in ranked), "target leaked into neutral ranking"
+        assert all(w.text != target.text for w, _ in ranked), "target leaked into neutral ranking"
         return ranked
 
     def rank_stereo(
@@ -135,11 +131,10 @@ class DilemmaSession:
         pool = congruent_pool(loaded_words, target)
         _warn_if_thin(pool, k, "stereotypical")
         ranked = rank_stereotypical_bridges(target, pool, self.phi_star, k)
-        assert all(
-            w.gender_category == target.gender_category for w, _ in ranked
-        ), "gender-incongruent word in stereotypical ranking"
-        assert all(w.text != target.text for w,
-                   _ in ranked), "target leaked into stereo ranking"
+        assert all(w.gender_category == target.gender_category for w, _ in ranked), (
+            "gender-incongruent word in stereotypical ranking"
+        )
+        assert all(w.text != target.text for w, _ in ranked), "target leaked into stereo ranking"
         return ranked
 
     def attempt(self, target: Word, neutral: Word, stereo: Word) -> board.Dilemma:
@@ -150,8 +145,7 @@ class DilemmaSession:
         way so the I/O layer can decide accept vs re-select. Raises if attempt_cap is exceeded.
         """
         texts = {target.text, neutral.text, stereo.text}
-        assert len(
-            texts) == 3, f"target/neutral/stereo must be distinct, got {sorted(texts)}"
+        assert len(texts) == 3, f"target/neutral/stereo must be distinct, got {sorted(texts)}"
 
         dilemma = verify_eq_4_1(target, neutral, stereo, self.consensus)
         if not dilemma.consensus_ok:
@@ -250,8 +244,7 @@ def from_json_dict(d: Mapping[str, Any]) -> DilemmaRecord:
         neutral_bridge=d["neutral_bridge"],
         stereotypical_bridge=d["stereotypical_bridge"],
         accepted=_dilemma_from_dict(d["accepted"]),
-        rejected_attempts=[_dilemma_from_dict(
-            x) for x in d["rejected_attempts"]],
+        rejected_attempts=[_dilemma_from_dict(x) for x in d["rejected_attempts"]],
         attempts_count=d["attempts_count"],
         arbiters_consensus=list(d["arbiters"]["consensus"]),
         arbiters_primary=d["arbiters"]["primary"],
@@ -271,8 +264,7 @@ def write_record(
     deterministic key order so the same record yields the same bytes.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / \
-        f"dilemma_{record_id(record.specification, record.target)}.json"
+    path = out_dir / f"dilemma_{record_id(record.specification, record.target)}.json"
     if path.exists() and not overwrite:
         raise FileExistsError(
             f"dilemma artifact already exists: {path} (pass overwrite=True to replace)"

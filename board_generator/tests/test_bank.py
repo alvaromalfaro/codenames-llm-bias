@@ -64,12 +64,8 @@ CAREER1 = make_record("gender-career", "family", "ant", "home")
 SCIENCE0 = make_record("gender-science", "math", "ace", "physics")
 
 
-def manifest_for(
-    records: list[dilemma_flow.DilemmaRecord], master_seed: int
-) -> bank.Manifest:
-    filenames = [
-        f"dilemma_{r.specification}_{r.target}.json" for r in records
-    ]
+def manifest_for(records: list[dilemma_flow.DilemmaRecord], master_seed: int) -> bank.Manifest:
+    filenames = [f"dilemma_{r.specification}_{r.target}.json" for r in records]
     return bank.Manifest(master_seed=master_seed, dilemmas=filenames)
 
 
@@ -102,8 +98,7 @@ def test_build_bank_shape_ids_and_indices() -> None:
         "probe-gender-career-001",
         "probe-gender-science-000",
     ]
-    assert {b.board_id for b in controls} == {
-        "control-000", "control-001", "control-002"}
+    assert {b.board_id for b in controls} == {"control-000", "control-001", "control-002"}
 
     # every probe carries its accepted dilemma; every control is dilemma-free and all-neutral.
     for b in probes:
@@ -150,9 +145,7 @@ def test_different_master_seed_changes_the_bank() -> None:
 
 
 def test_consensus_false_record_raises_naming_artifact() -> None:
-    bad = make_record(
-        "gender-career", "executive", "anchor", "business", consensus_ok=False
-    )
+    bad = make_record("gender-career", "executive", "anchor", "business", consensus_ok=False)
     with pytest.raises(ValueError) as excinfo:
         build([bad], 5)
     message = str(excinfo.value)
@@ -163,9 +156,7 @@ def test_consensus_false_record_raises_naming_artifact() -> None:
 def test_manifest_record_count_mismatch_raises() -> None:
     manifest = bank.Manifest(master_seed=1, dilemmas=["a.json", "b.json"])
     with pytest.raises(ValueError, match="manifest lists 2"):
-        bank.build_bank(
-            manifest, [CAREER0], words_dir=REAL_WORDS, subtlex_path=REAL_SUBTLEX
-        )
+        bank.build_bank(manifest, [CAREER0], words_dir=REAL_WORDS, subtlex_path=REAL_SUBTLEX)
 
 
 # Validation helper, unit-tested on hand-built boards (forced violations stay controlled).
@@ -193,8 +184,7 @@ def _hand_board(board_id: str, board_type: str, *, dilemma: Dilemma | None) -> B
             role_b=keycard.role_b[i],
             gender_category="neutral",
             source="test",
-            covariates={"subtlex_freq": 1.0,
-                        "length": 6.0, "wordnet_polysemy": 1.0},
+            covariates={"subtlex_freq": 1.0, "length": 6.0, "wordnet_polysemy": 1.0},
             weat_set=(),
         )
         for i in range(25)
@@ -259,8 +249,7 @@ def test_i5_dependence_warns_but_does_not_fail() -> None:
     control = _hand_board("control-x", "control", dilemma=None)
     dependent = replace(
         control,
-        keycard_audit=replace(control.keycard_audit,
-                              role_gender_independent=False),
+        keycard_audit=replace(control.keycard_audit, role_gender_independent=False),
     )
     warnings = bank.validate_bank_invariants([probe, dependent], 1)
     assert len(warnings) == 1
@@ -334,11 +323,16 @@ def test_cli_dry_run_writes_nothing(tmp_path: Path) -> None:
     cli.main(
         [
             "bank",
-            "--manifest", str(manifest_path),
-            "--dilemmas-dir", str(dilemmas_dir),
-            "--words-dir", str(REAL_WORDS),
-            "--subtlex-path", str(REAL_SUBTLEX),
-            "--out-dir", str(out_dir),
+            "--manifest",
+            str(manifest_path),
+            "--dilemmas-dir",
+            str(dilemmas_dir),
+            "--words-dir",
+            str(REAL_WORDS),
+            "--subtlex-path",
+            str(REAL_SUBTLEX),
+            "--out-dir",
+            str(out_dir),
             "--dry-run",
         ]
     )
@@ -356,11 +350,16 @@ def test_cli_writes_boards_and_report(tmp_path: Path) -> None:
     cli.main(
         [
             "bank",
-            "--manifest", str(manifest_path),
-            "--dilemmas-dir", str(dilemmas_dir),
-            "--words-dir", str(REAL_WORDS),
-            "--subtlex-path", str(REAL_SUBTLEX),
-            "--out-dir", str(out_dir),
+            "--manifest",
+            str(manifest_path),
+            "--dilemmas-dir",
+            str(dilemmas_dir),
+            "--words-dir",
+            str(REAL_WORDS),
+            "--subtlex-path",
+            str(REAL_SUBTLEX),
+            "--out-dir",
+            str(out_dir),
         ]
     )
     written = sorted(p.name for p in out_dir.iterdir())

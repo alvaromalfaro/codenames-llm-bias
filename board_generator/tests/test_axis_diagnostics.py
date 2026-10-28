@@ -94,26 +94,17 @@ def test_clean_separation_large_d_small_permutation_p() -> None:
     )
     attrs = [attr("m_attr", "male"), attr("f_attr", "female")]
     words = [
-        make_word("male1", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
-        make_word("male2", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
-        make_word("male3", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
-        make_word("male4", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
-        make_word("female1", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("female2", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("female3", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("female4", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
+        make_word("male1", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("male2", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("male3", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("male4", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("female1", "female", weat_set=("weat-6",), specification="gender-career"),
+        make_word("female2", "female", weat_set=("weat-6",), specification="gender-career"),
+        make_word("female3", "female", weat_set=("weat-6",), specification="gender-career"),
+        make_word("female4", "female", weat_set=("weat-6",), specification="gender-career"),
     ]
 
-    result = build_axis_diagnostics(
-        words, attrs, phi, seed=1234567, n_permutations=5000)
+    result = build_axis_diagnostics(words, attrs, phi, seed=1234567, n_permutations=5000)
     career = _spec(result, "gender-career")
 
     assert career.effect_raw.cohen_d is not None
@@ -140,14 +131,10 @@ def _anisotropy_geometry() -> tuple[Arbiter, list[AttributeWord], list[Word]]:
     )
     attrs = [attr("m_attr", "male"), attr("f_attr", "female")]
     words = [
-        make_word("male1", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
-        make_word("male2", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
-        make_word("female1", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("female2", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
+        make_word("male1", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("male2", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("female1", "female", weat_set=("weat-6",), specification="gender-career"),
+        make_word("female2", "female", weat_set=("weat-6",), specification="gender-career"),
     ]
     return phi, attrs, words
 
@@ -155,8 +142,7 @@ def _anisotropy_geometry() -> tuple[Arbiter, list[AttributeWord], list[Word]]:
 def test_anisotropy_centering_recovers_separation() -> None:
     phi, attrs, words = _anisotropy_geometry()
 
-    result = build_axis_diagnostics(
-        words, attrs, phi, seed=1234567, n_permutations=2000)
+    result = build_axis_diagnostics(words, attrs, phi, seed=1234567, n_permutations=2000)
     career = _spec(result, "gender-career")
 
     d_raw = career.effect_raw.cohen_d
@@ -187,16 +173,12 @@ def test_mu_bar_dedup_and_exact_centering() -> None:
     )
     attrs = [attr("king", "male"), attr("queen", "female")]
     words = [
-        make_word("actor", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
-        make_word("actress", "female", weat_set=(
-            "weat-6",), specification="gender-career"),
-        make_word("King", "male", weat_set=("weat-6",),
-                  specification="gender-career"),
+        make_word("actor", "male", weat_set=("weat-6",), specification="gender-career"),
+        make_word("actress", "female", weat_set=("weat-6",), specification="gender-career"),
+        make_word("King", "male", weat_set=("weat-6",), specification="gender-career"),
     ]
 
-    result = build_axis_diagnostics(
-        words, attrs, phi, seed=1, n_permutations=100)
+    result = build_axis_diagnostics(words, attrs, phi, seed=1, n_permutations=100)
 
     # Deduplicated by lowercased text: {king, queen, actor, actress} -> 4.
     assert result.n_embedded_items == 4
@@ -217,10 +199,8 @@ def test_mu_bar_dedup_and_exact_centering() -> None:
 def test_permutation_p_is_deterministic() -> None:
     phi, attrs, words = _anisotropy_geometry()
 
-    first = build_axis_diagnostics(
-        words, attrs, phi, seed=42, n_permutations=2000)
-    second = build_axis_diagnostics(
-        words, attrs, phi, seed=42, n_permutations=2000)
+    first = build_axis_diagnostics(words, attrs, phi, seed=42, n_permutations=2000)
+    second = build_axis_diagnostics(words, attrs, phi, seed=42, n_permutations=2000)
 
     assert first == second
     for spec in ("gender-career", "gender-science"):
@@ -235,8 +215,7 @@ def test_permutation_p_is_deterministic() -> None:
 
 def test_serializes_with_allow_nan_false() -> None:
     phi, attrs, words = _anisotropy_geometry()
-    result = build_axis_diagnostics(
-        words, attrs, phi, seed=1234567, n_permutations=100)
+    result = build_axis_diagnostics(words, attrs, phi, seed=1234567, n_permutations=100)
 
     payload = json.dumps(dataclasses.asdict(result), allow_nan=False)
     assert '"mu_bar_norm"' in payload

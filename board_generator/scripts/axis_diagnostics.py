@@ -43,8 +43,7 @@ def _primary_arbiter() -> Arbiter:
     for arbiter in arbiters:
         if arbiter.ref == DEFAULT_CONSENSUS.primary:
             return arbiter
-    raise RuntimeError(
-        "primary φ* not found in the loaded consensus (should be unreachable)")
+    raise RuntimeError("primary φ* not found in the loaded consensus (should be unreachable)")
 
 
 def axis_diagnostics_report(

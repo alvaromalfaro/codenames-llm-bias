@@ -53,10 +53,8 @@ def test_probe_round_trip_translation() -> None:
     for card in payload["cards"]:
         assert card["text"] == card["text"].upper()
         assert card["category"] in {"male", "female", "neutral"}
-        assert card["human_perspective_role"] in {
-            "agent", "civilian", "assassin"}
-        assert card["llm_perspective_role"] in {
-            "agent", "civilian", "assassin"}
+        assert card["human_perspective_role"] in {"agent", "civilian", "assassin"}
+        assert card["llm_perspective_role"] in {"agent", "civilian", "assassin"}
 
     # A loaded card carries a gendered pole; the dilemma target ("nurse") is female.
     nurse = next(c for c in payload["cards"] if c["text"] == "NURSE")
@@ -68,10 +66,11 @@ def test_probe_round_trip_translation() -> None:
     assert payload["dilemma"] is not None
     assert payload["dilemma"]["target"] == "nurse"
     assert "arbiter_scores" in payload["dilemma"]
-    assert set(payload["keycard_audit"]["per_perspective"]) == {
-        "agent", "bystander", "assassin"}
+    assert set(payload["keycard_audit"]["per_perspective"]) == {"agent", "bystander", "assassin"}
     assert payload["keycard_audit"]["per_perspective"] == {
-        "agent": 9, "bystander": 13, "assassin": 3
+        "agent": 9,
+        "bystander": 13,
+        "assassin": 3,
     }
 
 
@@ -110,8 +109,7 @@ def test_oov_neutral_subtlex_freq_serializes_to_null() -> None:
 def test_control_board_has_no_gender_axis_and_no_dilemma() -> None:
     payload = to_json_dict(_control_board())
     assert payload["category"] == "neutral"
-    assert payload["specification"] is None or isinstance(
-        payload["specification"], str)
+    assert payload["specification"] is None or isinstance(payload["specification"], str)
     assert payload["dilemma"] is None
     assert all(c["category"] == "neutral" for c in payload["cards"])
 

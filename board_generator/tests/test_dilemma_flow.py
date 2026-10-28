@@ -31,8 +31,7 @@ def make_word(text: str, gender: GenderCategory = "neutral") -> Word:
         weat_set=("weat-6",),
         dom_pos=None,
         ambiguous_pos=False,
-        covariates={"subtlex_freq": 1.0, "length": float(
-            len(text)), "wordnet_polysemy": 1.0},
+        covariates={"subtlex_freq": 1.0, "length": float(len(text)), "wordnet_polysemy": 1.0},
         specification="gender-career",
     )
 
@@ -67,8 +66,7 @@ def test_rank_neutral_respects_k_sort_and_excludes_target() -> None:
 
     ranked = session.rank_neutral(target, neutral, k=2)
 
-    assert [w.text for w, _ in ranked] == [
-        "hospital", "ward"]  # desc by cos, target dropped
+    assert [w.text for w, _ in ranked] == ["hospital", "ward"]  # desc by cos, target dropped
     assert [cos for _, cos in ranked] == pytest.approx([1.0, 0.8])
     assert len(ranked) <= 2
 
@@ -82,12 +80,10 @@ def test_rank_tie_breaks_on_text_ascending() -> None:
             "alpha": np.array([0.6, -0.8]),
         },
     )
-    session = DilemmaSession(phi_star=phi, consensus=[
-                             phi], specification="gender-career")
+    session = DilemmaSession(phi_star=phi, consensus=[phi], specification="gender-career")
     target = make_word("nurse")
 
-    ranked = session.rank_neutral(
-        target, [make_word("beta"), make_word("alpha")], k=2)
+    ranked = session.rank_neutral(target, [make_word("beta"), make_word("alpha")], k=2)
 
     assert [w.text for w, _ in ranked] == ["alpha", "beta"]
     assert ranked[0][1] == pytest.approx(ranked[1][1])
@@ -105,8 +101,7 @@ def test_stereo_ranking_never_includes_gender_incongruent_words() -> None:
             "table": np.array([0.99, np.sqrt(1.0 - 0.99**2)]),
         },
     )
-    session = DilemmaSession(phi_star=phi, consensus=[
-                             phi], specification="gender-career")
+    session = DilemmaSession(phi_star=phi, consensus=[phi], specification="gender-career")
     target = make_word("manager", gender="male")
     loaded = [
         target,
@@ -127,8 +122,7 @@ def test_thin_pool_warns_when_available_below_k() -> None:
     target = make_word("nurse")
 
     with pytest.warns(UserWarning, match="< k=8"):
-        session.rank_neutral(
-            target, [make_word("ward"), make_word("clinic")], k=8)
+        session.rank_neutral(target, [make_word("ward"), make_word("clinic")], k=8)
 
 
 # verify / accept / reject accounting
@@ -167,8 +161,7 @@ def test_accept_path_sets_consensus_ok_and_serializes(tmp_path: Path) -> None:
         phi_star=consensus[0], consensus=consensus, specification="gender-career"
     )
 
-    dilemma = session.attempt(
-        make_word("nurse"), make_word("hospital"), make_word("dress"))
+    dilemma = session.attempt(make_word("nurse"), make_word("hospital"), make_word("dress"))
     assert dilemma.consensus_ok is True
 
     record = session.build_record(dilemma)
@@ -187,12 +180,10 @@ def test_t9_rejected_attempt_is_recorded(tmp_path: Path) -> None:
         phi_star=consensus[0], consensus=consensus, specification="gender-science"
     )
 
-    first = session.attempt(make_word("nurse"), make_word(
-        "hospital"), make_word("dress"))
+    first = session.attempt(make_word("nurse"), make_word("hospital"), make_word("dress"))
     assert first.consensus_ok is False
 
-    second = session.attempt(
-        make_word("nurse"), make_word("hospital"), make_word("gown"))
+    second = session.attempt(make_word("nurse"), make_word("hospital"), make_word("gown"))
     assert second.consensus_ok is True
 
     record = session.build_record(second)
@@ -203,8 +194,7 @@ def test_t9_rejected_attempt_is_recorded(tmp_path: Path) -> None:
     assert rejected.consensus_ok is False
     assert rejected.stereotypical_bridge == "dress"
     # The rejected attempt keeps its per-arbiter cosines (search pressure stays auditable).
-    assert all(s.cos_target_stereo >
-               s.cos_target_neutral for s in rejected.arbiter_scores)
+    assert all(s.cos_target_stereo > s.cos_target_neutral for s in rejected.arbiter_scores)
     assert record.accepted is second
     assert record.accepted.stereotypical_bridge == "gown"
 
@@ -212,8 +202,7 @@ def test_t9_rejected_attempt_is_recorded(tmp_path: Path) -> None:
 def test_distinctness_collision_raises() -> None:
     session = _ranking_session()
     with pytest.raises(AssertionError):
-        session.attempt(make_word("nurse"), make_word(
-            "hospital"), make_word("hospital"))
+        session.attempt(make_word("nurse"), make_word("hospital"), make_word("hospital"))
 
 
 def test_attempt_cap_raises_after_too_many_rejections() -> None:
@@ -222,8 +211,7 @@ def test_attempt_cap_raises_after_too_many_rejections() -> None:
         phi_star=consensus[0], consensus=consensus, specification="gender-career", attempt_cap=1
     )
     with pytest.raises(RuntimeError, match="attempt cap"):
-        session.attempt(make_word("nurse"), make_word(
-            "hospital"), make_word("dress"))
+        session.attempt(make_word("nurse"), make_word("hospital"), make_word("dress"))
 
 
 # artifact: id, overwrite guard, round-trip re-verify
@@ -231,16 +219,13 @@ def test_attempt_cap_raises_after_too_many_rejections() -> None:
 
 def _accepted_record(spec: Specification = "gender-career") -> dilemma_flow.DilemmaRecord:
     consensus = [_agreeing("stub/a"), _agreeing("stub/b")]
-    session = DilemmaSession(
-        phi_star=consensus[0], consensus=consensus, specification=spec)
-    dilemma = session.attempt(
-        make_word("nurse"), make_word("hospital"), make_word("dress"))
+    session = DilemmaSession(phi_star=consensus[0], consensus=consensus, specification=spec)
+    dilemma = session.attempt(make_word("nurse"), make_word("hospital"), make_word("dress"))
     return session.build_record(dilemma)
 
 
 def test_record_id_is_spec_underscore_target() -> None:
-    assert dilemma_flow.record_id(
-        "gender-career", "nurse") == "gender-career_nurse"
+    assert dilemma_flow.record_id("gender-career", "nurse") == "gender-career_nurse"
 
 
 def test_existing_artifact_is_not_silently_overwritten(tmp_path: Path) -> None:
@@ -272,14 +257,10 @@ def test_round_trip_and_reverify_reproduces_consensus_ok(tmp_path: Path) -> None
 def test_pinned_arbiters_match_injected_refs() -> None:
     phi = _agreeing("stub/primary")
     other = _agreeing("stub/other")
-    session = DilemmaSession(
-        phi_star=phi, consensus=[phi, other], specification="gender-career"
-    )
-    dilemma = session.attempt(
-        make_word("nurse"), make_word("hospital"), make_word("dress"))
+    session = DilemmaSession(phi_star=phi, consensus=[phi, other], specification="gender-career")
+    dilemma = session.attempt(make_word("nurse"), make_word("hospital"), make_word("dress"))
     record = session.build_record(dilemma)
 
     assert record.arbiters_consensus == [str(phi.ref), str(other.ref)]
     assert record.arbiters_primary == str(phi.ref)
-    assert record.arbiters_consensus == [
-        "stub/primary@rev-test", "stub/other@rev-test"]
+    assert record.arbiters_consensus == ["stub/primary@rev-test", "stub/other@rev-test"]

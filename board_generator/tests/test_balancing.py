@@ -34,10 +34,16 @@ REAL_WORDS = RESOURCES / "words"
 REAL_SUBTLEX = RESOURCES / "frequencies" / "subtlex_us.csv"
 
 
-def make_word(text: str, gender: str, freq: float | None, *, length: int | None = None,
-              polysemy: int = 1, weat: tuple[str, ...] = ("weat-6",),
-              specification: Specification = "gender-career",
-              ) -> Word:
+def make_word(
+    text: str,
+    gender: str,
+    freq: float | None,
+    *,
+    length: int | None = None,
+    polysemy: int = 1,
+    weat: tuple[str, ...] = ("weat-6",),
+    specification: Specification = "gender-career",
+) -> Word:
     """Build a board-eligible Word directly, bypassing CSV/WordNet loading."""
     return Word(
         text=text,
@@ -52,7 +58,7 @@ def make_word(text: str, gender: str, freq: float | None, *, length: int | None 
             "length": float(length if length is not None else len(text)),
             "wordnet_polysemy": float(polysemy),
         },
-        specification=specification
+        specification=specification,
     )
 
 
@@ -63,8 +69,9 @@ def real_load() -> LoadResult:
         return load_words(REAL_WORDS, REAL_SUBTLEX)
 
 
-def _spec(result_report: balancing.BalanceReport, specification: str
-          ) -> balancing.SpecificationBalance:
+def _spec(
+    result_report: balancing.BalanceReport, specification: str
+) -> balancing.SpecificationBalance:
     return next(s for s in result_report.specifications if s.specification == specification)
 
 
@@ -106,10 +113,8 @@ def test_real_pool_counts(real_load: LoadResult) -> None:
     assert "salary" in career_texts
 
     # The matched subsets are returned alongside the report, paired one-to-one.
-    sci_subset = next(
-        m for m in result.matched if m.specification == "gender-science")
-    assert len(sci_subset.treatment) == len(
-        sci_subset.control) == science.counts.pairs_kept
+    sci_subset = next(m for m in result.matched if m.specification == "gender-science")
+    assert len(sci_subset.treatment) == len(sci_subset.control) == science.counts.pairs_kept
 
 
 # NEGATIVE: a systematically shifted pole -> report shows non-equivalence.
@@ -117,13 +122,11 @@ def test_real_pool_counts(real_load: LoadResult) -> None:
 def test_systematic_shift_reports_non_equivalence() -> None:
     # Each covariate is shifted between poles but varies within a pole (so SMD is defined).
     treatment = [
-        make_word(f"hi{i:02d}", "male", 6.0 + 0.05 * i,
-                  length=12 + i % 4, polysemy=9 + i % 3)
+        make_word(f"hi{i:02d}", "male", 6.0 + 0.05 * i, length=12 + i % 4, polysemy=9 + i % 3)
         for i in range(12)
     ]
     control = [
-        make_word(f"lo{i:02d}", "female", 2.0 + 0.05 * i,
-                  length=4 + i % 4, polysemy=1 + i % 3)
+        make_word(f"lo{i:02d}", "female", 2.0 + 0.05 * i, length=4 + i % 4, polysemy=1 + i % 3)
         for i in range(12)
     ]
 
@@ -189,8 +192,7 @@ def test_caliper_drops_unmatchable_outlier() -> None:
         # extreme on every covariate
         make_word("out", "male", 7.0, length=40, polysemy=40),
     ]
-    control = [make_word(f"f{i}", "female", 5.0,
-                         length=5, polysemy=2) for i in range(4)]
+    control = [make_word(f"f{i}", "female", 5.0, length=5, polysemy=2) for i in range(4)]
 
     matched_t, matched_c, dropped_caliper, dropped_excess = balancing.propensity_score_match(
         treatment, control, seed=42
@@ -205,8 +207,7 @@ def test_caliper_drops_unmatchable_outlier() -> None:
 def test_deterministic(real_load: LoadResult) -> None:
     first = run_balancing(real_load.words, seed=99)
     second = run_balancing(real_load.words, seed=99)
-    assert dataclasses.asdict(
-        first.report) == dataclasses.asdict(second.report)
+    assert dataclasses.asdict(first.report) == dataclasses.asdict(second.report)
     for a, b in zip(first.matched, second.matched, strict=True):
         assert [w.text for w in a.treatment] == [w.text for w in b.treatment]
         assert [w.text for w in a.control] == [w.text for w in b.control]
@@ -215,8 +216,7 @@ def test_deterministic(real_load: LoadResult) -> None:
 # JSON safety: a degenerate (constant-covariate) pool must still serialize with no NaN/Inf.
 def test_degenerate_pool_serializes_without_nan() -> None:
     pool = [
-        make_word(f"c{i}", "male" if i < 3 else "female",
-                  5.0, length=5, polysemy=2)
+        make_word(f"c{i}", "male" if i < 3 else "female", 5.0, length=5, polysemy=2)
         for i in range(6)
     ]
     result = run_balancing(pool, seed=1)
@@ -262,18 +262,15 @@ def test_real_pool_smd_verdict(real_load: LoadResult) -> None:
 # The diagnostic script must inherit the governing SMD default, never override it back to TOST.
 # (`scripts/` is not a package, so load the module from its path.)
 def test_script_cli_default_is_smd() -> None:
-    script_path = Path(__file__).resolve(
-    ).parents[1] / "scripts" / "balance_report.py"
-    spec = importlib.util.spec_from_file_location(
-        "balance_report", script_path)
+    script_path = Path(__file__).resolve().parents[1] / "scripts" / "balance_report.py"
+    spec = importlib.util.spec_from_file_location("balance_report", script_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
     args = module.build_parser().parse_args([])
     assert args.criterion == "smd"
-    criterion_action = next(
-        a for a in module.build_parser()._actions if a.dest == "criterion")
+    criterion_action = next(a for a in module.build_parser()._actions if a.dest == "criterion")
     assert "smd" in (criterion_action.choices or ())
 
 
@@ -317,8 +314,7 @@ def test_undefined_smd_fails() -> None:
 
 # Regression: "tost" stays selectable and governs; secondary diagnostics remain present/populated.
 def test_tost_still_selectable_and_governs(real_load: LoadResult) -> None:
-    report = run_balancing(real_load.words, seed=1234567,
-                           criterion="tost").report
+    report = run_balancing(real_load.words, seed=1234567, criterion="tost").report
     assert report.criterion == "tost"
     for spec in report.specifications:
         for cov in spec.covariates:
@@ -347,7 +343,5 @@ def test_constants_and_defaults() -> None:
     }
     assert names <= set(vars(balancing))
     # SMD governs by default; the significance-based criteria stay selectable.
-    assert inspect.signature(
-        run_balancing).parameters["criterion"].default == "smd"
-    assert inspect.signature(
-        check_balance).parameters["criterion"].default == "smd"
+    assert inspect.signature(run_balancing).parameters["criterion"].default == "smd"
+    assert inspect.signature(check_balance).parameters["criterion"].default == "smd"

@@ -46,27 +46,102 @@ from board_generator.lexicon import (
 GENDER_DENOTATIONAL_SEED: frozenset[str] = frozenset(
     {
         # kinship
-        "mother", "father", "mom", "dad", "mommy", "daddy", "mum",
-        "sister", "brother", "daughter", "son",
-        "wife", "husband", "aunt", "uncle", "niece", "nephew",
-        "grandmother", "grandfather", "grandma", "grandpa", "granny",
-        "widow", "widower", "bride", "groom", "bridegroom",
-        "girlfriend", "boyfriend", "fiancee", "fiance",
+        "mother",
+        "father",
+        "mom",
+        "dad",
+        "mommy",
+        "daddy",
+        "mum",
+        "sister",
+        "brother",
+        "daughter",
+        "son",
+        "wife",
+        "husband",
+        "aunt",
+        "uncle",
+        "niece",
+        "nephew",
+        "grandmother",
+        "grandfather",
+        "grandma",
+        "grandpa",
+        "granny",
+        "widow",
+        "widower",
+        "bride",
+        "groom",
+        "bridegroom",
+        "girlfriend",
+        "boyfriend",
+        "fiancee",
+        "fiance",
         # generic person / pronoun-like
-        "woman", "man", "girl", "boy", "lady", "gentleman",
-        "female", "male", "she", "he", "her", "him", "hers",
-        "madam", "sir", "miss", "mister", "mistress", "master",
-        "lass", "lad", "maiden", "spinster", "bachelor",
+        "woman",
+        "man",
+        "girl",
+        "boy",
+        "lady",
+        "gentleman",
+        "female",
+        "male",
+        "she",
+        "he",
+        "her",
+        "him",
+        "hers",
+        "madam",
+        "sir",
+        "miss",
+        "mister",
+        "mistress",
+        "master",
+        "lass",
+        "lad",
+        "maiden",
+        "spinster",
+        "bachelor",
         # titles / royalty / religious
-        "queen", "king", "princess", "prince", "duchess", "duke",
-        "empress", "emperor", "countess", "count", "baroness", "baron",
-        "nun", "monk", "priestess", "priest", "goddess", "god",
-        "witch", "wizard", "heroine", "hero",
+        "queen",
+        "king",
+        "princess",
+        "prince",
+        "duchess",
+        "duke",
+        "empress",
+        "emperor",
+        "countess",
+        "count",
+        "baroness",
+        "baron",
+        "nun",
+        "monk",
+        "priestess",
+        "priest",
+        "goddess",
+        "god",
+        "witch",
+        "wizard",
+        "heroine",
+        "hero",
         # occupational gender pairs
-        "actress", "actor", "waitress", "waiter", "hostess", "host",
-        "stewardess", "steward", "seamstress", "tailor",
-        "policewoman", "policeman", "saleswoman", "salesman",
-        "businesswoman", "businessman",
+        "actress",
+        "actor",
+        "waitress",
+        "waiter",
+        "hostess",
+        "host",
+        "stewardess",
+        "steward",
+        "seamstress",
+        "tailor",
+        "policewoman",
+        "policeman",
+        "saleswoman",
+        "salesman",
+        "businesswoman",
+        "businessman",
     }
 )
 
@@ -91,19 +166,50 @@ GENDERED_SUFFIXES: tuple[str, ...] = (
 # hits are the ones the reviewer is told to scrutinise.
 _GENDER_GLOSS_CUES: frozenset[str] = frozenset(
     {
-        "male", "female", "man", "woman", "men", "women",
-        "boy", "girl", "boys", "girls",
-        "he", "she", "his", "her", "him", "hers",
-        "son", "sons", "daughter", "daughters",
-        "husband", "wife", "brother", "sister",
-        "father", "mother", "king", "queen",
-        "lady", "ladies", "gentleman", "widow", "bride", "groom",
-        "masculine", "feminine", "maternal", "paternal", "nun", "monk",
+        "male",
+        "female",
+        "man",
+        "woman",
+        "men",
+        "women",
+        "boy",
+        "girl",
+        "boys",
+        "girls",
+        "he",
+        "she",
+        "his",
+        "her",
+        "him",
+        "hers",
+        "son",
+        "sons",
+        "daughter",
+        "daughters",
+        "husband",
+        "wife",
+        "brother",
+        "sister",
+        "father",
+        "mother",
+        "king",
+        "queen",
+        "lady",
+        "ladies",
+        "gentleman",
+        "widow",
+        "bride",
+        "groom",
+        "masculine",
+        "feminine",
+        "maternal",
+        "paternal",
+        "nun",
+        "monk",
     }
 )
 
-_GLOSS_CUE_RE = re.compile(
-    r"\b(?:" + "|".join(sorted(_GENDER_GLOSS_CUES)) + r")\b")
+_GLOSS_CUE_RE = re.compile(r"\b(?:" + "|".join(sorted(_GENDER_GLOSS_CUES)) + r")\b")
 
 # Sense anchors for the hypernym-closure branch.
 _WOMAN = "woman.n.01"
@@ -191,7 +297,12 @@ def flag_token(normalized: str) -> DenotationalFlags:
 # Exact header of the emitted candidates CSV - matches lexicon.load_words' schema verbatim so the
 # human-reviewed neutral.csv produced from it loads without change.
 CANDIDATES_CSV_HEADER = (
-    "word", "gender_category", "word_kind", "source", "weat_set", "specification"
+    "word",
+    "gender_category",
+    "word_kind",
+    "source",
+    "weat_set",
+    "specification",
 )
 
 # The only legal exclusion reasons. Never ρ_w / load.
@@ -259,14 +370,11 @@ def enumerate_playable_tokens(pool_path: Path, subtlex_path: Path) -> list[Playa
         if " " in normalized or "\t" in normalized:
             continue  # multi-token phrase: excluded by design
         freq_entry = frequency.get(normalized)
-        subtlex_freq, dom_pos = freq_entry if freq_entry is not None else (
-            None, None)
-        status, ambiguous_pos, _reason = _check_playability(
-            normalized, "common", dom_pos)
+        subtlex_freq, dom_pos = freq_entry if freq_entry is not None else (None, None)
+        status, ambiguous_pos, _reason = _check_playability(normalized, "common", dom_pos)
         if status == "playable":
             seen.add(normalized)
-            playable.append(PlayableToken(
-                normalized, dom_pos, ambiguous_pos, subtlex_freq))
+            playable.append(PlayableToken(normalized, dom_pos, ambiguous_pos, subtlex_freq))
     return playable
 
 
@@ -327,15 +435,13 @@ def build_neutral_candidates(
     for token in playable:
         if token.normalized in stoplist.normalized:
             exclusions.append(
-                Exclusion(token.normalized,
-                          EXCLUDED_BY_DENOTATIONAL, stoplist.sha256)
+                Exclusion(token.normalized, EXCLUDED_BY_DENOTATIONAL, stoplist.sha256)
             )
             continue
         after_stoplist += 1
         if token.normalized in loaded:
             exclusions.append(
-                Exclusion(token.normalized, EXCLUDED_BY_ALREADY_LOADED,
-                          loaded[token.normalized])
+                Exclusion(token.normalized, EXCLUDED_BY_ALREADY_LOADED, loaded[token.normalized])
             )
             continue
         survivors.append(token)
@@ -361,8 +467,7 @@ def build_neutral_candidates(
         ),
         key=lambda word: word.text,
     )
-    exclusions.sort(key=lambda exclusion: (
-        exclusion.token, exclusion.excluded_by))
+    exclusions.sort(key=lambda exclusion: (exclusion.token, exclusion.excluded_by))
 
     counts = {
         "raw_lines": raw_lines,

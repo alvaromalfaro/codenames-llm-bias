@@ -61,8 +61,7 @@ def load_manifest(path: Path) -> Manifest:
         raise ValueError(f"manifest {path} 'master_seed' must be an integer")
     dilemmas = data.get("dilemmas")
     if not isinstance(dilemmas, list) or not all(isinstance(d, str) for d in dilemmas):
-        raise ValueError(
-            f"manifest {path} 'dilemmas' must be a list of filenames")
+        raise ValueError(f"manifest {path} 'dilemmas' must be a list of filenames")
     return Manifest(master_seed=seed, dilemmas=list(dilemmas))
 
 
@@ -105,9 +104,7 @@ def build_bank(
 
     words = load_words(words_dir, subtlex_path).words
     balance = run_balancing(words, seed=manifest.master_seed)
-    matched: dict[Specification, MatchedSubset] = {
-        m.specification: m for m in balance.matched
-    }
+    matched: dict[Specification, MatchedSubset] = {m.specification: m for m in balance.matched}
     neutral_pool = [w for w in words if w.gender_category == "neutral"]
     loaded_index = {w.text: w for w in words}
 
@@ -139,9 +136,7 @@ def build_bank(
         index_in_spec[spec] = idx + 1
         board_id = f"probe-{spec}-{idx:03d}"
         if spec not in matched:
-            raise ValueError(
-                f"no balanced subset for specification {spec!r} (board {board_id!r})"
-            )
+            raise ValueError(f"no balanced subset for specification {spec!r} (board {board_id!r})")
         seed = derive_board_seed(manifest.master_seed, board_id)
         try:
             words_25 = compose_probe_words(
@@ -167,8 +162,7 @@ def build_bank(
     for i in range(pairs):
         board_id = f"control-{i:03d}"
         seed = derive_board_seed(manifest.master_seed, board_id)
-        words_25 = compose_control_words(
-            neutral_pool, board_index=i, rng=Random(pool_seed))
+        words_25 = compose_control_words(neutral_pool, board_index=i, rng=Random(pool_seed))
         boards.append(
             assemble_board(
                 board_id,
@@ -207,9 +201,7 @@ def validate_bank_invariants(boards: list[Board], expected_pairs: int) -> list[s
             f"bank is not 50/50: {len(probes)} probe board(s) vs {len(controls)} control board(s)"
         )
     if len(probes) != expected_pairs:
-        raise ValueError(
-            f"bank has {len(probes)} probe board(s), expected {expected_pairs}"
-        )
+        raise ValueError(f"bank has {len(probes)} probe board(s), expected {expected_pairs}")
 
     # board_id uniqueness.
     ids = [b.board_id for b in boards]
@@ -221,18 +213,12 @@ def validate_bank_invariants(boards: list[Board], expected_pairs: int) -> list[s
     for board in boards:
         if board.type == "control":
             if board.dilemma is not None:
-                raise ValueError(
-                    f"control board {board.board_id!r} must not carry a dilemma"
-                )
+                raise ValueError(f"control board {board.board_id!r} must not carry a dilemma")
             if not all(w.gender_category == "neutral" for w in board.words):
-                raise ValueError(
-                    f"control board {board.board_id!r} has non-neutral card(s)"
-                )
+                raise ValueError(f"control board {board.board_id!r} has non-neutral card(s)")
         else:  # probe
             if board.dilemma is None:
-                raise ValueError(
-                    f"probe board {board.board_id!r} is missing its dilemma"
-                )
+                raise ValueError(f"probe board {board.board_id!r} is missing its dilemma")
             if not board.dilemma.consensus_ok:
                 raise ValueError(
                     f"probe board {board.board_id!r} carries a dilemma with consensus_ok=False"

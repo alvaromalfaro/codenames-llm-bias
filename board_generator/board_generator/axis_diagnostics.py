@@ -193,11 +193,9 @@ def build_axis_diagnostics(
 
     cache = raw_encoder.vectors
     if not cache:
-        raise ValueError(
-            "no items to embed: need attribute words and loaded board words")
+        raise ValueError("no items to embed: need attribute words and loaded board words")
     mu_bar = np.mean(np.vstack(list(cache.values())), axis=0)
-    centered_phi = Arbiter(
-        ref=phi_star.ref, encoder=_CenteringEncoder(raw_encoder, mu_bar))
+    centered_phi = Arbiter(ref=phi_star.ref, encoder=_CenteringEncoder(raw_encoder, mu_bar))
 
     e_gen = build_gender_axis(attributes, raw_phi)
     axis_centered = build_gender_axis(attributes, centered_phi)
@@ -208,8 +206,7 @@ def build_axis_diagnostics(
         spec_words = sorted(
             (w for w in loaded if w.specification == specification), key=lambda w: w.text
         )
-        rows = [_word_row(word, raw_phi, centered_phi, e_gen,
-                          axis_centered) for word in spec_words]
+        rows = [_word_row(word, raw_phi, centered_phi, e_gen, axis_centered) for word in spec_words]
 
         # The effect size uses only the grandfathered WEAT cores (weat_set != ()).
         core_texts = {w.text for w in spec_words if w.weat_set}
@@ -217,14 +214,11 @@ def build_axis_diagnostics(
         # core split by pole, in the raw and centered spaces (same words, two geometries)
         male_raw = [row.rho_raw for row in core_rows if row.pole == "male"]
         female_raw = [row.rho_raw for row in core_rows if row.pole == "female"]
-        male_centered = [
-            row.rho_centered for row in core_rows if row.pole == "male"]
-        female_centered = [
-            row.rho_centered for row in core_rows if row.pole == "female"]
+        male_centered = [row.rho_centered for row in core_rows if row.pole == "male"]
+        female_centered = [row.rho_centered for row in core_rows if row.pole == "female"]
 
         effect_raw = _effect_size(male_raw, female_raw, rng, n_permutations)
-        effect_centered = _effect_size(
-            male_centered, female_centered, rng, n_permutations)
+        effect_centered = _effect_size(male_centered, female_centered, rng, n_permutations)
         spec_diagnostics.append(
             SpecificationDiagnostics(
                 specification=specification,
@@ -280,8 +274,7 @@ def _effect_size(
         mean_rho_male=float(np.mean(male_rhos)) if male_rhos else None,
         mean_rho_female=float(np.mean(female_rhos)) if female_rhos else None,
         cohen_d=_cohens_d(male_rhos, female_rhos),
-        permutation_p=_permutation_p(
-            male_rhos, female_rhos, rng, n_permutations),
+        permutation_p=_permutation_p(male_rhos, female_rhos, rng, n_permutations),
         n_permutations=n_permutations,
     )
 
@@ -319,8 +312,7 @@ def _permutation_p(
     hits = 0
     for _ in range(n_permutations):
         shuffled = rng.permutation(pooled)
-        diff = abs(
-            float(np.mean(shuffled[:n_male])) - float(np.mean(shuffled[n_male:])))
+        diff = abs(float(np.mean(shuffled[:n_male])) - float(np.mean(shuffled[n_male:])))
         if diff >= observed:
             hits += 1
     return hits / n_permutations

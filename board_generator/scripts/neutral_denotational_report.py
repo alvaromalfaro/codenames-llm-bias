@@ -40,8 +40,7 @@ from pathlib import Path
 from board_generator.lexicon import _check_playability, _load_frequency_table
 from board_generator.neutral import flag_token
 
-CSV_HEADER = ("token", "normalized", "reasons",
-              "wordnet_synset", "reviewer_decision")
+CSV_HEADER = ("token", "normalized", "reasons", "wordnet_synset", "reviewer_decision")
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,8 +72,7 @@ def _playable_tokens(pool_path: Path, subtlex_path: Path) -> list[tuple[str, str
             continue  # multi-token phrase: excluded by design, like a word_kind="phrase" row
         freq_entry = frequency.get(normalized)
         dom_pos = freq_entry[1] if freq_entry is not None else None
-        status, _ambiguous, _reason = _check_playability(
-            normalized, "common", dom_pos)
+        status, _ambiguous, _reason = _check_playability(normalized, "common", dom_pos)
         if status == "playable":
             playable.append((original, normalized))
     return playable

@@ -19,8 +19,7 @@ from board_generator.lexicon import Word
 Role = Literal["agent", "bystander", "assassin"]
 
 # Per-perspective role counts over the 25-word grid.
-PER_PERSPECTIVE_COUNTS: dict[Role, int] = {
-    "agent": 9, "bystander": 13, "assassin": 3}
+PER_PERSPECTIVE_COUNTS: dict[Role, int] = {"agent": 9, "bystander": 13, "assassin": 3}
 
 # Game totals across both perspectives.
 GAME_TOTALS: dict[Role, int] = {"agent": 15, "bystander": 19, "assassin": 5}
@@ -203,6 +202,5 @@ def build_keycard_audit(
     return KeycardAudit(
         per_perspective=counts_a,
         overlap_ok=validate_keycard(keycard),
-        role_gender_independent=check_role_gender_independence(
-            keycard, words, exclude),
+        role_gender_independent=check_role_gender_independence(keycard, words, exclude),
     )

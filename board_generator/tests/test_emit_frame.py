@@ -47,14 +47,10 @@ _ENCODER = {
 }
 
 _ATTRS = [
-    AttributeWord(word="john", gender_pole="male",
-                  source="weat", weat_set="weat-6"),
-    AttributeWord(word="paul", gender_pole="male",
-                  source="weat", weat_set="weat-7"),
-    AttributeWord(word="mary", gender_pole="female",
-                  source="weat", weat_set="weat-8"),
-    AttributeWord(word="anna", gender_pole="female",
-                  source="weat", weat_set="weat-6"),
+    AttributeWord(word="john", gender_pole="male", source="weat", weat_set="weat-6"),
+    AttributeWord(word="paul", gender_pole="male", source="weat", weat_set="weat-7"),
+    AttributeWord(word="mary", gender_pole="female", source="weat", weat_set="weat-8"),
+    AttributeWord(word="anna", gender_pole="female", source="weat", weat_set="weat-6"),
 ]
 
 
@@ -76,8 +72,7 @@ def _word(
         weat_set=(),
         dom_pos=None,
         ambiguous_pos=False,
-        covariates={"subtlex_freq": float(
-            len(text)), "length": float(len(text))},
+        covariates={"subtlex_freq": float(len(text)), "length": float(len(text))},
         specification=specification,
     )
 
@@ -107,9 +102,7 @@ def test_frame_id_and_vectors_deterministic() -> None:
     first = _make_frame()
     second = _make_frame()
     assert first["frame_id"] == second["frame_id"]
-    assert (
-        first["gender_axis"]["vector_f64_be_hex"] == second["gender_axis"]["vector_f64_be_hex"]
-    )
+    assert first["gender_axis"]["vector_f64_be_hex"] == second["gender_axis"]["vector_f64_be_hex"]
     assert first["mu_bar"]["vector_f64_be_hex"] == second["mu_bar"]["vector_f64_be_hex"]
 
 
@@ -118,15 +111,11 @@ def test_frame_matches_direct_axis_and_mu_bar() -> None:
     frame = _make_frame()
     phi = _phi()
     axis = build_gender_axis(_ATTRS, phi)
-    reference = [a.word for a in _ATTRS] + [
-        w.text for w in _WORDS if w.specification is not None
-    ]
+    reference = [a.word for a in _ATTRS] + [w.text for w in _WORDS if w.specification is not None]
     mu_bar = build_mu_bar(reference, phi)
 
-    assert np.array_equal(decode_f64_be_hex(
-        frame["gender_axis"]["vector_f64_be_hex"]), axis)
-    assert np.array_equal(decode_f64_be_hex(
-        frame["mu_bar"]["vector_f64_be_hex"]), mu_bar)
+    assert np.array_equal(decode_f64_be_hex(frame["gender_axis"]["vector_f64_be_hex"]), axis)
+    assert np.array_equal(decode_f64_be_hex(frame["mu_bar"]["vector_f64_be_hex"]), mu_bar)
     assert frame["gender_axis"]["dim"] == DIM
     assert frame["mu_bar"]["dim"] == DIM
 
@@ -171,8 +160,7 @@ def test_frame_id_changes_when_one_axis_float_perturbed() -> None:
     base = _assemble(axis, mu, _ENCODER)
 
     perturbed_axis = axis.copy()
-    perturbed_axis[0] = np.nextafter(
-        perturbed_axis[0], np.inf)  # smallest possible change
+    perturbed_axis[0] = np.nextafter(perturbed_axis[0], np.inf)  # smallest possible change
     perturbed = _assemble(perturbed_axis, mu, _ENCODER)
 
     assert base["frame_id"] != perturbed["frame_id"]
@@ -234,9 +222,7 @@ def _write_snapshot(
         {"idx": 1, "name": "1", "path": "1_Pooling", "type": f"{_ST}.Pooling"},
     ]
     if include_normalize:
-        modules.append(
-            {"idx": 2, "name": "2", "path": "2_Normalize", "type": f"{_ST}.Normalize"}
-        )
+        modules.append({"idx": 2, "name": "2", "path": "2_Normalize", "type": f"{_ST}.Normalize"})
     (tmp_path / "modules.json").write_text(json.dumps(modules), encoding="utf-8")
     pooling_dir = tmp_path / "1_Pooling"
     pooling_dir.mkdir()
@@ -250,25 +236,21 @@ def _write_snapshot(
 
 
 def test_recipe_reads_normalize_true_and_mean_pooling(tmp_path: Path) -> None:
-    _write_snapshot(tmp_path, include_normalize=True,
-                    pooling_flags=_MEAN_POOLING)
+    _write_snapshot(tmp_path, include_normalize=True, pooling_flags=_MEAN_POOLING)
     recipe = recipe_from_snapshot_dir(tmp_path, model_id="m", revision="r")
-    assert recipe == {"name": "m", "revision": "r",
-                      "pooling": "mean", "normalize": True}
+    assert recipe == {"name": "m", "revision": "r", "pooling": "mean", "normalize": True}
 
 
 def test_recipe_records_normalize_false_when_module_absent(tmp_path: Path) -> None:
     """Drop the Normalize module -> the emitter records normalize=false."""
-    _write_snapshot(tmp_path, include_normalize=False,
-                    pooling_flags=_MEAN_POOLING)
+    _write_snapshot(tmp_path, include_normalize=False, pooling_flags=_MEAN_POOLING)
     recipe = recipe_from_snapshot_dir(tmp_path, model_id="m", revision="r")
     assert recipe["normalize"] is False
 
 
 def test_recipe_pooling_reflects_config(tmp_path: Path) -> None:
     """A cls-pooling config -> the emitter records pooling='cls', not 'mean'."""
-    _write_snapshot(tmp_path, include_normalize=True,
-                    pooling_flags=_CLS_POOLING)
+    _write_snapshot(tmp_path, include_normalize=True, pooling_flags=_CLS_POOLING)
     recipe = recipe_from_snapshot_dir(tmp_path, model_id="m", revision="r")
     assert recipe["pooling"] == "cls"
 
@@ -282,8 +264,7 @@ def test_recipe_raises_when_no_active_pooling_flag(tmp_path: Path) -> None:
 def test_read_encoder_recipe_resolves_via_cache(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _write_snapshot(tmp_path, include_normalize=True,
-                    pooling_flags=_MEAN_POOLING)
+    _write_snapshot(tmp_path, include_normalize=True, pooling_flags=_MEAN_POOLING)
     monkeypatch.setattr(
         "board_generator.emit_frame.try_to_load_from_cache",
         lambda *a, **k: str(tmp_path / "modules.json"),
@@ -294,9 +275,7 @@ def test_read_encoder_recipe_resolves_via_cache(
 
 
 def test_read_encoder_recipe_raises_when_not_cached(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "board_generator.emit_frame.try_to_load_from_cache", lambda *a, **k: None
-    )
+    monkeypatch.setattr("board_generator.emit_frame.try_to_load_from_cache", lambda *a, **k: None)
     with pytest.raises(FrameSnapshotError):
         read_encoder_recipe("m", "r")
 
@@ -308,7 +287,6 @@ def test_real_phi_star_recipe_is_mean_and_normalized() -> None:
     try:
         recipe = read_encoder_recipe(ref.model_id, ref.hf_revision)
     except FrameSnapshotError:
-        pytest.skip(
-            f"φ* snapshot not in local HF cache: {ref.model_id}@{ref.hf_revision}")
+        pytest.skip(f"φ* snapshot not in local HF cache: {ref.model_id}@{ref.hf_revision}")
     assert recipe["pooling"] == "mean"
     assert recipe["normalize"] is True

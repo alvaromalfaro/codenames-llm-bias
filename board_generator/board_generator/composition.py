@@ -91,15 +91,12 @@ def compose_probe_words(
     """
     treatment = matched_subset.treatment
     control = matched_subset.control
-    assert len(treatment) == len(
-        control), "PSM pairs must be aligned (equal treatment/control len)"
+    assert len(treatment) == len(control), "PSM pairs must be aligned (equal treatment/control len)"
 
     target = _resolve(record.target, loaded_index, "target")
-    stereo = _resolve(record.stereotypical_bridge,
-                      loaded_index, "stereotypical_bridge")
+    stereo = _resolve(record.stereotypical_bridge, loaded_index, "stereotypical_bridge")
     neutral_index = {w.text: w for w in neutral_pool}
-    neutral_bridge = _resolve(record.neutral_bridge,
-                              neutral_index, "neutral_bridge")
+    neutral_bridge = _resolve(record.neutral_bridge, neutral_index, "neutral_bridge")
     dilemma_block = [target, stereo, neutral_bridge]
 
     # Exclude any pair containing a loaded dilemma word, defensively regardless of policy.
@@ -129,15 +126,14 @@ def compose_probe_words(
     neutral_shuffled = [
         w for w in shuffled_neutral_pool(neutral_pool, rng) if w.text != neutral_bridge.text
     ]
-    neutral_fill = _cyclic_window(
-        neutral_shuffled, board_index_in_spec, neutral_count)
+    neutral_fill = _cyclic_window(neutral_shuffled, board_index_in_spec, neutral_count)
 
     words = dilemma_block + loaded_fill + neutral_fill
     _assert_board_words(words)
     for dilemma_word in dilemma_block:
-        assert (
-            sum(1 for w in words if w.text == dilemma_word.text) == 1
-        ), f"dilemma word {dilemma_word.text!r} must appear exactly once"
+        assert sum(1 for w in words if w.text == dilemma_word.text) == 1, (
+            f"dilemma word {dilemma_word.text!r} must appear exactly once"
+        )
     return words
 
 
@@ -169,10 +165,8 @@ def compose_control_words(
     """
     pool_shuffled = shuffled_neutral_pool(neutral_pool, rng)
     words = _cyclic_window(pool_shuffled, board_index, BOARD_WORD_COUNT)
-    assert len(
-        words) == BOARD_WORD_COUNT, f"expected {BOARD_WORD_COUNT} words, got {len(words)}"
-    assert len({w.text for w in words}) == len(
-        words), "control board words must be distinct"
+    assert len(words) == BOARD_WORD_COUNT, f"expected {BOARD_WORD_COUNT} words, got {len(words)}"
+    assert len({w.text for w in words}) == len(words), "control board words must be distinct"
     return words
 
 
@@ -180,8 +174,7 @@ def _resolve(text: str, index: Mapping[str, Word], role: str) -> Word:
     """Resolve a dilemma selection (stored as text) to its :class:Word."""
     word = index.get(text)
     if word is None:
-        raise ValueError(
-            f"dilemma {role} {text!r} not found in its candidate pool")
+        raise ValueError(f"dilemma {role} {text!r} not found in its candidate pool")
     return word
 
 
@@ -227,9 +220,7 @@ def pair_selection_overlap(
         - mean_intersection / max_intersection: raw |A∩B| across all board pairs.
         - n_board_pairs: number of unordered board pairs compared.
     """
-    selections = {
-        bi: frozenset(_permutation_pick(eligible, bi, n_pairs)) for bi in board_indices
-    }
+    selections = {bi: frozenset(_permutation_pick(eligible, bi, n_pairs)) for bi in board_indices}
 
     jaccards: list[float] = []
     intersections: list[int] = []
@@ -289,10 +280,8 @@ def _cyclic_window(pool: Sequence[Word], board_index: int, count: int) -> list[W
 
 def _assert_board_words(words: Sequence[Word]) -> None:
     """Guard the shared board post-conditions: count, uniqueness, covariate coverage."""
-    assert len(
-        words) == BOARD_WORD_COUNT, f"expected {BOARD_WORD_COUNT} words, got {len(words)}"
-    assert len({w.text for w in words}) == len(
-        words), "board words must be distinct"
+    assert len(words) == BOARD_WORD_COUNT, f"expected {BOARD_WORD_COUNT} words, got {len(words)}"
+    assert len({w.text for w in words}) == len(words), "board words must be distinct"
     for word in words:
         missing = [key for key in COVARIATE_KEYS if key not in word.covariates]
         assert not missing, f"word {word.text!r} missing covariate(s): {missing}"

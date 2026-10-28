@@ -32,8 +32,7 @@ def make_word(text: str, gender: GenderCategory = "neutral") -> Word:
         weat_set=("weat-6",),
         dom_pos=None,
         ambiguous_pos=False,
-        covariates={"subtlex_freq": 1.0, "length": float(
-            len(text)), "wordnet_polysemy": 1.0},
+        covariates={"subtlex_freq": 1.0, "length": float(len(text)), "wordnet_polysemy": 1.0},
         specification="gender-career",
     )
 
@@ -63,8 +62,7 @@ def _ranking_arbiter() -> Arbiter:
 def test_rank_neutral_bridges_exact_top_k_order() -> None:
     phi = _ranking_arbiter()
     target = make_word("nurse")
-    candidates = [make_word(t)
-                  for t in ("clinic", "dress", "hospital", "ward")]
+    candidates = [make_word(t) for t in ("clinic", "dress", "hospital", "ward")]
 
     ranked = rank_neutral_bridges(target, candidates, phi, k=3)
 
@@ -76,8 +74,7 @@ def test_rank_stereotypical_bridges_exact_top_k_order() -> None:
     # Same shared _rank logic; the only difference is the candidate pool the caller passes.
     phi = _ranking_arbiter()
     target = make_word("nurse")
-    candidates = [make_word(t)
-                  for t in ("clinic", "dress", "hospital", "ward")]
+    candidates = [make_word(t) for t in ("clinic", "dress", "hospital", "ward")]
 
     ranked = rank_stereotypical_bridges(target, candidates, phi, k=2)
 
@@ -144,8 +141,7 @@ def _dissenting_arbiter(model_id: str) -> Arbiter:
 def test_eq_4_1_holds_under_all_arbiters() -> None:
     consensus = [_agreeing_arbiter("stub/a"), _agreeing_arbiter("stub/b")]
     dilemma = verify_eq_4_1(
-        make_word("nurse"), make_word(
-            "hospital"), make_word("dress"), consensus
+        make_word("nurse"), make_word("hospital"), make_word("dress"), consensus
     )
 
     assert dilemma.consensus_ok is True
@@ -163,8 +159,7 @@ def test_eq_4_1_one_dissenter_fails_consensus() -> None:
         _agreeing_arbiter("stub/b"),
     ]
     dilemma = verify_eq_4_1(
-        make_word("nurse"), make_word(
-            "hospital"), make_word("dress"), consensus
+        make_word("nurse"), make_word("hospital"), make_word("dress"), consensus
     )
 
     assert dilemma.consensus_ok is False
@@ -186,8 +181,7 @@ def test_eq_4_1_exact_tie_passes() -> None:
             "dress": np.array([0.7, -np.sqrt(0.51)]),
         },
     )
-    dilemma = verify_eq_4_1(make_word("nurse"), make_word(
-        "hospital"), make_word("dress"), [tie])
+    dilemma = verify_eq_4_1(make_word("nurse"), make_word("hospital"), make_word("dress"), [tie])
 
     score = dilemma.arbiter_scores[0]
     assert score.cos_target_neutral == pytest.approx(score.cos_target_stereo)
@@ -197,13 +191,11 @@ def test_eq_4_1_exact_tie_passes() -> None:
 
 def test_eq_4_1_records_arbiter_id_and_unrounded_cosines() -> None:
     phi = _agreeing_arbiter("stub/a")
-    dilemma = verify_eq_4_1(make_word("nurse"), make_word(
-        "hospital"), make_word("dress"), [phi])
+    dilemma = verify_eq_4_1(make_word("nurse"), make_word("hospital"), make_word("dress"), [phi])
 
     score = dilemma.arbiter_scores[0]
     assert score.arbiter == str(phi.ref) == "stub/a@rev-test"
     # Stored at full float64 precision: byte-identical to a direct re-computation, no rounding.
     target_vec = phi.embed("nurse")
-    assert score.cos_target_neutral == phi.cos(
-        target_vec, phi.embed("hospital"))
+    assert score.cos_target_neutral == phi.cos(target_vec, phi.embed("hospital"))
     assert score.cos_target_stereo == phi.cos(target_vec, phi.embed("dress"))

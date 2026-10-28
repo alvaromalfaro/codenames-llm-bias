@@ -20,13 +20,11 @@ RESOURCES = Path(__file__).resolve().parents[1] / "resources"
 REAL_WORDS = RESOURCES / "words"
 REAL_SUBTLEX = RESOURCES / "frequencies" / "subtlex_us.csv"
 
-WORD_HEADER = ["word", "gender_category", "word_kind",
-               "source", "weat_set", "specification"]
+WORD_HEADER = ["word", "gender_category", "word_kind", "source", "weat_set", "specification"]
 FREQ_HEADER = ["word", "zipf", "dom_pos"]
 
 # Arts words present under both WEAT-7 and WEAT-8 in gender_science.csv (collapse on load).
-ARTS_DUPLICATED = {"poetry", "art", "dance",
-                   "literature", "novel", "symphony", "drama"}
+ARTS_DUPLICATED = {"poetry", "art", "dance", "literature", "novel", "symphony", "drama"}
 
 
 def _write_csv(path: Path, header: list[str], rows: list[list[str]]) -> None:
@@ -36,8 +34,9 @@ def _write_csv(path: Path, header: list[str], rows: list[list[str]]) -> None:
         writer.writerows(rows)
 
 
-def _make_dirs(tmp_path: Path, word_rows: list[list[str]], freq_rows: list[list[str]]
-               ) -> tuple[Path, Path]:
+def _make_dirs(
+    tmp_path: Path, word_rows: list[list[str]], freq_rows: list[list[str]]
+) -> tuple[Path, Path]:
     """Write a one-file words dir and a frequency table; return (words_dir, subtlex_path)."""
     words_dir = tmp_path / "words"
     words_dir.mkdir()
@@ -222,8 +221,7 @@ def test_strict_mode_reports_all_invalids_in_one_error(tmp_path: Path) -> None:
     words_dir, subtlex = _make_dirs(
         tmp_path,
         [
-            ["EINSTEIN", "male", "common", "weat",
-                "weat-8"],  # rejected: dom_pos=Name
+            ["EINSTEIN", "male", "common", "weat", "weat-8"],  # rejected: dom_pos=Name
             # rejected: no WordNet noun sense
             ["ZZQXWORD", "neutral", "common", "made-up", ""],
         ],
@@ -258,8 +256,7 @@ def test_covariate_length_and_polysemy(real_load: LoadResult) -> None:
     family = _by_text(real_load.words)["family"]
     assert family.covariates["length"] == len("family") == 6
     # Polysemy is the WordNet SENSE count (not synonyms); compare against a live computation.
-    assert family.covariates["wordnet_polysemy"] == len(
-        wordnet.synsets("family"))
+    assert family.covariates["wordnet_polysemy"] == len(wordnet.synsets("family"))
     assert family.covariates["wordnet_polysemy"] > 1  # genuinely polysemous
     # "family" is in SUBTLEX-US
     assert isinstance(family.covariates["subtlex_freq"], float)

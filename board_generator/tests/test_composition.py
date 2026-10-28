@@ -97,8 +97,7 @@ def test_probe_happy_path() -> None:
     neutral_pool = make_neutral_pool(20)
 
     words = compose_probe_words(
-        record, matched, neutral_pool, 0, loaded_index_for(
-            matched, target, stereo), rng=Random(0)
+        record, matched, neutral_pool, 0, loaded_index_for(matched, target, stereo), rng=Random(0)
     )
 
     assert len(words) == 25
@@ -121,13 +120,16 @@ def test_probe_resolves_loaded_word_absent_from_matched_subset() -> None:
     # LAX policy: target/stereo may not be in the balanced pool; loaded_index still resolves them.
     matched = make_matched()
     target, stereo = make_word("doctor", "male"), make_word("engineer", "male")
-    assert "doctor" not in {w.text for w in (
-        *matched.treatment, *matched.control)}
+    assert "doctor" not in {w.text for w in (*matched.treatment, *matched.control)}
     record = make_record("doctor", "neutral00", "engineer")
 
     words = compose_probe_words(
-        record, matched, make_neutral_pool(
-            20), 0, loaded_index_for(matched, target, stereo), rng=Random(0)
+        record,
+        matched,
+        make_neutral_pool(20),
+        0,
+        loaded_index_for(matched, target, stereo),
+        rng=Random(0),
     )
     assert "doctor" in {w.text for w in words}
 
@@ -138,8 +140,12 @@ def test_probe_raises_on_unresolvable_dilemma_word() -> None:
     stereo = make_word("engineer", "male")
     with pytest.raises(ValueError, match="target"):
         compose_probe_words(
-            record, matched, make_neutral_pool(
-                20), 0, loaded_index_for(matched, stereo), rng=Random(0)
+            record,
+            matched,
+            make_neutral_pool(20),
+            0,
+            loaded_index_for(matched, stereo),
+            rng=Random(0),
         )
 
 
@@ -151,8 +157,12 @@ def test_probe_b1_3_excludes_pair_containing_dilemma_word() -> None:
     record = make_record(target.text, "neutral00", "engineer")
 
     words = compose_probe_words(
-        record, matched, make_neutral_pool(
-            20), 0, loaded_index_for(matched, target, stereo), rng=Random(0)
+        record,
+        matched,
+        make_neutral_pool(20),
+        0,
+        loaded_index_for(matched, target, stereo),
+        rng=Random(0),
     )
 
     # target appears once (as the dilemma block word), never duplicated from the loaded fill.
@@ -172,8 +182,7 @@ def test_probe_selection_is_deterministic_and_index_dependent() -> None:
     record = make_record("doctor", "neutral00", "engineer")
 
     def loaded_texts(board_index: int) -> set[str]:
-        words = compose_probe_words(
-            record, matched, pool, board_index, index, rng=Random(0))
+        words = compose_probe_words(record, matched, pool, board_index, index, rng=Random(0))
         return {w.text for w in words[3:15]}
 
     # same index -> identical pick
@@ -191,8 +200,7 @@ def test_probe_thin_pool_takes_all_and_warns() -> None:
 
     with pytest.warns(UserWarning, match="thin balanced pool"):
         words = compose_probe_words(
-            record, matched, pool, 0, loaded_index_for(
-                matched, target, stereo), rng=Random(0)
+            record, matched, pool, 0, loaded_index_for(matched, target, stereo), rng=Random(0)
         )
     loaded_fill = words[3:13]
     assert len(loaded_fill) == 10  # all 5 pairs
@@ -211,8 +219,7 @@ def test_probe_guard_rejects_missing_covariate() -> None:
 
     with pytest.raises(AssertionError, match="covariate"):
         compose_probe_words(
-            record, matched, pool, 0, loaded_index_for(
-                matched, target, stereo), rng=Random(0)
+            record, matched, pool, 0, loaded_index_for(matched, target, stereo), rng=Random(0)
         )
 
 
@@ -230,8 +237,7 @@ def test_probe_neutral_fill_is_not_alphabetical() -> None:
     pool = make_neutral_pool(200)
 
     words = compose_probe_words(
-        record, matched, pool, 0, loaded_index_for(
-            matched, target, stereo), rng=Random(7)
+        record, matched, pool, 0, loaded_index_for(matched, target, stereo), rng=Random(7)
     )
     fill = [w.text for w in words[15:]]
     assert len(fill) == 10
@@ -239,7 +245,7 @@ def test_probe_neutral_fill_is_not_alphabetical() -> None:
 
     candidates = sorted(w.text for w in pool if w.text != "neutral00")
     doubled = candidates + candidates
-    windows = [doubled[i:i + len(fill)] for i in range(len(candidates))]
+    windows = [doubled[i : i + len(fill)] for i in range(len(candidates))]
     assert sorted(fill) not in windows
 
 
@@ -251,8 +257,7 @@ def test_probe_neutral_fill_depends_on_the_rng() -> None:
 
     def fill(seed: int) -> list[str]:
         words = compose_probe_words(
-            record, matched, pool, 0, loaded_index_for(
-                matched, target, stereo), rng=Random(seed)
+            record, matched, pool, 0, loaded_index_for(matched, target, stereo), rng=Random(seed)
         )
         return [w.text for w in words[15:]]
 
@@ -299,7 +304,7 @@ def test_control_selection_is_not_alphabetical() -> None:
     all_sorted = sorted(w.text for w in pool)
     # ...nor any contiguous (wrapping) slice of the sorted pool, whatever the offset.
     doubled = all_sorted + all_sorted
-    windows = [doubled[i:i + len(texts)] for i in range(len(all_sorted))]
+    windows = [doubled[i : i + len(texts)] for i in range(len(all_sorted))]
     assert sorted(texts) not in windows
 
 
@@ -313,9 +318,7 @@ def test_control_pool_coverage_is_preserved() -> None:
     """
     pool = make_neutral_pool(332)
     seed = 4242
-    boards = [
-        [w.text for w in compose_control_words(pool, i, rng=Random(seed))] for i in range(14)
-    ]
+    boards = [[w.text for w in compose_control_words(pool, i, rng=Random(seed))] for i in range(14)]
 
     used = Counter(text for board in boards for text in board)
     assert len(used) == len(pool), "every pool word must still be used at least once"
@@ -337,8 +340,7 @@ def test_control_includes_oov_neutral() -> None:
         weat_set=(),
         dom_pos=None,
         ambiguous_pos=False,
-        covariates={"subtlex_freq": None,
-                    "length": 8.0, "wordnet_polysemy": 1.0},
+        covariates={"subtlex_freq": None, "length": 8.0, "wordnet_polysemy": 1.0},
         specification=None,
     )
     pool.append(oov)
@@ -396,7 +398,6 @@ def test_overlap_mirrors_compose_selection() -> None:
     report = pair_selection_overlap(eligible, [2], n_pairs=6)
 
     words = compose_probe_words(record, matched, pool, 2, index, rng=Random(0))
-    placed_treatment = {
-        w.text for w in words[3:15] if w.gender_category == "male"}
+    placed_treatment = {w.text for w in words[3:15] if w.gender_category == "male"}
     expected = {matched.treatment[i].text for i in report["selections"][2]}
     assert placed_treatment == expected

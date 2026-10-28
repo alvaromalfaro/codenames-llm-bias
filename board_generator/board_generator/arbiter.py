@@ -54,16 +54,14 @@ class ConsensusSpec:
 
     def __post_init__(self) -> None:
         if not self.encoders:
-            raise ValueError(
-                "consensus set is empty (requires N = 2-3 encoders)")
+            raise ValueError("consensus set is empty (requires N = 2-3 encoders)")
         for ref in self.encoders:
             if not ref.hf_revision:
                 raise ValueError(
                     f"arbiter {ref.model_id!r} is not pinned by an HF revision (reproducibility)"
                 )
         if self.primary not in self.encoders:
-            raise ValueError(
-                "primary φ* must belong to the consensus set")
+            raise ValueError("primary φ* must belong to the consensus set")
         assert_external(self)
         _warn_if_same_lineage(self.encoders)
 
@@ -122,15 +120,11 @@ class SentenceTransformerEncoder:
         from sentence_transformers import SentenceTransformer
 
         self.ref = ref
-        self._model = SentenceTransformer(
-            ref.model_id, revision=ref.hf_revision, device="cpu"
-        )
+        self._model = SentenceTransformer(ref.model_id, revision=ref.hf_revision, device="cpu")
         self._model.eval()
 
     def encode(self, text: str) -> NDArray[np.float64]:
-        vec = self._model.encode(
-            text, convert_to_numpy=True, normalize_embeddings=False
-        )
+        vec = self._model.encode(text, convert_to_numpy=True, normalize_embeddings=False)
         return np.asarray(vec, dtype=np.float64)
 
 

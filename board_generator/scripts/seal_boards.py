@@ -57,9 +57,7 @@ def main() -> None:
     print(f"frame_id: {frame_id}", file=sys.stderr)
     print(f"sealed {len(result.sealed)} board(s)", file=sys.stderr)
     if result.already_sealed:
-        print(
-            f"already sealed (no-op): {len(result.already_sealed)}", file=sys.stderr
-        )
+        print(f"already sealed (no-op): {len(result.already_sealed)}", file=sys.stderr)
     print(f"skipped {len(result.skipped)}: {result.skipped}", file=sys.stderr)
 
 

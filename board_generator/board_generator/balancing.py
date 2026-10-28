@@ -165,10 +165,16 @@ class BalanceResult:
     matched: list[MatchedSubset]
 
 
-def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion = "smd",
-                  alpha: float = DEFAULT_ALPHA, tost_margin: float = TOST_MARGIN_SMD,
-                  caliper_sd: float = PSM_CALIPER_LOGIT_SD, min_pairs: int = DEFAULT_MIN_PAIRS
-                  ) -> BalanceResult:
+def run_balancing(
+    words: list[Word],
+    seed: int,
+    *,
+    criterion: BalanceCriterion = "smd",
+    alpha: float = DEFAULT_ALPHA,
+    tost_margin: float = TOST_MARGIN_SMD,
+    caliper_sd: float = PSM_CALIPER_LOGIT_SD,
+    min_pairs: int = DEFAULT_MIN_PAIRS,
+) -> BalanceResult:
     """Balance both specifications independently and assemble the report."""
     specs: list[SpecificationBalance] = []
     matched: list[MatchedSubset] = []
@@ -177,8 +183,7 @@ def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion =
         pool = _select_specification_pool(words, specification)
         treatment = [w for w in pool if w.gender_category == TREATMENT_POLE]
         control = [w for w in pool if w.gender_category != TREATMENT_POLE]
-        imputed_words = [
-            w.text for w in pool if w.covariates["subtlex_freq"] is None]
+        imputed_words = [w.text for w in pool if w.covariates["subtlex_freq"] is None]
 
         matched_treat, matched_ctrl, dropped_caliper, dropped_excess = propensity_score_match(
             treatment, control, caliper_sd=caliper_sd, seed=seed
@@ -214,8 +219,7 @@ def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion =
                 imputed_words=imputed_words,
                 warning=warning,
                 passed=bool(covariates) and all(c.passed for c in covariates),
-                well_balanced=bool(covariates) and all(
-                    c.well_balanced for c in covariates),
+                well_balanced=bool(covariates) and all(c.well_balanced for c in covariates),
             )
         )
         matched.append(
@@ -237,9 +241,13 @@ def run_balancing(words: list[Word], seed: int, *, criterion: BalanceCriterion =
     return BalanceResult(report=report, matched=matched)
 
 
-def propensity_score_match(treatment: list[Word], control: list[Word], *,
-                           caliper_sd: float = PSM_CALIPER_LOGIT_SD, seed: int = 0
-                           ) -> tuple[list[Word], list[Word], int, int]:
+def propensity_score_match(
+    treatment: list[Word],
+    control: list[Word],
+    *,
+    caliper_sd: float = PSM_CALIPER_LOGIT_SD,
+    seed: int = 0,
+) -> tuple[list[Word], list[Word], int, int]:
     """Greedy 1:1 caliper PSM on the propensity logit.
 
     Standardizes the three covariates, fits an L2 logistic propensity model (tolerant of separation
@@ -269,8 +277,7 @@ def propensity_score_match(treatment: list[Word], control: list[Word], *,
 
     treat_idx = list(range(n_treat))
     ctrl_idx = list(range(n_treat, n_treat + n_ctrl))
-    minority, majority = (treat_idx, ctrl_idx) if n_treat <= n_ctrl else (
-        ctrl_idx, treat_idx)
+    minority, majority = (treat_idx, ctrl_idx) if n_treat <= n_ctrl else (ctrl_idx, treat_idx)
 
     available = set(majority)
     pairs: list[tuple[int, int]] = []
@@ -296,9 +303,14 @@ def propensity_score_match(treatment: list[Word], control: list[Word], *,
     return matched_treat, matched_ctrl, dropped_by_caliper, dropped_by_group_excess
 
 
-def check_balance(treatment: list[Word], control: list[Word], *,
-                  criterion: BalanceCriterion = "smd", alpha: float = DEFAULT_ALPHA,
-                  tost_margin: float = TOST_MARGIN_SMD) -> list[CovariateBalance]:
+def check_balance(
+    treatment: list[Word],
+    control: list[Word],
+    *,
+    criterion: BalanceCriterion = "smd",
+    alpha: float = DEFAULT_ALPHA,
+    tost_margin: float = TOST_MARGIN_SMD,
+) -> list[CovariateBalance]:
     """Per-covariate equivalence check on an already-matched sample."""
     floor = _freq_floor(list(treatment) + list(control))
     results: list[CovariateBalance] = []
@@ -306,15 +318,19 @@ def check_balance(treatment: list[Word], control: list[Word], *,
         treat_vals = _covariate_values(treatment, key, floor)
         ctrl_vals = _covariate_values(control, key, floor)
         results.append(
-            _covariate_balance(key, treat_vals, ctrl_vals,
-                               criterion, alpha, tost_margin)
+            _covariate_balance(key, treat_vals, ctrl_vals, criterion, alpha, tost_margin)
         )
     return results
 
 
-def _covariate_balance(covariate: str, treat: list[float], ctrl: list[float],
-                       criterion: BalanceCriterion, alpha: float,
-                       tost_margin: float) -> CovariateBalance:
+def _covariate_balance(
+    covariate: str,
+    treat: list[float],
+    ctrl: list[float],
+    criterion: BalanceCriterion,
+    alpha: float,
+    tost_margin: float,
+) -> CovariateBalance:
     """Compute the per-covariate statistics and the two equivalence verdicts."""
     smd = _standardized_mean_difference(treat, ctrl)
     cohen_d = _cohens_d(treat, ctrl)
@@ -376,8 +392,7 @@ def _pooled_sd(a: list[float], b: list[float]) -> float | None:
     """Simple pooled SD = sqrt((var_a + var_b)/2); None when variance is unestimable."""
     if len(a) < 2 or len(b) < 2:
         return None
-    pooled = math.sqrt((float(np.var(a, ddof=1)) +
-                       float(np.var(b, ddof=1))) / 2.0)
+    pooled = math.sqrt((float(np.var(a, ddof=1)) + float(np.var(b, ddof=1))) / 2.0)
     return pooled if math.isfinite(pooled) else None
 
 

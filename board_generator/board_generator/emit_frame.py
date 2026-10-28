@@ -62,9 +62,7 @@ class FrameSnapshotError(RuntimeError):
 
 
 # Encoder recipe: read from the resolved snapshot, never hard-coded
-def recipe_from_snapshot_dir(
-    snapshot_dir: Path, *, model_id: str, revision: str
-) -> dict[str, Any]:
+def recipe_from_snapshot_dir(snapshot_dir: Path, *, model_id: str, revision: str) -> dict[str, Any]:
     """Read pooling + normalize from the checkpoint snapshot files (the instrument, not a constant).
 
     ``modules.json`` declares the module stack: ``normalize`` is true iff a ``…models.Normalize``
@@ -74,27 +72,20 @@ def recipe_from_snapshot_dir(
     """
     modules_path = snapshot_dir / "modules.json"
     if not modules_path.is_file():
-        raise FrameSnapshotError(
-            f"snapshot is missing modules.json: {modules_path}")
+        raise FrameSnapshotError(f"snapshot is missing modules.json: {modules_path}")
     modules = json.loads(modules_path.read_text(encoding="utf-8"))
 
-    normalize = any(_module_type(m).rsplit(".", 1)
-                    [-1] == "Normalize" for m in modules)
+    normalize = any(_module_type(m).rsplit(".", 1)[-1] == "Normalize" for m in modules)
 
     pooling_module = next(
-        (m for m in modules if _module_type(
-            m).rsplit(".", 1)[-1] == "Pooling"), None
+        (m for m in modules if _module_type(m).rsplit(".", 1)[-1] == "Pooling"), None
     )
     if pooling_module is None:
-        raise FrameSnapshotError(
-            f"snapshot declares no Pooling module: {modules_path}")
-    pooling_cfg_path = snapshot_dir / \
-        str(pooling_module.get("path", "")) / "config.json"
+        raise FrameSnapshotError(f"snapshot declares no Pooling module: {modules_path}")
+    pooling_cfg_path = snapshot_dir / str(pooling_module.get("path", "")) / "config.json"
     if not pooling_cfg_path.is_file():
-        raise FrameSnapshotError(
-            f"snapshot is missing the pooling config: {pooling_cfg_path}")
-    pooling = _pooling_label(json.loads(
-        pooling_cfg_path.read_text(encoding="utf-8")))
+        raise FrameSnapshotError(f"snapshot is missing the pooling config: {pooling_cfg_path}")
+    pooling = _pooling_label(json.loads(pooling_cfg_path.read_text(encoding="utf-8")))
 
     return {
         "name": model_id,
@@ -121,9 +112,7 @@ def read_encoder_recipe(
             f"φ* snapshot not in the local HF cache for {model_id}@{revision} "
             f"(try_to_load_from_cache returned {modules_path!r}); refusing to download."
         )
-    return recipe_from_snapshot_dir(
-        Path(modules_path).parent, model_id=model_id, revision=revision
-    )
+    return recipe_from_snapshot_dir(Path(modules_path).parent, model_id=model_id, revision=revision)
 
 
 def _module_type(module: dict[str, Any]) -> str:
@@ -136,9 +125,7 @@ def _pooling_label(config: dict[str, Any]) -> str:
     Multiple concurrently-true modes (sentence-transformers can concatenate) are joined sorted with
     ``+`` so the label still reflects the instrument exactly. No true flag is a loud error.
     """
-    active = sorted(
-        name for flag, name in _POOLING_FLAG_NAMES.items() if config.get(flag) is True
-    )
+    active = sorted(name for flag, name in _POOLING_FLAG_NAMES.items() if config.get(flag) is True)
     if not active:
         raise FrameSnapshotError(
             f"pooling config has no active pooling_mode_* flag: {sorted(config)}"
@@ -177,8 +164,7 @@ def frame_content_id(frame: dict[str, Any]) -> str:
     if isinstance(mu_bar, dict):
         for key in _HASH_EXCLUDED_MU_BAR:
             mu_bar.pop(key, None)
-    payload = json.dumps(pruned, sort_keys=True,
-                         separators=(",", ":"), ensure_ascii=True)
+    payload = json.dumps(pruned, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -308,10 +294,7 @@ def _cosine(a: NDArray[np.float64], b: NDArray[np.float64]) -> float:
 
 def _weat_sets(attributes: list[AttributeWord]) -> list[int]:
     """The WEAT set numbers present in the attributes (e.g. weat-6/7/8 -> [6, 7, 8])."""
-    return sorted(
-        {int(attr.weat_set.rsplit("-", 1)[-1])
-         for attr in attributes if attr.weat_set}
-    )
+    return sorted({int(attr.weat_set.rsplit("-", 1)[-1]) for attr in attributes if attr.weat_set})
 
 
 def _attribute_counts_by_pole(attributes: list[AttributeWord]) -> dict[str, int]:
@@ -334,6 +317,5 @@ def _loaded_counts_by_pole(words: list[Word]) -> dict[str, int]:
     counts = {"male": 0, "female": 0, "neutral": 0}
     for word in words:
         if word.specification is not None:
-            counts[word.gender_category] = counts.get(
-                word.gender_category, 0) + 1
+            counts[word.gender_category] = counts.get(word.gender_category, 0) + 1
     return counts
