@@ -13,7 +13,9 @@ The board bank is built by a separate, isolated tool with its own documentation:
 **[`board_generator/README.md`](board_generator/README.md)**.
 
 Developed by **Álvaro Martínez Alfaro** as a final degree project (*Trabajo de Fin de Grado*) in
-Computer Science at the **University of Castilla-La Mancha**.
+Computer Science at the **University of Castilla-La Mancha**, and now being extended for a master's
+thesis (*Trabajo de Fin de Máster*). The tag **`tfg-final`** holds the platform as the TFG's
+experiment used it: check it out to reproduce that work.
 
 ---
 
@@ -31,7 +33,7 @@ Computer Science at the **University of Castilla-La Mancha**.
 10. [Test games with a full log](#test-games-with-a-full-log)
 11. [Post-batch embedding backfill](#post-batch-embedding-backfill)
 12. [Analysis scripts](#analysis-scripts)
-13. [Reproducing the shipped results](#reproducing-the-shipped-results)
+13. [Reproducing the TFG's results](#reproducing-the-tfgs-results)
 14. [Data model](#data-model)
 15. [Development](#development)
 16. [Related documentation](#related-documentation)
@@ -94,7 +96,7 @@ codenames-llm-bias/
 │   │   ├── db/                ORM models, session, recorder, writer, ingestion, embedding backfill
 │   │   ├── models/            Pydantic schemas (game + LLM I/O) and the LLM error taxonomy
 │   │   └── config.py          model roster, pinned local weight digests, request settings
-│   ├── migrations/            Alembic (head: 0007_stimulus_and_cleanup)
+│   ├── migrations/            Alembic (head: 0008_llm_call_durations)
 │   ├── alembic.ini
 │   └── Dockerfile
 ├── board_generator/           standalone board-bank tool — see its own README
@@ -102,8 +104,10 @@ codenames-llm-bias/
 │   ├── boards/                the board bank + measurement_frame.json + balance_report.json
 │   ├── morpholex/             MorphoLex-en word segmentations for the clue validator (CC BY-NC-SA)
 │   └── prompt_templates/      system / user / one-shot templates, incl. the measurement prompts
+├── docs/                      documentation that goes with the code (docs/private/ is not versioned)
 ├── scripts/                   batch orchestrator CLI, run management, test games with a full log,
-│                              analysis CLIs, embedding backfill, MorphoLex TSV build
+│                              golden-game recording, analysis CLIs, embedding backfill,
+│                              MorphoLex TSV build
 ├── tests/                     platform test suite; conftest.py gives the `db` tests a
 │                              throwaway Postgres
 ├── docker-compose.yml         db (pgvector) + ollama + app (the Python environment)
@@ -309,8 +313,7 @@ asked:
 docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB `
   -c "select count(*) as boards from board; select count(*) as frames from measurement_frame;"
 
-# restoring exp_data.dump (see "Reproducing the shipped results")
-curl.exe -LO https://github.com/alvaromalfaro/codenames-llm-bias/releases/download/exp-data-v1/exp_data.dump
+# restoring a copy of exp_data.dump (see "Reproducing the TFG's results")
 (Get-FileHash exp_data.dump -Algorithm SHA256).Hash   # the SHA-256 given there, in capitals
 docker compose exec db createdb -U $env:POSTGRES_USER codenames_exp
 docker compose cp exp_data.dump db:/tmp/exp_data.dump
@@ -794,24 +797,27 @@ stderr. Bootstrap defaults are `B = 2000` replicates, seed `2026`, percentile CI
 
 ---
 
-## Reproducing the shipped results
+## Reproducing the TFG's results
 
-The completed experiment is published as a release asset, not in the tree: `exp_data.dump`, a
-`pg_dump` in custom format of its database — schema **and** data, stamped
-`alembic_version = 0005_run_delete_cascade`. It contains the real run (`master_seed = 2026`,
-`temperature = 0.8`, `code_version = 26a115a`, four local Ollama seats: `llama3.1:8b`, `gemma4:12b`,
-`qwen2.5:14b`, `mistral-small3.2:24b`), the boards and frame, and the populated `embedding_mpnet`
-table. Restoring it is the fast path: every analysis script then runs against its defaults, with no
-GPU and without replaying 192 LLM games.
+The TFG's experiment is kept out of the tree as `exp_data.dump`, a `pg_dump` in custom format of its
+database — schema **and** data, stamped `alembic_version = 0005_run_delete_cascade`. It contains the
+real run (`master_seed = 2026`, `temperature = 0.8`, `code_version = 26a115a`, four local Ollama
+seats: `llama3.1:8b`, `gemma4:12b`, `qwen2.5:14b`, `mistral-small3.2:24b`), the boards and frame,
+and the populated `embedding_mpnet` table. Restoring it is the fast path: every analysis script then
+runs against its defaults, with no GPU and without replaying 192 LLM games.
 
-* **Release:** [`exp-data-v1`](https://github.com/alvaromalfaro/codenames-llm-bias/releases/tag/exp-data-v1),
-  tagged at `26a115a`, the code that recorded the run.
+The dump is **not published yet**; it will be a release asset. Until then, the restore below needs a
+copy of the file, and its SHA-256 checks that the copy is the one described here.
+
 * **SHA-256** of `exp_data.dump`: `a2c34e889fd53e81af446b769a6289841f90d3fc7ad5f959c81ad9107b3a0c6c`
+* **Code:** the tag `tfg-final`. The board bank, the schedule and the analysis are being rewritten
+  for the TFM, so the analysis scripts reproduce the TFG's figures as that tag has them.
 
 ```sh
+git checkout tfg-final
 set -a; source .env; set +a
 
-curl -LO https://github.com/alvaromalfaro/codenames-llm-bias/releases/download/exp-data-v1/exp_data.dump
+# exp_data.dump in the current directory
 echo "a2c34e889fd53e81af446b769a6289841f90d3fc7ad5f959c81ad9107b3a0c6c  exp_data.dump" | sha256sum -c
 
 # Restore into an EMPTY database. The dump creates its own tables and the pgvector extension
@@ -842,7 +848,7 @@ current schema (`alembic -c backend/alembic.ini upgrade head`), which recording 
 needs.
 
 The dump was made from a fresh restore of the `exp_data.sql` the repository shipped until it moved
-to the release (still in the history, at `52f954f`), with `pg_dump -Fc --no-owner --no-privileges`:
+out of the tree (still in the history, at `52f954f`), with `pg_dump -Fc --no-owner --no-privileges`:
 its tables hold the same rows. That file's `ALTER ... OWNER TO alvaro` statements stopped its
 documented restore for anyone whose role was not `alvaro`.
 
@@ -985,7 +991,8 @@ from inside `board_generator/`. See its README.
 ## About
 
 This platform was designed and developed by **Álvaro Martínez Alfaro** as a final degree project
-(*Trabajo de Fin de Grado*) in Computer Science at the **University of Castilla-La Mancha (UCLM)**.
+(*Trabajo de Fin de Grado*) in Computer Science at the **University of Castilla-La Mancha (UCLM)**,
+and is now being extended for a master's thesis (*Trabajo de Fin de Máster*).
 
 Both halves of the project — this measurement platform and the
 [`board_generator`](board_generator/README.md) tool that builds its stimulus set — were written for

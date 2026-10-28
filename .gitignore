@@ -13,10 +13,12 @@ venv/
 .vscode/
 .coverage
 
-# database files, and database dumps (the experiment's is a release asset, see the README)
+# database files, and database dumps (the TFG experiment's is kept out of the tree, see the README)
 docker_volumes/
 *.dump
 
 # game logs written by scripts/play_games.py, and the local Ollama server's logs
 logs/
-docs/
+
+# personal notes; the rest of docs/ is versioned
+docs/private/
