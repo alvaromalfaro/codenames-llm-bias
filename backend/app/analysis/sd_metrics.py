@@ -5,11 +5,12 @@ history it *received* from its partner. conc-SD is the endgame analogue of CIT -
 Cliff-style sign delta mapped onto [0, 1], where **0.5 means no association** - but three things
 change from the normal-phase metric:
 
-  * the unit of analysis is the **game**, not the turn. Each game contributes at most one sudden-death
-    state per seat, so the comparison set is the per-seat sudden-death observation and the sum runs
-    over games (eq 4.12);
-  * the clue polarity is a **history mean** ``P^H_g = mean_k rho(clue_k)`` over the clues the guesser
-    received from its partner (eq 4.13), not a single clue. Admissibility is ``is_admissible(P^H_g)``;
+  * the unit of analysis is the **game**, not the turn. Each game contributes at most one
+    sudden-death state per seat, so the comparison set is the per-seat sudden-death observation and
+    the sum runs over games (eq 4.12);
+  * the clue polarity is a **history mean** ``P^H_g = mean_k rho(clue_k)`` over the clues the
+    guesser received from its partner (eq 4.13), not a single clue. Admissibility is
+    ``is_admissible(P^H_g)``;
   * thematic proximity is measured against the **whole clue history**: ``s^H_i = max_k
     thematic_sim(w_i, clue_k)`` by default (eq 4.14), with the mean as a reserved robustness column.
 
@@ -19,21 +20,21 @@ The card set is the **non-agents from the guesser's perspective**. The sudden-de
 key - that inversion is the metric's central trap and lives behind ``perspective`` accordingly.
 
 The confidence signal is the **sudden-death** measurement ranking
-(``guess_proposal.kind='measurement'`` on a ``turn.phase='sudden_death'`` turn), never a normal-phase
-one and never the play proposal.
+(``guess_proposal.kind='measurement'`` on a ``turn.phase='sudden_death'`` turn), never a
+normal-phase one and never the play proposal.
 
 Grouping, banding, weighting and the [0, 1] mapping are deliberately identical to CIT so the two
 endgame/normal metrics cannot drift; the tercile cuts, however, are conc-SD's **own**, computed over
 the ``s^H`` distribution (card-vs-history), which is a different variable from CIT's ``s``
-(card-vs-single-clue). The generic cluster bootstrap in ``analysis.inference`` supplies the intervals
-unchanged - this module adds an adapter, never resampling logic.
+(card-vs-single-clue). The generic cluster bootstrap in ``analysis.inference`` supplies the
+intervals unchanged - this module adds an adapter, never resampling logic.
 
-A pre-registered power rule caps interpretation: conc-SD is a PRIMARY result for a model only with at
-least ``PRIMARY_MIN_ADMISSIBLE_GAMES`` admissible sudden-death games, and EXPLORATORY below that.
+A pre-registered power rule caps interpretation: conc-SD is a PRIMARY result for a model only with
+at least ``PRIMARY_MIN_ADMISSIBLE_GAMES`` admissible sudden-death games, and EXPLORATORY below that.
 Applied mechanically from the counts.
 
-Read-only with respect to the database, and no encoder: geometry comes from vectors already stored in
-``embedding_mpnet`` via ``FrameGeometry``.
+Read-only with respect to the database, and no encoder: geometry comes from vectors already stored
+in ``embedding_mpnet`` via ``FrameGeometry``.
 """
 
 from __future__ import annotations
@@ -89,8 +90,7 @@ SD_PHASE = "sudden_death"
 COMPLETED = "completed"
 AGENT_ROLE = "agent"
 
-SD_FAILURE_RESULTS: frozenset[str] = frozenset(
-    {"loss_civilian_sd", "loss_assassin_sd"})
+SD_FAILURE_RESULTS: frozenset[str] = frozenset({"loss_civilian_sd", "loss_assassin_sd"})
 
 # Pre-registered before seeing results: below this many admissible SD games a model's conc-SD is
 # reported as EXPLORATORY, not PRIMARY. Applied mechanically from the counts, never adjusted.
@@ -135,10 +135,8 @@ class DataGaps:
 
     def merged_with(self, other: DataGaps) -> DataGaps:
         return DataGaps(
-            unmatched_ranking_words=self.unmatched_ranking_words +
-            other.unmatched_ranking_words,
-            cards_without_embedding=self.cards_without_embedding +
-            other.cards_without_embedding,
+            unmatched_ranking_words=self.unmatched_ranking_words + other.unmatched_ranking_words,
+            cards_without_embedding=self.cards_without_embedding + other.cards_without_embedding,
             clue_words_without_embedding=(
                 self.clue_words_without_embedding + other.clue_words_without_embedding
             ),
@@ -250,20 +248,17 @@ class SdReport:
 
 
 # Perspective (the trap)
-def partner_clue_history(
-    clues: Sequence[tuple[int, str]], guesser_seat: int
-) -> tuple[str, ...]:
+def partner_clue_history(clues: Sequence[tuple[int, str]], guesser_seat: int) -> tuple[str, ...]:
     """The clue history H_g the guesser at seat ``s`` RECEIVED: clues given by the partner (1 - s).
 
-    The seat's OWN clues are never part of its received history. ``clues`` are ``(giver_seat, word)``
-    pairs in turn order; the returned order is preserved so ``P^H`` and ``s^H`` see the same history.
+    The seat's OWN clues are never part of its received history. ``clues`` are ``(giver_seat,
+    word)`` pairs in turn order; the returned order is preserved so ``P^H`` and ``s^H`` see the same
+    history.
     """
     return tuple(word for seat, word in clues if seat == 1 - guesser_seat)
 
 
-def non_agent_words(
-    board_roles: Mapping[str, Mapping[str, str]], guesser_seat: int
-) -> set[str]:
+def non_agent_words(board_roles: Mapping[str, Mapping[str, str]], guesser_seat: int) -> set[str]:
     """The non-agent card set A^c_g from the sudden-death guesser's perspective.
 
     The guesser at seat ``s`` hunts the *partner's* agents, so the relevant key column is
@@ -354,13 +349,11 @@ def load_sd_seat_records(session: Session, *, master_seed: int) -> list[SdSeatRe
     ).all():
         if confidence is None:
             continue
-        ranking_by_proposal[proposal_id].append(
-            (word.lower(), float(confidence)))
+        ranking_by_proposal[proposal_id].append((word.lower(), float(confidence)))
 
     records: list[SdSeatRecord] = []
     for _turn_id, game_id, proposal_id, guesser_seat, model_ref, board_id, board_type in seat_rows:
-        partner_clues = partner_clue_history(
-            clues_by_game.get(game_id, ()), guesser_seat)
+        partner_clues = partner_clue_history(clues_by_game.get(game_id, ()), guesser_seat)
         records.append(
             SdSeatRecord(
                 game_id=game_id,
@@ -444,8 +437,7 @@ def collect_sd_observations(
             if group != CONGRUENT and group != INCONGRUENT:
                 dead_zone[record.model_ref] += 1
                 continue
-            sims = [geometry.thematic_sim(word, clue)
-                    for clue in embedded_clues]
+            sims = [geometry.thematic_sim(word, clue) for clue in embedded_clues]
             observations.append(
                 SdObservation(
                     model_ref=record.model_ref,
@@ -504,9 +496,10 @@ def assign_bands_by_board_type(
 ) -> tuple[list[SdObservation], dict[str, tuple[float, float] | None]]:
     """Band SD observations on s^H, with cuts computed ONCE per (board type, variant).
 
-    Both variants are banded in one pass so all four cut pairs are reported. These cuts are conc-SD's
-    OWN: s^H is card-vs-history, a different distribution from CIT's card-vs-single-clue s, so CIT's
-    cuts are never reused. Per board type because probe and control are different populations.
+    Both variants are banded in one pass so all four cut pairs are reported. These cuts are
+    conc-SD's OWN: s^H is card-vs-history, a different distribution from CIT's card-vs-single-clue
+    s, so CIT's cuts are never reused. Per board type because probe and control are different
+    populations.
     """
     cuts_by_key: dict[str, tuple[float, float] | None] = {}
     by_type: dict[str, list[SdObservation]] = defaultdict(list)
@@ -516,11 +509,10 @@ def assign_bands_by_board_type(
     banded_by_id: dict[int, dict[str, int]] = defaultdict(dict)
     for board_type, group in sorted(by_type.items()):
         for variant in SIM_VARIANTS:
-            cuts = compute_tercile_cuts(
-                [_similarity(card, variant) for card in group])
+            cuts = compute_tercile_cuts([_similarity(card, variant) for card in group])
             cuts_by_key[f"{board_type}_{variant}"] = cuts
             c33, c66 = cuts
-            for index, card in enumerate(group):
+            for card in group:
                 banded_by_id[id(card)][variant] = assign_tercile(
                     _similarity(card, variant), c33, c66
                 )
@@ -589,7 +581,8 @@ def _concsd_from_pairs(cards: Sequence[SdObservation]) -> ConcSdResult | None:
 def compute_concsd(
     cards: Sequence[SdObservation], *, variant: SimVariant = "max"
 ) -> list[ConcSdResult]:
-    """Aggregate banded observations into per-(model, board type, band) conc-SD rows for a variant."""
+    """Aggregate banded observations into per-(model, board type, band) conc-SD rows for a
+    variant."""
     bands: list[int | None] = [
         None,
         *sorted({b for card in cards if (b := _band(card, variant)) is not None}),
@@ -701,8 +694,7 @@ def load_sd_reach(session: Session, *, master_seed: int) -> dict[str, tuple[int,
         .join(BoardModel, BoardModel.board_id == GameModel.board_id)
         .outerjoin(
             TurnModel,
-            (TurnModel.game_id == GameModel.id) & (
-                TurnModel.phase == SD_PHASE),
+            (TurnModel.game_id == GameModel.id) & (TurnModel.phase == SD_PHASE),
         )
         .where(
             RunModel.master_seed == master_seed,
@@ -749,8 +741,8 @@ def directional_fg_check(
 ) -> dict[str, tuple[int, int, float | None]]:
     """The exploratory directional check, per board type. Descriptive only, read-only.
 
-    ``f_g`` is the wrongly selected card of a sudden-death failure: the SD-phase reveal that ended the
-    game with a non-agent role. ``P^H_g`` uses the acting seat's partner clue history.
+    ``f_g`` is the wrongly selected card of a sudden-death failure: the SD-phase reveal that ended
+    the game with a non-agent role. ``P^H_g`` uses the acting seat's partner clue history.
     """
     fail_rows = session.execute(
         select(
@@ -848,8 +840,8 @@ def compute_sd_metrics(
     """Compute conc-SD over the sudden-death states of one run, with bootstrap intervals. Read-only.
 
     All tercile cuts are frozen over the full dataset before any resampling. Every (variant,
-    weighting) combination is bootstrapped per model; small n means many degenerate replicates, which
-    the per-cell dropped counts and ``reliable`` flags surface rather than hide.
+    weighting) combination is bootstrapped per model; small n means many degenerate replicates,
+    which the per-cell dropped counts and ``reliable`` flags surface rather than hide.
     """
     geometry = FrameGeometry.load(session, frame_id)
     records = load_sd_seat_records(session, master_seed=master_seed)
@@ -892,8 +884,7 @@ def compute_sd_metrics(
         bootstrap=bootstrap,
         sd_reach=load_sd_reach(session, master_seed=master_seed),
         seat_rankings=seat_ranking_counts(records),
-        fg_check=directional_fg_check(
-            session, geometry, master_seed=master_seed),
+        fg_check=directional_fg_check(session, geometry, master_seed=master_seed),
         diagnostics=[diagnostics[key] for key in sorted(diagnostics)],
         n_observations=len(cards),
     )

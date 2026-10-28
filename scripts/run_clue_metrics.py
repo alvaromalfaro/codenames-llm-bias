@@ -8,7 +8,6 @@ The computation lives in ``backend.app.analysis.clue_metrics``; this file is onl
 parsing and the report layout.
 
 Environment: export the vars yourself (no dotenv). DATABASE_URL must be in the process environment.
-Run from the REPO ROOT.
 
 Examples:
     set -a; source .env; set +a
@@ -67,7 +66,8 @@ def _print_iae(report: ClueMetricsReport) -> None:
     )
     print(
         "by_seat exposes whether dilemmas are single- or dual-perspective: on the shipped boards\n"
-        "all three dilemma words are agents only under seat 0, so seat-1 counts are expected to be 0."
+        "all three dilemma words are agents only under seat 0, so seat-1 counts are expected to be "
+        "0."
     )
 
 
@@ -145,7 +145,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Compute clue-giver-role bias metrics (IAE, TAC/TAI). Read-only."
     )
     parser.add_argument(
-        "--frame-id", default=DEFAULT_FRAME_ID, help="measurement frame id (default: the live frame)"
+        "--frame-id",
+        default=DEFAULT_FRAME_ID,
+        help="measurement frame id (default: the live frame)",
     )
     parser.add_argument(
         "--master-seed",
@@ -169,9 +171,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     with session_scope() as session:
-        report = compute_clue_metrics(
-            session, frame_id=args.frame_id, master_seed=args.master_seed
-        )
+        report = compute_clue_metrics(session, frame_id=args.frame_id, master_seed=args.master_seed)
 
     if report.n_turns == 0:
         print(

@@ -12,7 +12,7 @@ model's own skill with its partners'. The report says so where it prints it.
 
 Strictly read-only: one session, compute, print, no writes.
 
-Environment: DATABASE_URL must be in the process environment. Run from the REPO ROOT.
+Environment: DATABASE_URL must be in the process environment.
 
 Examples:
     set -a; source .env; set +a
@@ -66,7 +66,9 @@ def _print_results(report: SkillReport) -> None:
     print(f"\n  win = result IN {sorted(WIN_RESULTS)}  ->  {wins} of {total} games")
     if wins == 0:
         print("  NOTE: no game in this run was won, so TV is identically 0 and every bootstrap")
-        print("        resample also yields 0 - the intervals below are degenerate by construction.")
+        print(
+            "        resample also yields 0 - the intervals below are degenerate by construction."
+        )
 
 
 def _print_tv(report: SkillReport) -> None:
@@ -148,7 +150,9 @@ def print_report(report: SkillReport, *, replicates: int, seed: int) -> None:
     print(f"run seed   : {report.master_seed}")
     print(f"coverage   : {report.n_games} completed control games")
     print(f"bootstrap  : B={replicates}, seed={seed}, games as clusters, percentile CI (2.5, 97.5)")
-    print("scope      : normal-phase turns (sudden death carries no clues, so EP is undefined there")
+    print(
+        "scope      : normal-phase turns (sudden death carries no clues, so EP is undefined there"
+    )
     print("             and PA is restricted the same way to keep both metrics in one regime)")
     print()
     _print_results(report)

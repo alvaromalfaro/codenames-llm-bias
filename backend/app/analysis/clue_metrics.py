@@ -228,9 +228,9 @@ class ClueMetricsReport:
 def load_boards(session: Session) -> dict[str, BoardInfo]:
     """Load every probe board's dilemma triple, word categories and both role perspectives."""
     board_rows = session.execute(
-        select(
-            BoardModel.board_id, BoardModel.specification, BoardModel.dilemma
-        ).where(BoardModel.type == PROBE_BOARD_TYPE)
+        select(BoardModel.board_id, BoardModel.specification, BoardModel.dilemma).where(
+            BoardModel.type == PROBE_BOARD_TYPE
+        )
     ).all()
 
     card_rows = session.execute(
@@ -343,8 +343,7 @@ def load_turn_states(
 
     # Reveals are keyed by (game, turn_number) so "strictly earlier turn" is a numeric comparison.
     reveal_rows = session.execute(
-        select(TurnModel.game_id, TurnModel.turn_number,
-               RevealEventModel.card_id)
+        select(TurnModel.game_id, TurnModel.turn_number, RevealEventModel.card_id)
         .join(RevealEventModel, RevealEventModel.turn_id == TurnModel.id)
         .join(GameModel, GameModel.id == TurnModel.game_id)
         .join(RunModel, RunModel.id == GameModel.run_id)
@@ -488,8 +487,7 @@ def collect_pair_observations(
     """
     by_giver: dict[tuple[str, str, int], list[TurnState]] = defaultdict(list)
     for state in turn_states:
-        by_giver[(state.game_id, state.model_ref,
-                  state.clue_giver_seat)].append(state)
+        by_giver[(state.game_id, state.model_ref, state.clue_giver_seat)].append(state)
 
     observations: list[PairObservation] = []
     for (game_id, model_ref, _seat), states in by_giver.items():
@@ -497,8 +495,7 @@ def collect_pair_observations(
         poled_agents = sorted(
             word
             for word in states[0].giver_agents
-            if board.category_of.get(word) in POLED_CATEGORIES
-            and word not in board.dilemma_words
+            if board.category_of.get(word) in POLED_CATEGORIES and word not in board.dilemma_words
         )
         eligible: set[tuple[str, str]] = set()
         grouped: set[tuple[str, str]] = set()
@@ -541,8 +538,7 @@ def assign_global_bands(
     cuts = compute_tercile_cuts([pair.similarity for pair in pairs])
     c33, c66 = cuts
     banded = [
-        PairObservation(
-            **{**vars(pair), "band": assign_tercile(pair.similarity, c33, c66)})
+        PairObservation(**{**vars(pair), "band": assign_tercile(pair.similarity, c33, c66)})
         for pair in pairs
     ]
     return banded, cuts
@@ -552,7 +548,9 @@ def compute_tac_tai(pairs: Sequence[PairObservation]) -> list[TacTaiResult]:
     """Aggregate banded pairs into per-(model, stratum, band) TAC/TAI rows, with pooled rows."""
     strata = sorted({pair.stratum for pair in pairs})
     bands: list[int | None] = [
-        None, *sorted({pair.band for pair in pairs if pair.band is not None})]
+        None,
+        *sorted({pair.band for pair in pairs if pair.band is not None}),
+    ]
     results: list[TacTaiResult] = []
     for model_ref in sorted({pair.model_ref for pair in pairs}):
         for stratum in [STRATUM_POOLED, *strata]:
@@ -579,8 +577,7 @@ def compute_tac_tai(pairs: Sequence[PairObservation]) -> list[TacTaiResult]:
                         band=band,
                         tac=tac,
                         tai=tai,
-                        gap=(
-                            tac - tai) if (tac is not None and tai is not None) else None,
+                        gap=(tac - tai) if (tac is not None and tai is not None) else None,
                         n_congruent_eligible=len(con),
                         n_congruent_grouped=con_grouped,
                         n_incongruent_eligible=len(inc),
@@ -600,12 +597,10 @@ def compute_clue_metrics(
     """Compute IAE and TAC/TAI over the completed probe games of one run. Read-only."""
     geometry = FrameGeometry.load(session, frame_id)
     boards = load_boards(session)
-    turn_states = load_turn_states(
-        session, master_seed=master_seed, boards=boards)
+    turn_states = load_turn_states(session, master_seed=master_seed, boards=boards)
 
     observations = collect_dilemma_observations(turn_states, boards)
-    pairs, cuts = assign_global_bands(
-        collect_pair_observations(turn_states, boards, geometry))
+    pairs, cuts = assign_global_bands(collect_pair_observations(turn_states, boards, geometry))
 
     logger.info(
         "clue metrics: %d turns, %d dilemma observations, %d eligible pairs",
@@ -653,9 +648,7 @@ GAP_NULL = 0.0
 GAP_MONOTONICITY_CONTRAST = ("gap_b1_minus_b3", "gap_b1", "gap_b3")
 
 
-def iae_cells(
-    observations: Sequence[DilemmaObservation], *, model_ref: str
-) -> dict[str, float]:
+def iae_cells(observations: Sequence[DilemmaObservation], *, model_ref: str) -> dict[str, float]:
     """Flatten IAE for ONE model into a single named scalar, pooled over strata.
 
     The cell is simply absent when the model resolved no dilemma in the given games - the decidable
@@ -704,8 +697,8 @@ def build_clue_estimators(
     ever contrasting a cell of one against a cell of the other.
 
     The closures capture pairs that have **already been banded** over the full dataset and only ever
-    filter them. There is no path from here back to ``compute_tercile_cuts``, so the tercile cuts are
-    frozen structurally rather than by convention: no draw can move a band boundary.
+    filter them. There is no path from here back to ``compute_tercile_cuts``, so the tercile cuts
+    are frozen structurally rather than by convention: no draw can move a band boundary.
 
     A game drawn twice must contribute twice. Both aggregators count rows rather than grouping by
     game, so duplicating a game's rows is already correct; each copy nonetheless gets a copy-tagged

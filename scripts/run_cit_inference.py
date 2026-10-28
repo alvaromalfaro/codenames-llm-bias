@@ -1,9 +1,10 @@
 """CLI applying the cluster-bootstrap inference layer to CIT.
 
-This adds intervals, and in particular the two paired contrasts that the point estimates cannot settle:
+This adds intervals, and in particular the two paired contrasts that the point estimates cannot
+settle:
 
-  * ``probe_all - control_all`` - is probe genuinely different from the gender-neutral control, or do
-    the two overlap? Increment 2b found control sitting at 0.53-0.69, sometimes above probe;
+  * ``probe_all - control_all`` - is probe genuinely different from the gender-neutral control, or
+    do the two overlap? Increment 2b found control sitting at 0.53-0.69, sometimes above probe;
   * ``probe_b1 - probe_b3`` - the monotone-profile hypothesis, that the effect grows as thematic
     proximity to the clue falls.
 
@@ -17,7 +18,7 @@ bootstrap has no path to recompute them.
 Strictly read-only: one session, compute, print, no writes. No p-values - effect, interval, and a
 minimum detectable effect as a sensitivity bound.
 
-Environment: DATABASE_URL must be in the process environment. Run from the REPO ROOT.
+Environment: DATABASE_URL must be in the process environment.
 
 Examples:
     set -a; source .env; set +a
@@ -76,8 +77,10 @@ def _fmt(value: float | None, places: int = 4) -> str:
 
 
 def _print_cells(model_ref: str, result: BootstrapResult) -> None:
-    print(f"\n{model_ref}   ({result.n_clusters} games as clusters, "
-          f"{result.n_replicates} replicates, {result.elapsed_seconds:.1f}s)")
+    print(
+        f"\n{model_ref}   ({result.n_clusters} games as clusters, "
+        f"{result.n_replicates} replicates, {result.elapsed_seconds:.1f}s)"
+    )
     print(
         f"  {'cell':<13} {'CIT':>8} {'95% CI':>19} {'SE':>8} {'MDE':>8} "
         f"{'dropped':>8}  {'excl 0.5':>8}"
@@ -103,8 +106,7 @@ def _print_contrasts(result: BootstrapResult) -> None:
         if contrast is None:
             continue
         interval = f"[{_fmt(contrast.ci_low)}, {_fmt(contrast.ci_high)}]"
-        excludes = {True: "yes", False: "no",
-                    None: "-"}[contrast.excludes_zero]
+        excludes = {True: "yes", False: "no", None: "-"}[contrast.excludes_zero]
         flag = "" if contrast.reliable else "  UNRELIABLE"
         print(
             f"  {name:<22} {_fmt(contrast.point):>9} {interval:>21} "
@@ -121,8 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--replicates", type=int, default=DEFAULT_REPLICATES, help="bootstrap replicates B"
     )
-    parser.add_argument("--seed", type=int,
-                        default=DEFAULT_SEED, help="bootstrap RNG seed")
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED, help="bootstrap RNG seed")
     parser.add_argument(
         "--variant", choices=("weighted", "classic"), default="weighted", help="CIT variant"
     )
@@ -154,9 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     models = sorted({card.model_ref for card in cards})
     results: dict[str, BootstrapResult] = {}
     for model_ref in models:
-        estimator, game_ids = build_cit_estimator(
-            cards, model_ref=model_ref, variant=args.variant
-        )
+        estimator, game_ids = build_cit_estimator(cards, model_ref=model_ref, variant=args.variant)
         results[model_ref] = cluster_bootstrap(
             game_ids,
             estimator,
@@ -197,13 +196,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"frame      : {args.frame_id}")
     print(f"run seed   : {args.master_seed}")
     print("clusters   : games (turns within a game share a board, keycard and opponent)")
-    print(
-        f"bootstrap  : B={args.replicates}, seed={args.seed}, percentile CI (2.5, 97.5)")
+    print(f"bootstrap  : B={args.replicates}, seed={args.seed}, percentile CI (2.5, 97.5)")
     for board_type in sorted(cuts):
         pair = cuts[board_type]
         if pair:
             print(
-                f"cuts {board_type:<8}: c33={pair[0]:.6f} c66={pair[1]:.6f}  (frozen before bootstrap)")
+                f"cuts {board_type:<8}: c33={pair[0]:.6f} c66={pair[1]:.6f}  (frozen before "
+                "bootstrap)"
+            )
     print("null       : CIT = 0.5 means no association. MDE at alpha 0.05, power 0.8.")
     print("             No p-values: effect, interval and sensitivity only.")
 
@@ -216,15 +216,19 @@ def main(argv: list[str] | None = None) -> int:
 
     print()
     print(_RULE)
-    print("Paired contrasts  (both terms from the SAME resample, so the CI carries their correlation)")
+    print(
+        "Paired contrasts  (both terms from the SAME resample, so the CI carries their correlation)"
+    )
     print(_RULE)
     for model_ref in models:
         print(f"\n{model_ref}")
         _print_contrasts(results[model_ref])
 
     total = sum(result.elapsed_seconds for result in results.values())
-    print(f"\ntotal bootstrap wall clock: {total:.1f}s "
-          f"({args.replicates} replicates x {len(models)} models)")
+    print(
+        f"\ntotal bootstrap wall clock: {total:.1f}s "
+        f"({args.replicates} replicates x {len(models)} models)"
+    )
     print()
     return 0
 

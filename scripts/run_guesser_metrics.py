@@ -10,7 +10,6 @@ ones, below means the reverse. Control boards are the negative control and shoul
 The computation lives in ``backend.app.analysis.guesser_metrics``; this file is only the CLI.
 
 Environment: export the vars yourself (no dotenv). DATABASE_URL must be in the process environment.
-Run from the REPO ROOT.
 
 Examples:
     set -a; source .env; set +a
@@ -104,19 +103,22 @@ def _print_diagnostics(report: GuesserMetricsReport) -> None:
     print("Diagnostics - these determine CIT's power")
     print(_RULE)
     print(
-        f"{'model':<24} {'admis':>7} {'non-adm':>8} {'unmatch':>8} {'no-emb':>7} "
+        f"{'model':<24} {'admis':>7} {'non-adm':>8} {'unmatch':>8} {'not-off':>8} {'no-emb':>7} "
         f"{'div-dup':>8} {'div-rank':>9}"
     )
     for diag in report.diagnostics:
         gaps = diag.gaps
         print(
             f"{diag.model_ref:<24} {diag.n_admissible_turns:>7} {diag.n_non_admissible_turns:>8} "
-            f"{gaps.unmatched_ranking_words:>8} {gaps.cards_without_embedding:>7} "
+            f"{gaps.unmatched_ranking_words:>8} {gaps.ranking_words_not_offered:>8} "
+            f"{gaps.cards_without_embedding:>7} "
             f"{gaps.divergent_duplicate_cards:>8} {gaps.rankings_with_divergent_duplicates:>9}"
         )
     print(
         "\nadmis/non-adm  : turns kept vs dropped for abs(rho(clue)) <= TAU_P\n"
         "unmatch        : ranking words matching no board card\n"
+        "not-off        : board words ranked although the turn did not offer them (covered, or\n"
+        "                 under the guesser's own time token)\n"
         "no-emb         : cards absent from the frame's embeddings (excluded, never imputed)\n"
         "div-dup        : cards the model ranked twice with DIFFERING confidence (excluded)\n"
         "div-rank       : rankings containing at least one such divergent duplicate"
@@ -124,9 +126,7 @@ def _print_diagnostics(report: GuesserMetricsReport) -> None:
 
     print()
     print("Card funnel - why CIT has the power it has")
-    print(
-        f"{'model':<24} {'candidate':>10} {'neutral':>9} {'dead-zone':>10} {'classified':>11}"
-    )
+    print(f"{'model':<24} {'candidate':>10} {'neutral':>9} {'dead-zone':>10} {'classified':>11}")
     for diag in report.diagnostics:
         print(
             f"{diag.model_ref:<24} {diag.n_cards_candidate:>10} {diag.n_cards_neutral:>9} "
@@ -178,7 +178,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Compute the guesser-role bias metric (CIT). Read-only."
     )
     parser.add_argument(
-        "--frame-id", default=DEFAULT_FRAME_ID, help="measurement frame id (default: the live frame)"
+        "--frame-id",
+        default=DEFAULT_FRAME_ID,
+        help="measurement frame id (default: the live frame)",
     )
     parser.add_argument(
         "--master-seed",
@@ -208,7 +210,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if report.n_turns == 0:
         print(
-            f"no completed normal-phase turns for master_seed={args.master_seed}; nothing to report",
+            f"no completed normal-phase turns for master_seed={args.master_seed}; nothing to "
+            "report",
             file=sys.stderr,
         )
         return 1

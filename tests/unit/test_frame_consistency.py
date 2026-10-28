@@ -1,8 +1,8 @@
 """A.6 — measurement-frame TRANSPORT consistency (no embeddings).
 
 Closes the §1.5 transport loop: generator → sidecar → sealed boards → DB row → platform read. It
-proves the platform holds the SAME frame that produced the A.3 reference fixture, without recomputing
-any embedding.
+proves the platform holds the SAME frame that produced the A.3 reference fixture, without
+recomputing any embedding.
 
 PROVES:
   * The platform holds the correct frame — its identity (frame_id), gender axis (at float32 storage
@@ -21,7 +21,6 @@ that would need embeddings are marked ``# 6′:`` and deferred, never implemente
 """
 
 import json
-import os
 from pathlib import Path
 
 import numpy as np
@@ -31,9 +30,7 @@ from backend.app.db.ingest_boards import ingest_boards_if_absent
 from backend.app.db.ingest_frame import ingest_frame_if_absent
 from backend.app.db.models import BoardModel, MeasurementFrameModel
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+pytestmark = pytest.mark.db
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _BOARDS_DIR = _REPO_ROOT / "data" / "boards"
@@ -124,7 +121,9 @@ def test_db_axis_is_sidecar_axis_at_float32_precision(ingested) -> None:
     cos = float(np.dot(a_db, a64) / (np.linalg.norm(a_db) * np.linalg.norm(a64)))
     assert cos > 1 - 1e-6
 
-    print(f"\n[A.6] axis max abs deviation (DB float32 vs sidecar float32 image) = {max_abs_dev:.3e}")
+    print(
+        f"\n[A.6] axis max abs deviation (DB float32 vs sidecar float32 image) = {max_abs_dev:.3e}"
+    )
 
 
 # ------------------------------------------------------------------------------------------------
@@ -167,11 +166,15 @@ def test_all_28_sealed_boards_resolve_to_this_frame(ingested) -> None:
         ).scalar_one()
         assert joined == 28
 
-        distinct = session.execute(
-            select(BoardModel.measurement_frame_id)
-            .where(BoardModel.measurement_frame_id.isnot(None))
-            .distinct()
-        ).scalars().all()
+        distinct = (
+            session.execute(
+                select(BoardModel.measurement_frame_id)
+                .where(BoardModel.measurement_frame_id.isnot(None))
+                .distinct()
+            )
+            .scalars()
+            .all()
+        )
         assert distinct == [_TARGET]
 
 

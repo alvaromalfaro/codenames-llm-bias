@@ -9,10 +9,11 @@ It is a weighted Cliff-style sign delta mapped onto [0, 1], so **0.5 means no as
 zero. A band with no comparable pairs reports ``None`` rather than 0.5, because "undefined" and
 "measured, no effect" are different claims.
 
-The confidence signal is read from the **measurement** ranking (``guess_proposal.kind='measurement'``),
-never the play proposal. The measurement call is elicited out of band at the same pre-resolution
-state and by construction never influences the game, so it reports belief uncontaminated by game
-strategy. Reading ``kind='play'`` would silently measure something else.
+The confidence signal is read from the **measurement** ranking
+(``guess_proposal.kind='measurement'``), never the play proposal. The measurement call is elicited
+out of band at the same pre-resolution state and by construction never influences the game, so it
+reports belief uncontaminated by game strategy. Reading ``kind='play'`` would silently measure
+something else.
 
 Three policies carry the measurement and are asserted by the tests:
 
@@ -56,6 +57,7 @@ from backend.app.db.models import (
     GameSeatModel,
     GuessProposalItemModel,
     GuessProposalModel,
+    RevealEventModel,
     RunModel,
     TurnModel,
     WordCardModel,
@@ -100,22 +102,24 @@ class DataGaps:
     """Everything excluded for want of a usable measurement, tallied rather than imputed."""
 
     unmatched_ranking_words: int = 0
+    # board words the ranking scored although they were not offered on that turn: covered, or
+    # under the guesser's own time token. The model was never asked about them.
+    ranking_words_not_offered: int = 0
     cards_without_embedding: int = 0
     divergent_duplicate_cards: int = 0
     rankings_with_divergent_duplicates: int = 0
 
     def merged_with(self, other: DataGaps) -> DataGaps:
         return DataGaps(
-            unmatched_ranking_words=self.unmatched_ranking_words +
-            other.unmatched_ranking_words,
-            cards_without_embedding=self.cards_without_embedding +
-            other.cards_without_embedding,
+            unmatched_ranking_words=self.unmatched_ranking_words + other.unmatched_ranking_words,
+            ranking_words_not_offered=self.ranking_words_not_offered
+            + other.ranking_words_not_offered,
+            cards_without_embedding=self.cards_without_embedding + other.cards_without_embedding,
             divergent_duplicate_cards=(
                 self.divergent_duplicate_cards + other.divergent_duplicate_cards
             ),
             rankings_with_divergent_duplicates=(
-                self.rankings_with_divergent_duplicates +
-                other.rankings_with_divergent_duplicates
+                self.rankings_with_divergent_duplicates + other.rankings_with_divergent_duplicates
             ),
         )
 
@@ -134,6 +138,9 @@ class TurnRecord:
     clue_word: str
     targets: frozenset[str]
     board_words: frozenset[str]
+    # the board words the measurement offered: the ones the guesser could still touch when the turn
+    # began (see words_offered)
+    offered_words: frozenset[str]
     # (lowercased word, confidence), in ranked order
     ranking: Sequence[tuple[str, float]]
 
@@ -230,9 +237,43 @@ def resolve_ranking_confidences(
                 divergent |= {key}
             continue
         seen[key] = confidence
-    usable = {word: value for word,
-              value in seen.items() if word not in divergent}
+    usable = {word: value for word, value in seen.items() if word not in divergent}
     return usable, divergent
+
+
+def words_offered(
+    cards: Mapping[int, str], earlier_reveals: Iterable[tuple[int, int, str]], guesser_seat: int
+) -> frozenset[str]:
+    """The board words a guesser could still touch when its turn began. They are the words the
+    measurement offered it: its prompt lists exactly those
+    (``LLMService._build_measurement_request`` uses ``WordCard.is_guessable_by``), so a ranked word
+    outside them was never asked about.
+
+    A word is out once an agent card covers it, or a time token from each seat does, and it is out
+    for the guesser alone while its own time token sits on it (§6.6). In normal play every civilian
+    reveal leaves a time token; sudden-death reveals never come before a normal turn.
+
+    :param cards: card id -> lowercased word, for the whole board.
+    :param earlier_reveals: (card_id, acting_seat, result_role) of every reveal of the game in the
+        turns before this one.
+    :param guesser_seat: the seat guessing on this turn.
+
+    :return: the lowercased words offered.
+    """
+    covered: set[int] = set()
+    tokens: dict[int, set[int]] = defaultdict(set)
+    for card_id, acting_seat, result_role in earlier_reveals:
+        if result_role == "agent":
+            covered.add(card_id)
+        elif result_role == "civilian":
+            tokens[card_id].add(acting_seat)
+    return frozenset(
+        word
+        for card_id, word in cards.items()
+        if card_id not in covered
+        and len(tokens[card_id]) < 2
+        and guesser_seat not in tokens[card_id]
+    )
 
 
 # Loading
@@ -242,6 +283,7 @@ def load_guesser_turns(session: Session, *, master_seed: int) -> list[TurnRecord
         select(
             TurnModel.id,
             TurnModel.game_id,
+            TurnModel.turn_number,
             GuessProposalModel.id,
             GuessProposalModel.guesser_seat,
             GameSeatModel.model_ref,
@@ -268,10 +310,10 @@ def load_guesser_turns(session: Session, *, master_seed: int) -> list[TurnRecord
             RunModel.master_seed == master_seed,
             GameModel.game_status == COMPLETED,
             TurnModel.phase == NORMAL_PHASE,
-            # Restricted to the two designed populations. board.type is nullable and the boards
-            # directory can hold fixtures with no type (e.g. example_board.json, ingested as
-            # 'neutral_test_001'); without this an untyped board would form a phantom third group
-            # with its own tercile cuts.
+            # Restricted to the two designed populations. board.type is nullable, and a database
+            # can hold an untyped board: exp_data.dump has 'neutral_test_001', the example board
+            # the batch ingested while it lived in data/boards. Without this an untyped board
+            # would form a phantom third group with its own tercile cuts.
             BoardModel.type.in_(BOARD_TYPES),
         )
     ).all()
@@ -279,16 +321,35 @@ def load_guesser_turns(session: Session, *, master_seed: int) -> list[TurnRecord
         return []
 
     turn_ids = [row[0] for row in turn_rows]
-    proposal_ids = [row[2] for row in turn_rows]
-    board_ids = {row[5] for row in turn_rows}
+    game_ids = {row[1] for row in turn_rows}
+    proposal_ids = [row[3] for row in turn_rows]
+    board_ids = {row[6] for row in turn_rows}
 
     board_words: dict[str, set[str]] = defaultdict(set)
-    for board_id, text in session.execute(
-        select(WordCardModel.board_id, WordCardModel.text).where(
+    board_cards: dict[str, dict[int, str]] = defaultdict(dict)
+    for board_id, card_id, text in session.execute(
+        select(WordCardModel.board_id, WordCardModel.card_id, WordCardModel.text).where(
             WordCardModel.board_id.in_(board_ids)
         )
     ).all():
         board_words[board_id] |= {text.lower()}
+        board_cards[board_id][card_id] = text.lower()
+
+    # Every reveal of these games, with the number of its turn, to rebuild the words each measured
+    # turn offered (words_offered).
+    reveals_by_game: dict[str, list[tuple[int, int, int, str]]] = defaultdict(list)
+    for game_id, turn_number, card_id, acting_seat, result_role in session.execute(
+        select(
+            TurnModel.game_id,
+            TurnModel.turn_number,
+            RevealEventModel.card_id,
+            RevealEventModel.acting_seat,
+            RevealEventModel.result_role,
+        )
+        .join(RevealEventModel, RevealEventModel.turn_id == TurnModel.id)
+        .where(TurnModel.game_id.in_(game_ids))
+    ).all():
+        reveals_by_game[game_id].append((turn_number, card_id, acting_seat, result_role))
 
     targets_by_turn: dict[int, set[str]] = defaultdict(set)
     for turn_id, word in session.execute(
@@ -311,13 +372,13 @@ def load_guesser_turns(session: Session, *, master_seed: int) -> list[TurnRecord
         if confidence is None:
             # Schema-nullable but never produced by the write path; a NULL is not a confidence.
             continue
-        ranking_by_proposal[proposal_id].append(
-            (word.lower(), float(confidence)))
+        ranking_by_proposal[proposal_id].append((word.lower(), float(confidence)))
 
     records: list[TurnRecord] = []
     for (
         turn_id,
         game_id,
+        turn_number,
         proposal_id,
         guesser_seat,
         model_ref,
@@ -338,6 +399,15 @@ def load_guesser_turns(session: Session, *, master_seed: int) -> list[TurnRecord
                 clue_word=clue_word.lower(),
                 targets=frozenset(targets_by_turn.get(turn_id, ())),
                 board_words=frozenset(board_words.get(board_id, ())),
+                offered_words=words_offered(
+                    board_cards.get(board_id, {}),
+                    [
+                        (card_id, seat, role)
+                        for earlier_turn, card_id, seat, role in reveals_by_game.get(game_id, ())
+                        if earlier_turn < turn_number
+                    ],
+                    guesser_seat,
+                ),
                 ranking=tuple(ranking_by_proposal.get(proposal_id, ())),
             )
         )
@@ -371,10 +441,14 @@ def collect_card_observations(
         )
 
         unmatched = 0
+        not_offered = 0
         without_embedding = 0
         for word, confidence in usable.items():
             if word not in turn.board_words:
                 unmatched += 1
+                continue
+            if word not in turn.offered_words:
+                not_offered += 1
                 continue
             if word in turn.targets:
                 continue  # the giver's own targets are never part of N_gt
@@ -411,6 +485,7 @@ def collect_card_observations(
         gaps[turn.model_ref] = gaps[turn.model_ref].merged_with(
             DataGaps(
                 unmatched_ranking_words=unmatched,
+                ranking_words_not_offered=not_offered,
                 cards_without_embedding=without_embedding,
                 divergent_duplicate_cards=turn_gaps.divergent_duplicate_cards,
                 rankings_with_divergent_duplicates=turn_gaps.rankings_with_divergent_duplicates,
@@ -458,8 +533,7 @@ def assign_bands_by_board_type(
         cuts_by_type[board_type] = cuts
         c33, c66 = cuts
         banded.extend(
-            CardObservation(
-                **{**vars(card), "band": assign_tercile(card.similarity, c33, c66)})
+            CardObservation(**{**vars(card), "band": assign_tercile(card.similarity, c33, c66)})
             for card in group
         )
     return banded, cuts_by_type
@@ -518,14 +592,11 @@ def _cit_from_pairs(cards: Sequence[CardObservation]) -> CITResult | None:
 
 def compute_cit(cards: Sequence[CardObservation]) -> list[CITResult]:
     """Aggregate banded observations into per-(model, board type, stratum, band) CIT rows."""
-    bands: list[int | None] = [
-        None, *sorted({c.band for c in cards if c.band is not None})]
+    bands: list[int | None] = [None, *sorted({c.band for c in cards if c.band is not None})]
     results: list[CITResult] = []
     for model_ref in sorted({card.model_ref for card in cards}):
         for board_type in sorted({card.board_type for card in cards}):
-            strata = sorted(
-                {card.stratum for card in cards if card.board_type == board_type}
-            )
+            strata = sorted({card.stratum for card in cards if card.board_type == board_type})
             for stratum in [STRATUM_POOLED, *strata]:
                 for band in bands:
                     subset = [
@@ -584,8 +655,7 @@ def compute_guesser_metrics(
         cit=compute_cit(cards),
         diagnostics=[diagnostics[key] for key in sorted(diagnostics)],
         n_turns=len(turns),
-        n_admissible_turns=sum(
-            d.n_admissible_turns for d in diagnostics.values()),
+        n_admissible_turns=sum(d.n_admissible_turns for d in diagnostics.values()),
         n_card_observations=len(cards),
     )
 
@@ -655,7 +725,8 @@ def build_cit_estimator(
                     next_turn_id += 1
                 resampled.append(
                     replace(
-                        card, turn_id=turn_remap[card.turn_id], game_id=f"{game_id}#{copy_index}")
+                        card, turn_id=turn_remap[card.turn_id], game_id=f"{game_id}#{copy_index}"
+                    )
                 )
         return cit_cells(resampled, model_ref=model_ref, variant=variant)
 

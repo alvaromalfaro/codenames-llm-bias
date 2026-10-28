@@ -1,0 +1,47 @@
+# Lint, format, types, the whole test suite (the database tests on a throwaway pgvector container that
+# tests/conftest.py starts) and the batch's dry run, on every push and pull request. board_generator/
+# is a project of its own and is not checked here.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+
+      # The Python of .python-version and the versions of uv.lock.
+      - name: Install
+        run: uv sync --frozen --extra dev
+
+      - name: Lint
+        run: uv run --no-sync ruff check .
+
+      - name: Format
+        run: uv run --no-sync ruff format --check .
+
+      - name: Types
+        run: uv run --no-sync mypy
+
+      # The clue validator reads WordNet, as the app image downloads it.
+      - name: WordNet
+        run: >-
+          uv run --no-sync python -c
+          "import nltk; nltk.download('wordnet', quiet=True); nltk.download('omw-1.4', quiet=True)"
+
+      - name: Tests
+        run: uv run --no-sync pytest -rs
+
+      - name: Batch dry run
+        run: uv run --no-sync python scripts/run_batch.py --dry-run --master-seed 2026 --temperature 0.7

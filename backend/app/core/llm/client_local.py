@@ -1,53 +1,76 @@
+import asyncio
 import json
 import logging
 import os
 from json import JSONDecodeError
-import re
-from typing import Any
-from pydantic import BaseModel
-from backend.app.core.llm.client import LLMClient, generate_with_retries
-from backend.app.models.llm_schemas import LLMRequest, LLMResponse, TokenUsage
-from backend.app.models.llm_errors import (
-    LLMModelNotProvidedError, LLMRefusalError, LLMParseError, LLMEmptyResponseError,
-    LLMDegenerateResponseError,
+from typing import Any, Literal, Optional
+import httpx
+from backend.app import config
+from backend.app.core.llm.client import (
+    LLMClient,
+    error_for_status,
+    generate_with_retries,
+    provider_seed,
+    read_answer,
 )
-from ollama import Client, RequestError, ResponseError
+from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse, TokenUsage
+from backend.app.models.llm_errors import (
+    LLMError,
+    LLMModelNotProvidedError,
+    LLMParseError,
+    LLMTimeoutError,
+    LLMProviderUnavailableError,
+)
+from ollama import AsyncClient, RequestError, ResponseError
 
 logger = logging.getLogger(__name__)
 
 # The capability string ollama's /api/show reports for reasoning-capable models.
 _THINKING_CAPABILITY = "thinking"
 
+# What is sent to a model just before each of its draws, so that its one slot holds the same
+# prompt whenever a draw's prompt is read. llama-server reads a prompt from where it stops matching
+# the one its slot holds, and the answer changes with how much of it is read: the same request, with
+# the same seed, got one answer after a cold load, another after a different request, and another
+# after itself. With this request first, it got the same answer after all three. That holds with
+# llama-server's RAM prompt cache off (LLAMA_ARG_CACHE_RAM=0 in docker-compose.yml), which would
+# otherwise bring back an older prompt. It takes 15-50 ms with the model loaded (Ollama 0.40.2).
+_RESET_PROMPT = "."
 
-def degenerate_reason(parsed: BaseModel) -> str | None:
-    """Why this well-formed response cannot yield a legal domain object, or None if it can.
+# What a call to the daemon raises when it fails instead of answering: an error status
+# (ResponseError), the builtin ConnectionError ollama raises when it cannot connect, and the httpx
+# errors it lets through (a timeout, a connection dropped mid-answer).
+_DAEMON_ERRORS = (ResponseError, ConnectionError, httpx.TransportError)
 
-    A model can return JSON that parses cleanly and still be a non-answer. Because the domain object 
-    is built in ``llm_service`` outside the client's retry loop, that mismatch would otherwise 
-    escape as a fatal ``ValidationError`` mid-game.
 
-    Detecting it here - against the same permissive parse - lets the existing bounded re-sample
-    absorb it. The checks intentionally mirror the domain constraints and nothing more; they never
-    relax a rule, they only decide what is worth re-sampling.
+def _daemon_error(e: Exception) -> LLMError:
+    """The taxonomy error for a call to the daemon that failed with ``e`` (a ``_DAEMON_ERRORS``):
+    by its status when the daemon answered with one (see ``error_for_status``)."""
+    context: dict[str, Any] = {"provider": "ollama", "cause": e, "execution_mode": "local"}
+    # No answer within config.OLLAMA_TIMEOUT_S, or no connection within the connect limit.
+    if isinstance(e, httpx.TimeoutException):
+        return LLMTimeoutError(**context)
+    # The daemon is not running, or dropped the connection mid-answer (stopped, or crashed).
+    if not isinstance(e, ResponseError):
+        return LLMProviderUnavailableError(**context)
+    # An error reported mid-answer has no status (-1).
+    return error_for_status(e.status_code if e.status_code > 0 else None, **context)
 
-    Measurement rankings are deliberately not checked: an incomplete or empty ranking is parsed
-    permissively downstream by design and must not trigger a re-sample.
-    """
-    data = parsed.model_dump()
 
-    # Guess path: GuessProposal.proposals / .confidence require at least one item.
-    proposals = data.get("proposals")
-    if isinstance(proposals, list) and not proposals:
-        return "empty proposals list"
+def _load_options() -> dict[str, Any]:
+    """The options that decide how ollama loads a model, the same in every request to it: left to
+    ollama, the context, the layers on the GPU and the batch would depend on the GPU's free memory,
+    and each changes the answer (see config.OLLAMA_NUM_CTX, OLLAMA_NUM_GPU, OLLAMA_NUM_BATCH)."""
+    return {
+        "num_ctx": config.OLLAMA_NUM_CTX,
+        "num_gpu": config.OLLAMA_NUM_GPU,
+        "num_batch": config.OLLAMA_NUM_BATCH,
+    }
 
-    # Clue path: ClueProposal rejects a blank clue and requires count >= 1.
-    if "clue" in data and not str(data.get("clue") or "").strip():
-        return "blank clue"
-    count = data.get("count")
-    if isinstance(count, int) and not isinstance(count, bool) and count < 1:
-        return f"non-positive count ({count})"
 
-    return None
+def _ms(ns: Optional[int]) -> Optional[int]:
+    """A duration ollama reports in nanoseconds, in milliseconds; None when it reports none."""
+    return None if ns is None else round(ns / 1_000_000)
 
 
 class LLMClientLocal(LLMClient):
@@ -57,124 +80,148 @@ class LLMClientLocal(LLMClient):
         # (config.llm_models sets "think": False for every local model) and SeatSpec.think. Note the
         # flag is only ever SENT for models that advertise the capability; see _supports_thinking.
         self.think = think
-        # Bounded same-request retry of retriable LLM errors (0 = one attempt, the interactive
-        # default). The headless driver passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
+        # Bounded retry of retriable LLM errors (0 = one attempt, the default). The game runner
+        # passes a non-zero budget; see game_runner._CLIENT_MAX_RETRIES.
         self.max_retries = max_retries
         host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-        self._client = Client(host=host)
+        # The async client, so a call in flight leaves the event loop free, and a bounded wait, so a
+        # hung daemon fails the call as a timeout instead of stopping the batch (ollama's own
+        # default is no limit at all). See config.OLLAMA_TIMEOUT_S for the value.
+        self._client = AsyncClient(
+            host=host,
+            timeout=httpx.Timeout(config.OLLAMA_TIMEOUT_S, connect=config.OLLAMA_CONNECT_TIMEOUT_S),
+        )
         # Lazily resolved, then cached for the client's lifetime: the daemon's answer for a given
         # model cannot change without a re-pull, and this must not cost an /api/show per call.
         self._thinking_capable: bool | None = None
 
-    def _supports_thinking(self) -> bool:
+    async def _supports_thinking(self) -> bool:
         """Whether this model advertises the ``thinking`` capability, per the daemon's /api/show.
 
-        For a reasoning-capable model ollama defaults thinking ON, which under structured output can 
-        leave ``message.content`` empty and always puts that model in a different inference regime 
-        (and a far slower one) than the non-reasoning models it is compared against. So thinking-capable
-        models must be sent an explicit ``think`` value.
+        For a reasoning-capable model ollama defaults thinking ON, which under structured output can
+        leave ``message.content`` empty and always puts that model in a different inference regime
+        (and a far slower one) than the non-reasoning models it is compared against. So
+        thinking-capable models must be sent an explicit ``think`` value.
 
         The flag is withheld from models that do not advertise the capability: ollama rejects
         ``think=True`` for them outright (HTTP 400 "does not support thinking"), and older daemons
         may reject the parameter in any form.
 
-        Never raises: an unreachable daemon or a client without ``show`` degrades to False, i.e.
-        omit ``think`` and preserve the previous behaviour rather than break generation on a probe.
+        A failed call to the daemon (no answer in time, no connection, an error status) raises what
+        a failed chat would (see ``_daemon_error``), retried the same way, and nothing is cached, so
+        the next attempt probes again. Degrading would cache "not capable" for the whole game, and
+        once the daemon came back a reasoning model would play the rest of it thinking. A probe
+        that fails for any other reason (a client without ``show``, an answer it cannot read)
+        degrades to False, i.e. omit ``think`` and preserve the previous behaviour rather than break
+        generation on a probe.
         """
         if self._thinking_capable is None:
             try:
-                capabilities = self._client.show(self.model_name).capabilities
+                capabilities = (await self._client.show(self.model_name)).capabilities
                 self._thinking_capable = any(
-                    str(c) == _THINKING_CAPABILITY for c in (capabilities or []))
+                    str(c) == _THINKING_CAPABILITY for c in (capabilities or [])
+                )
+            except _DAEMON_ERRORS as e:
+                raise _daemon_error(e) from e
             except Exception as e:
                 logger.warning(
                     "capability probe failed for %r (%s); omitting `think` from the request.",
-                    self.model_name, e)
+                    self.model_name,
+                    e,
+                )
                 self._thinking_capable = False
         return self._thinking_capable
 
-    async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
-        """Generate a response, retrying transient (retriable) errors per ``self.max_retries``.
+    async def generate(
+        self, request: LLMRequest, expected_format: type[LLMFormat] | None = None
+    ) -> LLMResponse:
+        """Generate a response, retrying retriable errors per ``self.max_retries``.
 
-        The retry re-sends the identical request (same seed/prompt) around the taxonomy mapping in
-        ``_generate_once``; see ``generate_with_retries``."""
+        A bad draw (empty, degenerate, cut or malformed) is drawn again with a new seed, and a
+        transient failure re-sends the same request; see ``generate_with_retries``."""
         return await generate_with_retries(
-            lambda: self._generate_once(request, expected_format),
-            max_retries=self.max_retries, provider="ollama", model=self.model_name)
+            lambda req: self._generate_once(req, expected_format),
+            request,
+            max_retries=self.max_retries,
+            provider="ollama",
+            model=self.model_name,
+        )
 
-    async def _generate_once(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
+    async def _generate_once(
+        self, request: LLMRequest, expected_format: type[LLMFormat] | None = None
+    ) -> LLMResponse:
         messages = [
             {"role": message.role, "content": message.content} for message in request.messages
         ]
 
-        format = expected_format.model_json_schema() if expected_format else "json"
+        format: dict[str, Any] | Literal["json"] = (
+            expected_format.model_json_schema() if expected_format else "json"
+        )
 
         # Ollama ignores sampling settings unless they are passed explicitly via `options`. Always
         # forward the temperature; forward the seed ONLY when set (some ollama-client versions
-        # serialize a `"seed": None`, which would change behaviour).
+        # serialize a `"seed": None`, which would change behaviour), masked to the 31 bits ollama
+        # samples with as it is sent (see provider_seed).
+        seed = provider_seed(request.seed)
         options: dict[str, Any] = {"temperature": request.temperature}
-        if request.seed is not None:
-            options["seed"] = request.seed
+        if seed is not None:
+            options["seed"] = seed
+        # The model loaded the same way on every machine and at every load (_load_options), and a
+        # cap on the answer, so a model that loops is cut instead of filling the context. A cut
+        # answer is drawn again (LLMTruncatedResponseError, below).
+        options.update(_load_options())
+        options["num_predict"] = request.max_tokens
 
         # Send `think` only to models that advertise the capability, and then send it - omitting it
-        # lets ollama default a reasoning model to thinking ON. Probed outside the try so a probe
-        # failure can never be mis-mapped onto the provider-error taxonomy below.
+        # lets ollama default a reasoning model to thinking ON. Probed outside the try: the probe
+        # handles its own failures (see _supports_thinking).
         chat_kwargs: dict[str, Any] = {}
-        if self._supports_thinking():
+        if await self._supports_thinking():
             chat_kwargs["think"] = self.think
 
         try:
-            ollama_response = self._client.chat(
+            # The fixed request first (see _RESET_PROMPT), with the options that load the model as
+            # the draw's do, so that it loads it, or finds it loaded, as the draw would.
+            await self._client.generate(
+                model=self.model_name,
+                prompt=_RESET_PROMPT,
+                options={**_load_options(), "num_predict": 1, "temperature": 0, "seed": 0},
+                **chat_kwargs,
+            )
+            ollama_response = await self._client.chat(
                 model=self.model_name,
                 messages=messages,
                 format=format,
                 options=options,
-                **chat_kwargs
+                **chat_kwargs,
             )
 
-            # Convert the Ollama response to JSON
+            # Convert the Ollama response to JSON. The client types the content as optional: an
+            # answer without one is an empty answer.
             response_json = json.loads(ollama_response.model_dump_json())
-            content = response_json.get("message", {}).get("content", "")
-            content = self._remove_markdown_code_blocks(content)
-
-            # An empty / whitespace-only draw is a stochastic non-answer, not malformed output:
-            # raised as the retriable parse error so generate_with_retries re-samples it within the
-            # caller's budget instead of killing the game on a single bad draw.
-            if not content.strip():
-                raise LLMEmptyResponseError(
-                    provider="ollama", raw_payload=response_json, execution_mode="local"
-                )
-
-            # Validate the response against the expected format if provided
-            if expected_format:
-                try:
-                    parsed = expected_format.model_validate_json(content)
-                except Exception as e:
-                    raise LLMParseError(
-                        provider="ollama", cause=e, execution_mode="local"
-                    )
-
-                # Well-formed but degenerate (e.g. an empty proposals list): the permissive
-                # LLM-facing schema accepts it, the domain model would not. Raised as the RETRIABLE
-                # parse error so the SAME bounded re-sample absorbs it, instead of a fatal
-                # ValidationError escaping from llm_service outside the retry loop.
-                reason = degenerate_reason(parsed)
-                if reason is not None:
-                    raise LLMDegenerateResponseError(
-                        message=f"The LLM returned a well-formed but degenerate response: {reason}.",
-                        provider="ollama", raw_payload=response_json, execution_mode="local",
-                    )
+            # The answer is cut when it reaches the output limit (num_predict) or fills the context.
+            content, parsed = read_answer(
+                response_json.get("message", {}).get("content") or "",
+                cut=ollama_response.done_reason == "length",
+                expected_format=expected_format,
+                model=self.model_name,
+                provider="ollama",
+                raw_payload=response_json,
+                execution_mode="local",
+            )
 
             return LLMResponse(
                 text=content,
                 model_used=self.model_name,
-                # Convert ns -> ms
-                latency_ms=(round(ollama_response.total_duration / 1_000_000)
-                            if ollama_response.total_duration is not None else 0),
+                latency_ms=_ms(ollama_response.total_duration) or 0,
+                load_ms=_ms(ollama_response.load_duration),
+                prompt_eval_ms=_ms(ollama_response.prompt_eval_duration),
+                eval_ms=_ms(ollama_response.eval_duration),
+                # The ollama client types both counts as optional: one the server leaves out is
+                # recorded as None (and the total with it), never summed as if it were 0.
                 usage=TokenUsage(
                     prompt_tokens=ollama_response.prompt_eval_count,
                     completion_tokens=ollama_response.eval_count,
-                    total_tokens=ollama_response.prompt_eval_count + ollama_response.eval_count,
                 ),
                 finish_reason=ollama_response.done_reason,
                 raw_payload=response_json,
@@ -182,27 +229,34 @@ class LLMClientLocal(LLMClient):
                 execution_mode="local",
                 provider="ollama",
                 requested_temperature=request.temperature,
-                requested_seed=request.seed,
+                requested_seed=seed,
                 system_fingerprint=None,
                 resolved_model=response_json.get("model") or self.model_name,
+                parsed=parsed,
             )
 
+        except _DAEMON_ERRORS as de:
+            raise _daemon_error(de) from de
         except RequestError as re:
             raise LLMModelNotProvidedError(
                 provider="ollama", cause=re, execution_mode="local"
-            )
-        except ResponseError as re:
-            raise LLMRefusalError(
-                provider="ollama", cause=re, execution_mode="local"
-            )
+            ) from re
         except JSONDecodeError as je:
-            raise LLMParseError(
-                provider="ollama", cause=je, execution_mode="local"
-            )
+            raise LLMParseError(provider="ollama", cause=je, execution_mode="local") from je
 
-    def _remove_markdown_code_blocks(self, text: str) -> str:
-        """
-        Utility method to extract JSON content from a string, especially if it's wrapped in markdown
-        code blocks.
-        """
-        return re.sub(r"```json(.*?)```", r"\1", text, flags=re.DOTALL).strip()
+    async def health_check(self) -> bool:
+        """Whether the daemon answers and still has this model: its /api/show for the model, within
+        ``config.OLLAMA_HEALTH_TIMEOUT_S``. The batch asks before it plays again a game the daemon
+        failed (see ``batch_runner``). False when the daemon is down, wedged or failing (5xx), or
+        no longer has the model (404)."""
+        try:
+            await asyncio.wait_for(
+                self._client.show(self.model_name), timeout=config.OLLAMA_HEALTH_TIMEOUT_S
+            )
+        except (*_DAEMON_ERRORS, TimeoutError) as e:
+            logger.info("ollama health check for %r failed: %r", self.model_name, e)
+            return False
+        return True
+
+    async def close(self) -> None:
+        await self._client.close()

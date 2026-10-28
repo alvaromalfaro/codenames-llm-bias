@@ -45,18 +45,36 @@ def test_measurement_frame_id_present_is_carried(valid_board_data):
     assert board.measurement_frame_id == "test-frame-abc"
 
 
-@pytest.mark.parametrize("modification, expected_error", [
-    ("less_llm_agents", "There must be exactly 9 agent cards for both LLM and human players (3 shared between them)."),
-    ("less_human_agents", "There must be exactly 9 agent cards for both LLM and human players (3 shared between them)."),
-    ("wrong_shared_count", "There must be exactly 9 agent cards for both LLM and human players (3 shared between them).")
-])
+@pytest.mark.parametrize(
+    "modification, expected_error",
+    [
+        (
+            "less_llm_agents",
+            "There must be exactly 9 agent cards for both LLM and human players (3 shared between "
+            "them).",
+        ),
+        (
+            "less_human_agents",
+            "There must be exactly 9 agent cards for both LLM and human players (3 shared between "
+            "them).",
+        ),
+        (
+            "wrong_shared_count",
+            "There must be exactly 9 agent cards for both LLM and human players (3 shared between "
+            "them).",
+        ),
+    ],
+)
 def test_board_invalid_agent_rules(valid_board_data, modification, expected_error):
     """
-    Validates that a board configuration with an incorrect number of agent cards or incorrect intersections fails validation.
+    Validates that a board configuration with an incorrect number of agent cards or incorrect
+    intersections fails validation.
 
     :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
-    :param modification: A string indicating the type of modification to apply to the valid board data to make it invalid.
-    :param expected_error: A string indicating the expected error message to be raised during validation.
+    :param modification: A string indicating the type of modification to apply to the valid board
+        data to make it invalid.
+    :param expected_error: A string indicating the expected error message to be raised during
+        validation.
     """
     data = valid_board_data.copy()
 
@@ -77,13 +95,20 @@ def test_board_invalid_agent_rules(valid_board_data, modification, expected_erro
 
         # First, set one of the shared agent cards to be a civilian for the human player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.AGENT and card["human_perspective_role"] == CardRole.AGENT:
+            if (
+                card["llm_perspective_role"] == CardRole.AGENT
+                and card["human_perspective_role"] == CardRole.AGENT
+            ):
                 card["human_perspective_role"] = CardRole.CIVILIAN
                 break
 
-        # Then, set one of the civilian cards to be an agent for the human player to maintain the total count of 9 agents for the human player
+        # Then, set one of the civilian cards to be an agent for the human player to maintain the
+        # total count of 9 agents for the human player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.CIVILIAN and card["human_perspective_role"] == CardRole.CIVILIAN:
+            if (
+                card["llm_perspective_role"] == CardRole.CIVILIAN
+                and card["human_perspective_role"] == CardRole.CIVILIAN
+            ):
                 card["human_perspective_role"] = CardRole.AGENT
                 break
 
@@ -91,22 +116,44 @@ def test_board_invalid_agent_rules(valid_board_data, modification, expected_erro
         Board(**data)
 
 
-@pytest.mark.parametrize("modification, expected_error", [
-    ("less_llm_assassins", "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human)."),
-    ("less_human_assassins", "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human)."),
-    ("wrong_shared_count", "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 unique to LLM, 1 unique to human)."),
-    ("invalid_human_intersection",
-     "One of the human's assassin cards must be one of the LLM's agent cards."),
-    ("invalid_llm_intersection",
-     "One of the LLM's assassin cards must be one of the human's agent cards.")
-])
+@pytest.mark.parametrize(
+    "modification, expected_error",
+    [
+        (
+            "less_llm_assassins",
+            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 "
+            "unique to LLM, 1 unique to human).",
+        ),
+        (
+            "less_human_assassins",
+            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 "
+            "unique to LLM, 1 unique to human).",
+        ),
+        (
+            "wrong_shared_count",
+            "There must be exactly 3 assassin cards (1 shared between LLM and human players, 1 "
+            "unique to LLM, 1 unique to human).",
+        ),
+        (
+            "invalid_human_intersection",
+            "One of the human's assassin cards must be one of the LLM's agent cards.",
+        ),
+        (
+            "invalid_llm_intersection",
+            "One of the LLM's assassin cards must be one of the human's agent cards.",
+        ),
+    ],
+)
 def test_board_invalid_assassin_rules(valid_board_data, modification, expected_error):
     """
-    Validates that a board configuration with an incorrect number of assassin cards or incorrect intersections fails validation.
+    Validates that a board configuration with an incorrect number of assassin cards or incorrect
+    intersections fails validation.
 
     :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
-    :param modification: A string indicating the type of modification to apply to the valid board data to make it invalid.
-    :param expected_error: A string indicating the expected error message to be raised during validation.
+    :param modification: A string indicating the type of modification to apply to the valid board
+        data to make it invalid.
+    :param expected_error: A string indicating the expected error message to be raised during
+        validation.
     """
     data = valid_board_data.copy()
 
@@ -127,41 +174,108 @@ def test_board_invalid_assassin_rules(valid_board_data, modification, expected_e
 
         # First, set the shared assassin card to be a civilian for the human player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.ASSASSIN and card["human_perspective_role"] == CardRole.ASSASSIN:
+            if (
+                card["llm_perspective_role"] == CardRole.ASSASSIN
+                and card["human_perspective_role"] == CardRole.ASSASSIN
+            ):
                 card["human_perspective_role"] = CardRole.CIVILIAN
                 break
 
-        # Then, set one of the civilian cards to be an assassin for the human player to maintain the total count of 3 assassins for the human player
+        # Then, set one of the civilian cards to be an assassin for the human player to maintain the
+        # total count of 3 assassins for the human player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.CIVILIAN and card["human_perspective_role"] == CardRole.CIVILIAN:
+            if (
+                card["llm_perspective_role"] == CardRole.CIVILIAN
+                and card["human_perspective_role"] == CardRole.CIVILIAN
+            ):
                 card["human_perspective_role"] = CardRole.ASSASSIN
                 break
     elif modification == "invalid_human_intersection":
-        # Modify the valid board data to have a human assassin card that is not one of the LLM's agent cards
+        # Modify the valid board data to have a human assassin card that is not one of the LLM's
+        # agent cards
 
-        # First, set the human assassin card that intersects with the LLM's agent cards to be a civilian for the human player
+        # First, set the human assassin card that intersects with the LLM's agent cards to be a
+        # civilian for the human player
         for card in data["cards"]:
-            if card["human_perspective_role"] == CardRole.ASSASSIN and card["llm_perspective_role"] == CardRole.AGENT:
+            if (
+                card["human_perspective_role"] == CardRole.ASSASSIN
+                and card["llm_perspective_role"] == CardRole.AGENT
+            ):
                 card["human_perspective_role"] = CardRole.CIVILIAN
                 break
 
-        # Then, set one of the civilian cards to be an assassin for the human player to maintain the total count of 3 assassins for the human player
+        # Then, set one of the civilian cards to be an assassin for the human player to maintain the
+        # total count of 3 assassins for the human player
         for card in data["cards"]:
-            if card["human_perspective_role"] == CardRole.CIVILIAN and card["llm_perspective_role"] == CardRole.CIVILIAN:
+            if (
+                card["human_perspective_role"] == CardRole.CIVILIAN
+                and card["llm_perspective_role"] == CardRole.CIVILIAN
+            ):
                 card["human_perspective_role"] = CardRole.ASSASSIN
                 break
     elif modification == "invalid_llm_intersection":
-        # Modify the valid board data to have an LLM assassin card that is not one of the human's agent cards
+        # Modify the valid board data to have an LLM assassin card that is not one of the human's
+        # agent cards
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.ASSASSIN and card["human_perspective_role"] == CardRole.AGENT:
+            if (
+                card["llm_perspective_role"] == CardRole.ASSASSIN
+                and card["human_perspective_role"] == CardRole.AGENT
+            ):
                 card["llm_perspective_role"] = CardRole.CIVILIAN
                 break
 
-        # Then, set one of the civilian cards to be an assassin for the LLM player to maintain the total count of 3 assassins for the LLM player
+        # Then, set one of the civilian cards to be an assassin for the LLM player to maintain the
+        # total count of 3 assassins for the LLM player
         for card in data["cards"]:
-            if card["llm_perspective_role"] == CardRole.CIVILIAN and card["human_perspective_role"] == CardRole.CIVILIAN:
+            if (
+                card["llm_perspective_role"] == CardRole.CIVILIAN
+                and card["human_perspective_role"] == CardRole.CIVILIAN
+            ):
                 card["llm_perspective_role"] = CardRole.ASSASSIN
                 break
 
     with pytest.raises(ValidationError, match=re.escape(expected_error)):
+        Board(**data)
+
+
+@pytest.mark.parametrize("repeated_text", ["CAVE", "cave"])
+def test_board_rejects_repeated_word(valid_board_data, repeated_text):
+    """
+    Validates that a board with the same word on two cards fails validation, even when the two
+    spellings differ only in case: words are matched to cards case-insensitively, so the second
+    card could never be addressed by its word (§3: 25 distinct words).
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param repeated_text: The text written over a second card, duplicating "CAVE" (card 5).
+    """
+    data = valid_board_data.copy()
+    # Card 0 (BUCKET) is civilian on both faces, so the key-card counts stay valid.
+    data["cards"][0]["text"] = repeated_text
+
+    with pytest.raises(
+        ValidationError, match=re.escape("must be distinct (ignoring case); repeated: ['cave']")
+    ):
+        Board(**data)
+
+
+@pytest.mark.parametrize("modification", ["duplicated_id", "out_of_range_id", "out_of_order_ids"])
+def test_board_rejects_bad_card_ids(valid_board_data, modification):
+    """
+    Validates that the card ids must be exactly 0..24 in board order: unique, in range (the
+    database only accepts ``card_id BETWEEN 0 AND 24``) and equal to the card's grid position.
+
+    :param valid_board_data: A fixture providing a valid board configuration as a dictionary.
+    :param modification: The way the ids are broken.
+    """
+    data = valid_board_data.copy()
+    cards = data["cards"]
+
+    if modification == "duplicated_id":
+        cards[1]["id"] = 0
+    elif modification == "out_of_range_id":
+        cards[24]["id"] = 25
+    elif modification == "out_of_order_ids":
+        cards[0]["id"], cards[1]["id"] = 1, 0
+
+    with pytest.raises(ValidationError, match=re.escape("Card ids must be 0..24 in board order")):
         Board(**data)

@@ -1,7 +1,8 @@
 """Alembic environment.
 
 Wires the migration context to ``Base.metadata`` from the ORM models and reads the database URL from
-``DATABASE_URL`` (normalised to the sync psycopg2 driver via ``backend.app.db.session._database_url``).
+``DATABASE_URL`` (normalised to the sync psycopg2 driver via
+``backend.app.db.session._database_url``).
 """
 
 from logging.config import fileConfig
@@ -44,8 +45,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection,
-                          target_metadata=target_metadata)
+        context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():
             context.run_migrations()
 

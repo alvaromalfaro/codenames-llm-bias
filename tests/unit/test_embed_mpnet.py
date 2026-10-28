@@ -1,16 +1,17 @@
 """Tests for the phi* embedding backfill.
 
 Two gates, for two different costs:
-  * the insert-path tests need Postgres (pgvector) and are skipped when DATABASE_URL is unset. They 
-    drive a deterministic StubEncoder so they never load torch.
+  * the insert-path tests need Postgres (pgvector), marked ``db``: they run on the test session's
+    (tests/conftest.py). They drive a deterministic StubEncoder so they never load torch.
   * the encoder-contract tests need the real ~420MB checkpoint and are skipped when it is not in
     the local HuggingFace cache. Nothing downloads.
 
 Each DB test writes under its own throwaway frame_id, so runs are independent and need no cleanup.
 """
+
 import hashlib
-import os
 import uuid
+from contextlib import contextmanager
 
 import numpy as np
 import pytest
@@ -19,9 +20,7 @@ _REAL_FRAME_ID = "8a404797b3e656dd00683910aa829bbbc584c6b23c37e9f0de1173d11a9d0c
 _REAL_ENCODER = "sentence-transformers/all-mpnet-base-v2"
 _REAL_REVISION = "e8c3b32edf5434bc2275fc9bab85f82640a19130"
 
-requires_db = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+requires_db = pytest.mark.db
 
 
 class StubEncoder:
@@ -33,8 +32,7 @@ class StubEncoder:
     def encode(self, texts: list[str]) -> list[list[float]]:
         out = []
         for t in texts:
-            seed = int.from_bytes(
-                hashlib.sha256(t.lower().encode()).digest()[:8], "big")
+            seed = int.from_bytes(hashlib.sha256(t.lower().encode()).digest()[:8], "big")
             vec = np.random.default_rng(seed).standard_normal(768)
             out.append((vec / np.linalg.norm(vec)).tolist())
         return out
@@ -47,8 +45,7 @@ def _hf_cache_has_pinned_model() -> bool:
     except ImportError:
         return False
     return isinstance(
-        try_to_load_from_cache(_REAL_ENCODER, "modules.json",
-                               revision=_REAL_REVISION),
+        try_to_load_from_cache(_REAL_ENCODER, "modules.json", revision=_REAL_REVISION),
         str,
     )
 
@@ -64,15 +61,17 @@ def _make_frame(session) -> str:
     from backend.app.db.models import MeasurementFrameModel
 
     frame_id = f"test-embed-{uuid.uuid4()}"
-    session.add(MeasurementFrameModel(
-        frame_id=frame_id,
-        encoder_name=_REAL_ENCODER,
-        encoder_revision=_REAL_REVISION,
-        encoder_pooling="mean",
-        encoder_normalize=True,
-        gender_axis=[0.0] * 768,
-        axis_construction={"method": "test"},
-    ))
+    session.add(
+        MeasurementFrameModel(
+            frame_id=frame_id,
+            encoder_name=_REAL_ENCODER,
+            encoder_revision=_REAL_REVISION,
+            encoder_pooling="mean",
+            encoder_normalize=True,
+            gender_axis=[0.0] * 768,
+            axis_construction={"method": "test"},
+        )
+    )
     session.flush()
     return frame_id
 
@@ -82,10 +81,11 @@ def _rows_for(session, frame_id):
 
     from backend.app.db.models import EmbeddingMpnetModel
 
-    return session.execute(
-        select(EmbeddingMpnetModel).where(
-            EmbeddingMpnetModel.frame_id == frame_id)
-    ).scalars().all()
+    return (
+        session.execute(select(EmbeddingMpnetModel).where(EmbeddingMpnetModel.frame_id == frame_id))
+        .scalars()
+        .all()
+    )
 
 
 # the insert path
@@ -103,10 +103,8 @@ def test_overlapping_text_yields_one_board_word_row():
         frame_id = _make_frame(session)
         enc = StubEncoder()
 
-        b_ins, b_skip = insert_embeddings(
-            session, frame_id, ["apple"], KIND_BOARD_WORD, enc)
-        c_ins, c_skip = insert_embeddings(
-            session, frame_id, ["apple", "banana"], KIND_CLUE, enc)
+        b_ins, b_skip = insert_embeddings(session, frame_id, ["apple"], KIND_BOARD_WORD, enc)
+        c_ins, c_skip = insert_embeddings(session, frame_id, ["apple", "banana"], KIND_CLUE, enc)
 
         assert (b_ins, b_skip) == (1, 0)
         assert (c_ins, c_skip) == (1, 1)
@@ -124,7 +122,8 @@ def test_stored_text_is_lowercased():
     with session_scope() as session:
         frame_id = _make_frame(session)
         inserted, skipped = insert_embeddings(
-            session, frame_id, ["BUCKET", "bucket"], KIND_BOARD_WORD, StubEncoder())
+            session, frame_id, ["BUCKET", "bucket"], KIND_BOARD_WORD, StubEncoder()
+        )
 
         # The two spellings collapse to one candidate before any DB round-trip.
         assert (inserted, skipped) == (1, 0)
@@ -138,8 +137,9 @@ def test_every_inserted_vector_has_768_dims():
 
     with session_scope() as session:
         frame_id = _make_frame(session)
-        insert_embeddings(session, frame_id, ["alpha", "beta", "gamma"],
-                          KIND_BOARD_WORD, StubEncoder())
+        insert_embeddings(
+            session, frame_id, ["alpha", "beta", "gamma"], KIND_BOARD_WORD, StubEncoder()
+        )
 
         rows = _rows_for(session, frame_id)
         assert len(rows) == 3
@@ -157,10 +157,8 @@ def test_rerun_is_idempotent():
         texts = ["alpha", "beta"]
         enc = StubEncoder()
 
-        assert insert_embeddings(
-            session, frame_id, texts, KIND_BOARD_WORD, enc) == (2, 0)
-        assert insert_embeddings(
-            session, frame_id, texts, KIND_BOARD_WORD, enc) == (0, 2)
+        assert insert_embeddings(session, frame_id, texts, KIND_BOARD_WORD, enc) == (2, 0)
+        assert insert_embeddings(session, frame_id, texts, KIND_BOARD_WORD, enc) == (0, 2)
         assert len(_rows_for(session, frame_id)) == 2
 
 
@@ -174,7 +172,8 @@ def test_batching_does_not_change_the_result():
         frame_id = _make_frame(session)
         texts = [f"word{i}" for i in range(10)]
         inserted, skipped = insert_embeddings(
-            session, frame_id, texts, KIND_BOARD_WORD, StubEncoder(), batch_size=3)
+            session, frame_id, texts, KIND_BOARD_WORD, StubEncoder(), batch_size=3
+        )
 
         assert (inserted, skipped) == (10, 0)
         assert len(_rows_for(session, frame_id)) == 10
@@ -204,34 +203,81 @@ def test_load_encoder_spec_rejects_unknown_frame():
             load_encoder_spec(session, "no-such-frame")
 
 
-# the phase queries, against the real batch
+# the phase queries, on boards and clues of a throwaway frame
+@contextmanager
+def _rolled_back_session():
+    """A session whose writes are rolled back at the end: the boards these tests seal to their
+    throwaway frame would otherwise break the tests that every sealed board resolves to the real
+    frame (test_frame_consistency, test_ingest_frame)."""
+    from backend.app.db.session import get_sessionmaker
+
+    session = get_sessionmaker()()
+    try:
+        yield session
+    finally:
+        session.rollback()
+        session.close()
+
+
+def _sealed_board(session, frame_id, words) -> str:
+    """Insert a board sealed to ``frame_id`` with ``words`` as its cards, uppercased as the bank
+    stores them; return its id."""
+    from backend.app.db.models import BoardModel, WordCardModel
+
+    board_id = f"test-embed-board-{uuid.uuid4()}"
+    session.add(BoardModel(board_id=board_id, type="control", measurement_frame_id=frame_id))
+    session.flush()
+    for card_id, word in enumerate(words):
+        session.add(
+            WordCardModel(
+                board_id=board_id,
+                card_id=card_id,
+                text=word.upper(),
+                llm_perspective_role="civilian",
+                human_perspective_role="civilian",
+            )
+        )
+    session.flush()
+    return board_id
+
+
 @requires_db
 def test_board_word_texts_are_lowercased_and_distinct():
-    """Fails if lower() is dropped from the query: the bank stores its words uppercased."""
+    """Fails if lower() is dropped from the query (the bank stores its words uppercased), or the
+    DISTINCT (a word is on more than one board)."""
     from backend.app.db.embed_mpnet import board_word_texts
-    from backend.app.db.session import session_scope
 
-    with session_scope() as session:
-        texts = board_word_texts(session, _REAL_FRAME_ID)
-        if not texts:
-            pytest.skip("no boards for the real frame in this database")
+    with _rolled_back_session() as session:
+        frame_id = _make_frame(session)
+        _sealed_board(session, frame_id, ["bucket", "brick"])
+        _sealed_board(session, frame_id, ["bucket", "ant"])
 
-        assert all(t == t.lower() for t in texts)
-        assert len(texts) == len(set(texts))
+        assert board_word_texts(session, frame_id) == ["ant", "brick", "bucket"]
 
 
 @requires_db
 def test_clue_texts_are_lowercased_and_distinct():
+    """The clues of the games played on the frame's boards, each once, lowercased."""
     from backend.app.db.embed_mpnet import clue_texts
-    from backend.app.db.session import session_scope
+    from backend.app.db.models import ClueModel, GameModel, TurnModel
 
-    with session_scope() as session:
-        texts = clue_texts(session, _REAL_FRAME_ID)
-        if not texts:
-            pytest.skip("no clues for the real frame in this database")
+    with _rolled_back_session() as session:
+        frame_id = _make_frame(session)
+        game = GameModel(
+            id=str(uuid.uuid4()),
+            board_id=_sealed_board(session, frame_id, ["ant"]),
+            game_status="completed",
+        )
+        session.add(game)
+        session.flush()
+        for turn_number, clue in enumerate(["Battle", "BATTLE", "ocean"]):
+            turn = TurnModel(game_id=game.id, turn_number=turn_number, clue_giver_seat=0)
+            session.add(turn)
+            session.flush()
+            session.add(ClueModel(turn_id=turn.id, clue_word=clue, count=1))
+        session.flush()
 
-        assert all(t == t.lower() for t in texts)
-        assert len(texts) == len(set(texts))
+        assert clue_texts(session, frame_id) == ["battle", "ocean"]
 
 
 # the real phi* contract
@@ -247,12 +293,16 @@ def test_real_encoder_matches_reference():
     pytest.importorskip("sentence_transformers")
     from sentence_transformers import SentenceTransformer
 
-    spec = EncoderSpec(frame_id=_REAL_FRAME_ID, name=_REAL_ENCODER,
-                       revision=_REAL_REVISION, pooling="mean", normalize=True)
+    spec = EncoderSpec(
+        frame_id=_REAL_FRAME_ID,
+        name=_REAL_ENCODER,
+        revision=_REAL_REVISION,
+        pooling="mean",
+        normalize=True,
+    )
     ours = np.asarray(SentenceTransformerEncoder(spec).encode(["BUCKET"])[0])
 
-    model = SentenceTransformer(
-        _REAL_ENCODER, revision=_REAL_REVISION, device="cpu")
+    model = SentenceTransformer(_REAL_ENCODER, revision=_REAL_REVISION, device="cpu")
     reference = np.asarray(model.encode("bucket", normalize_embeddings=True))
 
     assert ours.shape == (768,)
@@ -272,10 +322,8 @@ def test_lowercasing_is_geometrically_a_noop_for_this_checkpoint():
     pytest.importorskip("sentence_transformers")
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(
-        _REAL_ENCODER, revision=_REAL_REVISION, device="cpu")
-    assert model.tokenizer("BUCKET")["input_ids"] == model.tokenizer(
-        "bucket")["input_ids"]
+    model = SentenceTransformer(_REAL_ENCODER, revision=_REAL_REVISION, device="cpu")
+    assert model.tokenizer("BUCKET")["input_ids"] == model.tokenizer("bucket")["input_ids"]
 
     lower = np.asarray(model.encode("bucket", normalize_embeddings=True))
     upper = np.asarray(model.encode("BUCKET", normalize_embeddings=True))
@@ -285,24 +333,43 @@ def test_lowercasing_is_geometrically_a_noop_for_this_checkpoint():
 @requires_real_encoder
 def test_build_encoder_rejects_pooling_mismatch():
     """A frame claiming a pooling the checkpoint does not use is a hard stop, not a warning."""
-    from backend.app.db.embed_mpnet import EncoderContractError, EncoderSpec, SentenceTransformerEncoder
+    from backend.app.db.embed_mpnet import (
+        EncoderContractError,
+        EncoderSpec,
+        SentenceTransformerEncoder,
+    )
 
     pytest.importorskip("sentence_transformers")
 
-    spec = EncoderSpec(frame_id=_REAL_FRAME_ID, name=_REAL_ENCODER,
-                       revision=_REAL_REVISION, pooling="cls", normalize=True)
+    spec = EncoderSpec(
+        frame_id=_REAL_FRAME_ID,
+        name=_REAL_ENCODER,
+        revision=_REAL_REVISION,
+        pooling="cls",
+        normalize=True,
+    )
     with pytest.raises(EncoderContractError, match="pools with 'mean'"):
         SentenceTransformerEncoder(spec)
 
 
 @requires_real_encoder
 def test_build_encoder_rejects_normalize_mismatch():
-    """The checkpoint ends in Normalize; a frame declaring encoder_normalize=False contradicts it."""
-    from backend.app.db.embed_mpnet import EncoderContractError, EncoderSpec, SentenceTransformerEncoder
+    """The checkpoint ends in Normalize; a frame declaring encoder_normalize=False contradicts
+    it."""
+    from backend.app.db.embed_mpnet import (
+        EncoderContractError,
+        EncoderSpec,
+        SentenceTransformerEncoder,
+    )
 
     pytest.importorskip("sentence_transformers")
 
-    spec = EncoderSpec(frame_id=_REAL_FRAME_ID, name=_REAL_ENCODER,
-                       revision=_REAL_REVISION, pooling="mean", normalize=False)
+    spec = EncoderSpec(
+        frame_id=_REAL_FRAME_ID,
+        name=_REAL_ENCODER,
+        revision=_REAL_REVISION,
+        pooling="mean",
+        normalize=False,
+    )
     with pytest.raises(EncoderContractError, match="Normalize"):
         SentenceTransformerEncoder(spec)

@@ -1,89 +1,309 @@
 import asyncio
+import hashlib
+import json
 import logging
+import re
 from abc import ABC, abstractmethod
+from collections import Counter
 from collections.abc import Awaitable, Callable
-from pydantic import BaseModel
+from typing import Any, Optional
+from pydantic import ValidationError
 from backend.app.models.llm_errors import (
-    LLMError, LLMEmptyResponseError, LLMDegenerateResponseError,
+    LLMError,
+    LLMAuthError,
+    LLMInsufficientCreditsError,
+    LLMInvalidRequestError,
+    LLMModelNotFoundError,
+    LLMProviderUnavailableError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    LLMEmptyResponseError,
+    LLMDegenerateResponseError,
+    LLMTruncatedResponseError,
+    LLMMalformedResponseError,
 )
-from backend.app.models.llm_schemas import LLMRequest, LLMResponse
+from backend.app.models.llm_schemas import LLMFormat, LLMRequest, LLMResponse
 
 logger = logging.getLogger(__name__)
 
 # Exponential backoff base for the client-side transient retry: 15s, 30s, 60s, ...
 _RETRY_BACKOFF_BASE_S = 15
 
-# Key under which the empty-response re-sample count is stamped into the returned response's
-# raw_payload. That payload is copied verbatim onto LLMCallRecord.raw_payload and written to the
-# JSONB llm_call.raw_payload column, so the count is auditable downstream with no schema change.
-EMPTY_RESAMPLE_KEY = "empty_response_resamples"
+# The bad draws: a model's answer that cannot be used, drawn again with a new seed. Each kind is
+# counted apart, because each is a different model behaviour (data about the model, not noise), and
+# its count is stamped into the kept response's raw_payload under "<code>_resamples" (e.g.
+# "empty_response_resamples"), 0 included. That payload is copied verbatim onto
+# LLMCallRecord.raw_payload and written to the JSONB llm_call.raw_payload column, so the counts are
+# auditable downstream with no schema change.
+_BAD_DRAWS: tuple[type[LLMError], ...] = (
+    LLMEmptyResponseError,
+    LLMDegenerateResponseError,
+    LLMTruncatedResponseError,
+    LLMMalformedResponseError,
+)
 
-# Same, for WELL-FORMED but degenerate draws (e.g. an empty proposals list). Counted apart from
-# EMPTY_RESAMPLE_KEY because "returned nothing" and "returned a well-formed refusal to guess" are
-# different model behaviours, and both are data about the model, not noise.
-DEGENERATE_RESAMPLE_KEY = "degenerate_response_resamples"
+_MASK64 = (1 << 64) - 1
+
+# The seeds a provider is sent: 31 bits, the largest seed every provider uses as it is sent.
+# OpenRouter takes a 32-bit signed seed. Ollama reads the seed as a float64, then an int64, and its
+# sampler keeps 32 bits: a 64-bit seed is not the seed it samples with, and every seed of 2**63 or
+# more (half of the 64-bit seeds the game derives) samples as the same one.
+SEED_MASK = 0x7FFFFFFF
+
+
+def provider_seed(seed: Optional[int]) -> Optional[int]:
+    """The seed a provider is sent, and its call records, for a request seeded ``seed``: masked to
+    31 bits (``SEED_MASK``). The game derives 64-bit seeds; two calls of a batch of ten thousand
+    share their 31 bits by chance in about one batch in fifty. An unseeded request stays
+    unseeded."""
+    return None if seed is None else seed & SEED_MASK
+
+
+def redraw_seed(seed: Optional[int], draw: int) -> Optional[int]:
+    """The seed of the ``draw``-th new draw (1, 2, ...) of a request whose own seed is ``seed``:
+    ``SHA-256(seed_as_8B_be || b"redraw" || draw_as_8B_be) mod 2**64``, the scheme of the game
+    runner's own seeds. Deterministic, so a run with redraws is still reproducible from its master
+    seed. An unseeded request (``None``) stays unseeded: each of its draws is already a new one."""
+    if seed is None:
+        return None
+    h = hashlib.sha256((seed & _MASK64).to_bytes(8, "big"))
+    h.update(b"redraw")
+    h.update(draw.to_bytes(8, "big"))
+    return int.from_bytes(h.digest(), "big") & _MASK64
+
+
+# A markdown code block: its fence, an optional language tag (```json, ```JSON, or none), and what
+# it holds, up to the closing fence.
+_FENCED_BLOCK = re.compile(r"```[\w+-]*\s*(.*?)```", re.DOTALL)
+
+_JSON_DECODER = json.JSONDecoder()
+
+
+def extract_json(answer: str) -> str:
+    """The JSON of a model's answer, out of the markdown or the prose the model may have wrapped it
+    in; the clients validate what this returns.
+
+    - An answer that is JSON already is kept as it is (stripped). With a schema sent as ``format``,
+      ollama's always is.
+    - Else, the content of its first fenced code block, with or without a language tag. A block with
+      nothing in it is an empty answer ("").
+    - Else, its first JSON object.
+    - Else, the answer itself (stripped), for the validation to reject.
+
+    An answer cut before its JSON closes has no JSON object: it is returned as it is.
+    """
+    text = answer.strip()
+    try:
+        json.loads(text)
+        return text
+    except ValueError:
+        pass
+    block = _FENCED_BLOCK.search(text)
+    if block:
+        return block.group(1).strip()
+    for start in (i for i, char in enumerate(text) if char == "{"):
+        try:
+            _, end = _JSON_DECODER.raw_decode(text, start)
+        except ValueError:
+            continue
+        return text[start:end]
+    return text
+
+
+def error_for_status(
+    status: Optional[int], message: Optional[str] = None, **context: Any
+) -> LLMError:
+    """The taxonomy error for a provider call answered with the HTTP status ``status`` (None for a
+    failure reported without one, e.g. mid-answer); ``context`` is the error's metadata.
+
+    None of them is a refusal by the model: a model that will not play still answers, in text. An
+    error status is the provider's or the request's, so nothing here maps to ``LLMRefusalError``,
+    which the batch counts as the model's behaviour; a client whose provider says otherwise for a
+    status maps that status itself."""
+    context["http_status"] = status
+    if status == 402:
+        return LLMInsufficientCreditsError(message, **context)
+    if status == 404:
+        # The model is not pulled (ollama), or does not exist (OpenRouter).
+        return LLMModelNotFoundError(message, **context)
+    if status in (401, 403):
+        return LLMAuthError(message, **context)
+    if status == 408:
+        return LLMTimeoutError(message, **context)
+    if status == 429:
+        return LLMRateLimitError(message, **context)
+    if status is not None and 400 <= status < 500:
+        # The provider rejects what was sent (an option or a parameter the model does not support):
+        # the same request would be rejected again.
+        return LLMInvalidRequestError(message, **context)
+    # A 5xx: the provider failed (a runner that crashed or ran out of memory, a queue that is full,
+    # an upstream model that is down), and may recover. Also an error reported without a status.
+    return LLMProviderUnavailableError(message, **context)
+
+
+def read_answer(
+    answer: str,
+    *,
+    cut: bool,
+    expected_format: type[LLMFormat] | None,
+    model: str,
+    **context: Any,
+) -> tuple[str, LLMFormat | None]:
+    """A model's ``answer`` as the text to keep (its JSON, see ``extract_json``) and, with an
+    ``expected_format``, that text validated against it; or the bad draw it is, raised. ``cut``
+    says the provider stopped the answer at the output limit; ``context`` is the metadata of the
+    error raised (its provider, raw payload and execution mode).
+
+    The same checks for every provider, in this order: an empty answer
+    (``LLMEmptyResponseError``), one cut before it ended (``LLMTruncatedResponseError``), one that
+    does not match the format (``LLMMalformedResponseError``), and one that matches it but cannot
+    build a legal domain object (``LLMDegenerateResponseError``, see
+    ``LLMFormat.degenerate_reason``). Each is drawn again within the caller's budget; see
+    ``generate_with_retries``.
+    """
+    provider = context.get("provider")
+    content = extract_json(answer)
+
+    # An empty / whitespace-only draw is a stochastic non-answer, not malformed output.
+    if not content:
+        raise LLMEmptyResponseError(**context)
+
+    # The answer reached the output limit or filled the context, so its JSON is unfinished.
+    if cut:
+        logger.debug(
+            "%s %s answer cut at the output limit; discarded draw:\n%s", provider, model, answer
+        )
+        raise LLMTruncatedResponseError(**context)
+
+    if expected_format is None:
+        return content, None
+    try:
+        parsed = expected_format.model_validate_json(content)
+    except ValidationError as e:
+        # Only the count of a malformed draw reaches the database, and a schema the answer was
+        # constrained by should have kept it from being written, so it is logged whole (the output
+        # limit bounds it), at a level the batch's log keeps.
+        logger.warning(
+            "%s %s response does not match %s (%s); discarded draw:\n%s",
+            provider,
+            model,
+            expected_format.__name__,
+            e,
+            answer,
+        )
+        raise LLMMalformedResponseError(cause=e, **context) from e
+
+    # Well-formed but degenerate (e.g. an empty proposals list): the permissive LLM-facing schema
+    # accepts it, the domain model would not. A bad draw here, instead of a fatal ValidationError
+    # in llm_service, outside the retry loop.
+    reason = parsed.degenerate_reason()
+    if reason is not None:
+        logger.debug(
+            "%s %s response is degenerate (%s); discarded draw:\n%s",
+            provider,
+            model,
+            reason,
+            answer,
+        )
+        raise LLMDegenerateResponseError(
+            f"The LLM returned a well-formed but degenerate response: {reason}.", **context
+        )
+    return content, parsed
 
 
 async def generate_with_retries(
-    attempt: Callable[[], Awaitable[LLMResponse]], *,
-    max_retries: int, provider: str, model: str,
+    attempt: Callable[[LLMRequest], Awaitable[LLMResponse]],
+    request: LLMRequest,
+    *,
+    max_retries: int,
+    provider: str,
+    model: str,
 ) -> LLMResponse:
-    """Run a single provider attempt with a bounded, same-REQUEST retry of retriable LLM errors.
+    """Send ``request`` with ``attempt``, with a bounded retry of retriable LLM errors.
 
-    ``attempt`` is a zero-arg coroutine factory that performs one provider call and either returns an
+    ``attempt`` performs one provider call for the request it is given, and either returns an
     ``LLMResponse`` or raises an ``LLMError`` from the taxonomy (the mapping already applied). This
-    helper classifies on the MAPPED error's ``retriable`` flag: a retriable error is retried after an
-    exponential backoff (re-invoking ``attempt``, which re-sends the identical request - never
-    reseed); a non-retriable ``LLMError`` or an exhausted budget re-raises; all other exceptions 
-    propagate untouched.
+    helper classifies on the MAPPED error's ``retriable`` flag; a non-retriable ``LLMError`` or an
+    exhausted budget re-raises, and all other exceptions propagate untouched. A retriable error is
+    retried in one of two ways:
 
-    ``max_retries=0`` (the default for the interactive path) means exactly one attempt: the first
+    - **A bad draw** - an empty (``LLMEmptyResponseError``), degenerate
+      (``LLMDegenerateResponseError``), cut (``LLMTruncatedResponseError``) or malformed
+      (``LLMMalformedResponseError``) answer - is drawn again at once, with a new seed:
+      ``redraw_seed(request.seed, k)`` for the k-th new draw. With the same seed a local model gives
+      the same answer again (a model that loops loops again), so re-sending the request would only
+      spend the budget. The answer that is finally kept carries the seed it was drawn with
+      (``LLMResponse.requested_seed``, hence ``llm_call.requested_seed``).
+    - **A transient failure** (timeout, rate limit, provider unavailable) re-sends the same request
+      after an exponential backoff: the network failed, not the model.
+
+    ``max_retries=0`` (the clients' default) means exactly one attempt: the first
     retriable error raises. ``max_retries=k`` allows up to ``k+1`` attempts. Transients produce no
     ``LLMResponse`` and hence no telemetry - they are logged, never persisted (a network failure is
     not model behavior, unlike clue-legality retries).
 
-    The one exception is the empty-response re-sample (``LLMEmptyResponseError``): an empty draw is
-    model behavior, so the number absorbed by this call is stamped onto the successful response's
-    ``raw_payload`` under ``EMPTY_RESAMPLE_KEY`` and rides the existing audit path to
-    ``llm_call.raw_payload``. It is also skipped for backoff, being a local re-roll not a transient.
+    Bad draws are model behavior, so the number of each kind absorbed by this call is stamped onto
+    the successful response's ``raw_payload`` (``"<code>_resamples"``, one key per kind in
+    ``_BAD_DRAWS``) and rides the existing audit path to ``llm_call.raw_payload``. Their sum is the
+    ``k`` of the kept answer's seed.
     """
     n = 0
-    empty_resamples = 0
-    degenerate_resamples = 0
+    bad_draws: Counter[str] = Counter()
+    current = request
     while True:
         try:
-            response = await attempt()
+            response = await attempt(current)
         except LLMError as exc:
             if not exc.retriable or n >= max_retries:
                 raise
-            # An empty or degenerate draw is a local re-sample, not a network transient: back off
-            # only for the latter, so a stochastic non-answer costs a re-roll rather than minutes of
-            # sleeping.
-            is_empty = isinstance(exc, LLMEmptyResponseError)
-            is_degenerate = isinstance(exc, LLMDegenerateResponseError)
-            is_resample = is_empty or is_degenerate
-            backoff = 0.0 if is_resample else _RETRY_BACKOFF_BASE_S * (2 ** n)
-            logger.warning(
-                "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; retrying after %.2fs",
-                provider, model, n + 1, max_retries + 1, exc, backoff)
+            # A bad draw is not a network transient: it is drawn again at once with a new seed. Only
+            # a transient backs off, and re-sends the same request.
             n += 1
-            if is_empty:
-                empty_resamples += 1
-            if is_degenerate:
-                degenerate_resamples += 1
-            if backoff:
+            if isinstance(exc, _BAD_DRAWS):
+                bad_draws[exc.code] += 1
+                current = request.model_copy(
+                    update={"seed": redraw_seed(request.seed, bad_draws.total())}
+                )
+                logger.warning(
+                    "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; drawing again "
+                    "with seed %s",
+                    provider,
+                    model,
+                    n,
+                    max_retries + 1,
+                    exc,
+                    current.seed,
+                )
+            else:
+                backoff = _RETRY_BACKOFF_BASE_S * (2 ** (n - 1))
+                logger.warning(
+                    "retriable LLM error provider=%s model=%s attempt=%s/%s: %s; retrying after "
+                    "%.2fs",
+                    provider,
+                    model,
+                    n,
+                    max_retries + 1,
+                    exc,
+                    backoff,
+                )
                 await asyncio.sleep(backoff)
         else:
-            # Stamp the re-sample counts onto the response that finally succeeded, so the audit trail
-            # records how many bad draws this single call absorbed (0 for the common case).
-            response.raw_payload[EMPTY_RESAMPLE_KEY] = empty_resamples
-            response.raw_payload[DEGENERATE_RESAMPLE_KEY] = degenerate_resamples
+            # Stamp the re-sample counts onto the response that finally succeeded, so the audit
+            # trail records how many bad draws this single call absorbed (0 for the common case).
+            response.raw_payload.update(
+                {f"{kind.code}_resamples": bad_draws[kind.code] for kind in _BAD_DRAWS}
+            )
             return response
 
 
 class LLMClient(ABC):
+    # The model this client serves; the service puts it in every request.
+    model_name: str
+
     @abstractmethod
-    async def generate(self, request: LLMRequest, expected_format: type[BaseModel] = None) -> LLMResponse:
+    async def generate(
+        self, request: LLMRequest, expected_format: type[LLMFormat] | None = None
+    ) -> LLMResponse:
         """
         Abstract method to generate a response from the LLM based on the given request. This method
         must be implemented by any concrete subclass of LLMClient.
@@ -106,7 +326,7 @@ class LLMClient(ABC):
         # Default implementation assumes the provider is healthy.
         return True
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # noqa: B027 - a no-op by default, not an abstract method
         """
         Optional method to close any resources or connections used by the LLM client. This can be
         overridden by subclasses if they need to perform any cleanup when the client is no longer

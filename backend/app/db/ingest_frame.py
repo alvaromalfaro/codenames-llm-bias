@@ -7,9 +7,9 @@ disagrees with the sidecar raises :class:`StaleFrameError` (the hash and content
 contradicting each other — a hard STOP, never a silent overwrite).
 
 Column vs JSONB split:
-  * columns: ``frame_id`` (verbatim PK), ``encoder_name/revision/pooling/normalize``, ``gender_axis``
-    (the sidecar's ``gender_axis.vector_f64_be_hex`` decoded to a 768-float pgvector),
-    ``generator_version``, ``created_at``.
+  * columns: ``frame_id`` (verbatim PK), ``encoder_name/revision/pooling/normalize``,
+    ``gender_axis`` (the sidecar's ``gender_axis.vector_f64_be_hex`` decoded to a 768-float
+    pgvector), ``generator_version``, ``created_at``.
   * ``axis_construction`` JSONB holds the sidecar's ``gender_axis.construction`` verbatim, with the
     FULL ``mu_bar`` block (dim, vector_f64_be_hex, norm, cos_with_axis, centering_reference) nested
     under a ``"mu_bar"`` key. This is a provenance projection, the authoritative identity is the
@@ -27,10 +27,11 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from backend.app.db.models import MeasurementFrameModel
+from backend.app.paths import MEASUREMENT_FRAME_PATH
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FRAME_PATH = "data/boards/measurement_frame.json"
+DEFAULT_FRAME_PATH = MEASUREMENT_FRAME_PATH
 
 
 class StaleFrameError(RuntimeError):
@@ -38,7 +39,8 @@ class StaleFrameError(RuntimeError):
 
 
 def _decode_f64_be_hex(hex_str: str) -> list[float]:
-    """Decode a big-endian IEEE-754 float64 hex string to a list of floats (inverse of the emitter)."""
+    """Decode a big-endian IEEE-754 float64 hex string to a list of floats (inverse of the
+    emitter)."""
     raw = bytes.fromhex(hex_str)
     return list(struct.unpack(f">{len(raw) // 8}d", raw))
 
@@ -64,7 +66,8 @@ def frame_artifact_to_orm(data: dict) -> MeasurementFrameModel:
 
 
 def _encoder_identity(data: dict) -> dict:
-    """The human-meaningful identity fields used to detect an impossible hash/content disagreement."""
+    """The human-meaningful identity fields used to detect an impossible hash/content
+    disagreement."""
     encoder = data["encoder"]
     return {
         "encoder_name": encoder["name"],
@@ -75,18 +78,17 @@ def _encoder_identity(data: dict) -> dict:
     }
 
 
-def ingest_frame_if_absent(
-    session: Session, frame_path: str | Path = DEFAULT_FRAME_PATH
-) -> bool:
-    """Insert the measurement frame if its ``frame_id`` is not already stored. Returns True if inserted.
+def ingest_frame_if_absent(session: Session, frame_path: str | Path = DEFAULT_FRAME_PATH) -> bool:
+    """Insert the measurement frame if its ``frame_id`` is not already stored. Returns True if
+    inserted.
 
     A missing sidecar is a logged no-op (returns False). An existing row with the same frame_id is a
-    no-op; an existing row with a DIFFERENT encoder identity raises :class:`StaleFrameError`.
+    no-op; an existing row with a DIFFERENT encoder identity raises :class:`StaleFrameError`. The
+    caller owns the transaction: nothing here commits.
     """
     path = Path(frame_path)
     if not path.exists():
-        logger.warning(
-            "Measurement-frame sidecar %s does not exist; skipping", path)
+        logger.warning("Measurement-frame sidecar %s does not exist; skipping", path)
         return False
 
     with open(path, "r", encoding="utf-8") as f:
@@ -111,5 +113,5 @@ def ingest_frame_if_absent(
         return False
 
     session.add(frame_artifact_to_orm(data))
-    session.commit()
+    session.flush()
     return True

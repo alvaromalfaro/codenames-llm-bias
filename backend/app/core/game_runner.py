@@ -1,15 +1,16 @@
 """Headless single-game LLM-vs-LLM driver.
 
-Plays one complete Codenames Duet game between two LLM seats with no HTTP layer. The driver owns
-everything the interactive path leaves to the browser: explicit, reproducible seeding; a minimal
-``run`` row; two real seat identities; and terminal persistence via the existing writer. It is the
-single-game unit that the 180-game batch will call repeatedly.
+Plays one complete Codenames Duet game between two LLM seats. The driver owns explicit,
+reproducible seeding; a minimal ``run`` row; the two seat identities; and terminal persistence via
+the writer. It is the single-game unit that the 192-game batch calls repeatedly.
 
-The same ``master_seed`` played with the same (deterministic) clients yields a byte-identical game - 
-same engine ``game_id``, same per-(seat, turn) derived seeds sent on each request, and the same 
-recorder turn/reveal/proposal sequence. The engine, service and conductor stay seed-agnostic; all 
+The same ``master_seed`` played with the same (deterministic) clients yields a byte-identical game -
+same engine ``game_id``, same per-(seat, turn) derived seeds sent on each request (and, for a bad
+draw drawn again, the same seeds derived from those), and the same recorder
+turn/reveal/proposal sequence. The engine, service and conductor stay seed-agnostic; all
 derivation lives here (see ``_derive`` and the seed scheme below).
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -17,7 +18,7 @@ import logging
 import os
 import random
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Callable, Optional
 
@@ -25,6 +26,7 @@ from backend.app import config
 from backend.app.core import provenance
 from backend.app.core.engine import CodenamesDuetEngine
 from backend.app.core.game_conductor import conduct_clue, conduct_guess, conduct_sd_guess
+from backend.app.core.invariants import GameInvariantError, InvariantGuard
 from backend.app.core.llm.client import LLMClient
 from backend.app.core.llm.client_local import LLMClientLocal
 from backend.app.core.llm.client_openrouter import LLMClientOpenRouter
@@ -32,6 +34,7 @@ from backend.app.core.llm_service import LLMService
 from backend.app.db import writer
 from backend.app.db.recorder import GameRecorder, SeatRecord
 from backend.app.models.game_schemas import Board, GamePhase
+from backend.app.models.llm_errors import LLMError
 
 logger = logging.getLogger(__name__)
 
@@ -40,9 +43,10 @@ logger = logging.getLogger(__name__)
 _GAME_NAMESPACE = uuid.UUID("6ba7b814-9dad-11d1-80b4-00c04fd430c8")
 
 _MASK64 = (1 << 64) - 1
-# The driver's transient-retry policy: each seat's client retries a retriable LLM error up to this
-# many times (re-sending the identical request, no reseed) before it surfaces as terminal. Retry
-# lives in the client, not the dispatch, so it is idempotent and loses no telemetry.
+# The driver's retry policy: each seat's client retries a retriable LLM error up to this many
+# times before it surfaces as terminal - a bad draw is drawn again with a new seed, a transient
+# failure re-sends the same request (see llm.client.generate_with_retries). Retry lives in the
+# client, not the dispatch, so it is idempotent and loses no telemetry.
 _CLIENT_MAX_RETRIES = 3
 # safety cap so a non-progressing (mis-scripted) game cannot hang
 _MAX_DISPATCHES = 2000
@@ -53,9 +57,9 @@ def _derive(seed: int, *parts: bytes) -> int:
     """The single seed-derivation primitive: ``SHA-256(seed_as_8B_be || *parts) mod 2**64``.
 
     Deterministic and sensitive to every byte of every part, so different labels / seats / turns
-    yield different seeds while identical inputs yield identical seeds. ``seed`` is masked to 64 bits
-    before hashing so any caller-supplied master seed is accepted. Each integer part is fixed at an
-    explicit byte width by the callers below (8-byte big-endian for seeds and turn numbers).
+    yield different seeds while identical inputs yield identical seeds. ``seed`` is masked to 64
+    bits before hashing so any caller-supplied master seed is accepted. Each integer part is fixed
+    at an explicit byte width by the callers below (8-byte big-endian for seeds and turn numbers).
     """
     h = hashlib.sha256((seed & _MASK64).to_bytes(8, "big"))
     for part in parts:
@@ -87,14 +91,14 @@ def _game_identity(master_seed: int, game_index: int) -> tuple[str, int, int]:
     """Return ``(game_id, seed_game, seed_engine)`` for this game.
 
     Game identity derives from ``master_seed + game_index`` only - the two things that define the
-    experiment. ``run_id`` is deliberately not an input: it is persistence bookkeeping, not identity,
-    and a DB-minted ``run.id`` is a random uuid4 that would break reproducibility if it fed the
-    derivation. This function is pure and is the seam the tests use to predict the deterministic
-    engine start-player.
+    experiment. ``run_id`` is deliberately not an input: it is persistence bookkeeping, not
+    identity, and a DB-minted ``run.id`` is a random uuid4 that would break reproducibility if it
+    fed the derivation. This function is pure and is the seam the tests use to predict the
+    deterministic engine start-player.
 
-    Because identity is deterministic, re-running the same ``(master_seed, game_index)`` yields the 
-    same ``game_id``, so a second persist collides on ``game.id`` (primary key). This is intended 
-    semantics meaning "this experiment is already in the database". Re-running requires deleting the 
+    Because identity is deterministic, re-running the same ``(master_seed, game_index)`` yields the
+    same ``game_id``, so a second persist collides on ``game.id`` (primary key). This is intended
+    semantics meaning "this experiment is already in the database". Re-running requires deleting the
     run first.
     """
     game_id = str(uuid.uuid5(_GAME_NAMESPACE, f"{master_seed}:{game_index}"))
@@ -106,21 +110,30 @@ def _game_identity(master_seed: int, game_index: int) -> tuple[str, int, int]:
 @dataclass(frozen=True)
 class SeatSpec:
     """The identity of one seat's model: provider + model, plus the local-only ``think`` flag."""
-    provider: str          # "ollama" | "openrouter"
+
+    provider: str  # "ollama" | "openrouter"
     model_name: str
-    think: bool = False    # only meaningful for the local (ollama) client
+    think: bool = False  # only meaningful for the local (ollama) client
 
 
 @dataclass
 class GameRunResult:
     """The outcome of one headless game."""
+
     game_id: str
     run_id: str
     seed_game: int
-    status: str                    # "completed" | "error"
+    status: str  # "completed" | "error"
     # engine.state.result (e.g. "victory" / "loss_assassin" / ...)
     result: Optional[str]
-    error: Optional[str] = None    # error message when status == "error"
+    error: Optional[str] = None  # error message when status == "error"
+    # The code of the error that ended the game, so the batch can tell a model's behaviour from a
+    # provider failure: an LLMError's ("truncated_response", "timeout", ...), or "invariant_broken"
+    # for a state that broke the game's rules (GameInvariantError); None for any other error.
+    error_code: Optional[str] = None
+    # Every breach of the game's invariants found while it was played (core/invariants.py), in
+    # order. A strict game ends at the first state that breaks one, so it is an error then.
+    invariant_violations: list[str] = field(default_factory=list)
 
 
 # digest enforcement (reproducibility gate)
@@ -133,6 +146,54 @@ class ModelDigestMismatchError(RuntimeError):
     row is created and before any game is dispatched."""
 
 
+class OllamaVersionMismatchError(ModelDigestMismatchError):
+    """The Ollama daemon is not the release the batch is validated against
+    (``config.EXPECTED_OLLAMA_VERSION``), or its version cannot be read. Another release may serve
+    another digest, or the same weights another way, so it aborts like a digest mismatch: once, at
+    run-row creation, before any game."""
+
+
+class OpenRouterRoutingError(ModelDigestMismatchError):
+    """An API (OpenRouter) model with no provider pinned in ``config.llm_models["OpenRouter"]``:
+    each of its calls could be served by another provider, or another quantization, so it aborts
+    like a digest that cannot be certified: once, at run-row creation, before any game."""
+
+
+def _enforce_openrouter_routing(snapshot: dict, *, enforce: bool) -> None:
+    """Reproducibility gate over the API seats of the resolved ``model_registry_snapshot``: each
+    must be pinned to a provider (its ``routing``, see ``client_openrouter.provider_routing``). A
+    no-op unless ``enforce``; the client refuses such a model anyway, but only in a game."""
+    if not enforce:
+        return
+    for seat_index in sorted(snapshot):
+        entry = snapshot[seat_index]
+        if entry.get("provider") == "openrouter" and not entry.get("routing"):
+            raise OpenRouterRoutingError(
+                f"seat {seat_index}: API model {entry.get('model_name')!r} has no provider pinned "
+                f"in config.llm_models['OpenRouter'] (its provider, and its quantization if "
+                f"wanted): OpenRouter could serve each call from another one. Pin it, or run "
+                f"without enforcement."
+            )
+
+
+def _enforce_ollama_version(seat_specs, *, enforce: bool) -> None:
+    """Reproducibility gate over the Ollama daemon's release, when a seat is local. A no-op unless
+    ``enforce``; checked before the digests, since another release is the likelier reason a digest
+    differs."""
+    if not enforce or not any(spec.provider == "ollama" for spec in seat_specs):
+        return
+    served = provenance.ollama_server_version()
+    expected = config.EXPECTED_OLLAMA_VERSION
+    if served != expected:
+        raise OllamaVersionMismatchError(
+            f"the Ollama daemon at {provenance.ollama_base_url()} is "
+            f"{served if served else 'unreachable or reports no version'}, but the batch is "
+            f"validated against Ollama {expected} (config.EXPECTED_OLLAMA_VERSION, the image "
+            f"docker-compose.yml pins). Point OLLAMA_HOST at that daemon, or run without "
+            f"enforcement."
+        )
+
+
 def _normalize_digest(d: str) -> str:
     """Canonical form for comparing ollama digests: lowercased, with any ``sha256:``/``sha256-``
     algorithm prefix stripped. The daemon's /api/tags reports a bare hex digest (what
@@ -141,7 +202,7 @@ def _normalize_digest(d: str) -> str:
     d = d.strip().lower()
     for prefix in ("sha256:", "sha256-"):
         if d.startswith(prefix):
-            return d[len(prefix):]
+            return d[len(prefix) :]
     return d
 
 
@@ -150,8 +211,8 @@ def _enforce_local_digests(snapshot: dict, *, enforce: bool) -> None:
 
     For each local (ollama) seat, compare its served digest - resolved into ``snapshot`` by
     ``provenance.build_model_registry_snapshot`` and prefix-normalised - against
-    ``config.EXPECTED_LOCAL_DIGESTS``. ``enforce=False`` (interactive / the default) is a no-op: the
-    snapshot stays the record-only witness it is today. ``enforce=True`` (the batch path) aborts via
+    ``config.EXPECTED_LOCAL_DIGESTS``. ``enforce=False`` (the default, used by test games) is a
+    no-op: the snapshot stays a record-only witness. ``enforce=True`` (the batch path) aborts via
     ``ModelDigestMismatchError`` on any of: a served digest that differs from the expected one; a
     local model with no expected digest configured; or an unavailable digest (daemon unreachable or
     model not pulled) - none of which can certify reproducibility. API (openrouter) seats carry no
@@ -168,27 +229,32 @@ def _enforce_local_digests(snapshot: dict, *, enforce: bool) -> None:
             raise ModelDigestMismatchError(
                 f"seat {seat_index}: local model {model_name!r} has no expected digest in "
                 f"config.EXPECTED_LOCAL_DIGESTS; cannot certify reproducibility with digest "
-                f"enforcement on. Add its pinned digest, or run without enforcement.")
+                f"enforcement on. Add its pinned digest, or run without enforcement."
+            )
         served = entry.get("identity")
         if entry.get("identity_kind") != "ollama_digest" or not served:
             raise ModelDigestMismatchError(
                 f"seat {seat_index}: served digest for local model {model_name!r} is unavailable "
                 f"({entry.get('identity_kind')}); cannot certify it matches expected {expected}. "
-                f"Is the ollama daemon reachable and the model pulled?")
+                f"Is the ollama daemon reachable and the model pulled?"
+            )
         if _normalize_digest(served) != _normalize_digest(expected):
             raise ModelDigestMismatchError(
                 f"seat {seat_index}: served digest for local model {model_name!r} is {served}, "
                 f"expected {expected}. The batch is validated against the expected weights; "
-                f"aborting before any game runs.")
+                f"aborting before any game runs."
+            )
 
 
 # client construction / db gating
-def _default_client_factory(seat_index: int, spec: SeatSpec) -> LLMClient:
-    """Build one client for a seat from its spec, wired with the driver's transient-retry budget."""
+def default_client_factory(seat_index: int, spec: SeatSpec) -> LLMClient:
+    """Build one client for a seat from its spec, wired with the driver's transient-retry budget.
+    The batch builds its provider health probes with it too."""
     if spec.provider == "openrouter":
         return LLMClientOpenRouter(model_name=spec.model_name, max_retries=_CLIENT_MAX_RETRIES)
-    return LLMClientLocal(model_name=spec.model_name, think=spec.think,
-                          max_retries=_CLIENT_MAX_RETRIES)
+    return LLMClientLocal(
+        model_name=spec.model_name, think=spec.think, max_retries=_CLIENT_MAX_RETRIES
+    )
 
 
 def _db_enabled() -> bool:
@@ -198,40 +264,70 @@ def _db_enabled() -> bool:
 
 
 ClientFactory = Callable[[int, SeatSpec], LLMClient]
+DispatchHook = Callable[[CodenamesDuetEngine, GameRecorder], None]
 
 
 # run minting (identity + provenance + gate)
-def create_run(*, seat_specs, master_seed: int, temperature: float,
-               template_fingerprint: str, persist: bool = True,
-               enforce_digests: bool = False) -> tuple[str, Optional[dict]]:
+def served_registry_snapshot(seat_specs, *, enforce_digests: bool) -> dict:
+    """Build the ``model_registry_snapshot`` of the models served now and run the digest gate over
+    it (a no-op unless ``enforce_digests``), after the Ollama release's. Minting a run starts here,
+    and a resumed batch compares it with the snapshot its run was minted with. Raises
+    ``OllamaVersionMismatchError`` on another Ollama release, ``ModelDigestMismatchError`` on a
+    served local digest that is not vetted, and ``OpenRouterRoutingError`` on an API model pinned to
+    no provider."""
+    _enforce_ollama_version(seat_specs, enforce=enforce_digests)
+    snapshot = provenance.build_model_registry_snapshot(seat_specs)
+    _enforce_local_digests(snapshot, enforce=enforce_digests)
+    _enforce_openrouter_routing(snapshot, enforce=enforce_digests)
+    return snapshot
+
+
+def create_run(
+    *,
+    seat_specs,
+    master_seed: int,
+    temperature: float,
+    template_fingerprint: str,
+    persist: bool = True,
+    enforce_digests: bool = False,
+    stimulus_manifest: Optional[dict] = None,
+) -> tuple[str, Optional[dict]]:
     """Mint one run: run the digest gate (once), build provenance, create the run row.
+
+    ``stimulus_manifest`` (``board_id`` -> content hash of every board the batch schedules) is
+    stored on the run as it is; a single game passes none. The run row also records the environment
+    it is minted in (``provenance.build_environment_snapshot``).
 
     Returns ``(run_id, model_registry_snapshot)``. Takes ``template_fingerprint`` as a plain string
     (the caller builds the ``LLMService`` and passes ``svc.template_fingerprint()``) so this stays
-    free of service/template concerns and owns only run identity + provenance + the gate - the lower-
-    coupling option.
+    free of service/template concerns and owns only run identity + provenance + the gate - the
+    lower- coupling option.
 
     The served-model snapshot is built only when it will be used - persisted into the run row, or
     required by the enforcement gate - so the default dry-run path adds no daemon call. The gate
     aborts (``ModelDigestMismatchError``) before any run row exists when ``enforce_digests`` and a
     served local digest is not vetted; it is a no-op when ``enforce_digests=False``.
-    ``persist=False`` synthesizes a deterministic ``run_id`` and touches no DB (snapshot may be None).
+    ``persist=False`` synthesizes a deterministic ``run_id`` and touches no DB (snapshot may be
+    None).
     """
     snapshot = None
     if persist or enforce_digests:
-        snapshot = provenance.build_model_registry_snapshot(seat_specs)
-        # Abort here (before the run row exists, before any dispatch) if a served local digest is
-        # not the one the batch is validated against. No-op when off.
-        _enforce_local_digests(snapshot, enforce=enforce_digests)
+        # Aborts here (before the run row exists, before any dispatch) if a served local digest is
+        # not the one the batch is validated against.
+        snapshot = served_registry_snapshot(seat_specs, enforce_digests=enforce_digests)
     if persist:
         from backend.app.db.models import RunModel
         from backend.app.db.session import session_scope
+
         with session_scope() as session:
             run = RunModel(
-                master_seed=Decimal(int(master_seed)), temperature=temperature,
+                master_seed=Decimal(int(master_seed)),
+                temperature=temperature,
                 model_registry_snapshot=snapshot,
                 prompt_template_version=template_fingerprint,
                 code_version=provenance.git_code_version(),
+                stimulus_manifest=stimulus_manifest,
+                environment_snapshot=provenance.build_environment_snapshot(seat_specs),
             )
             session.add(run)
             session.flush()
@@ -243,13 +339,19 @@ def create_run(*, seat_specs, master_seed: int, temperature: float,
 
 
 # dispatch
-async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
-                          recorder: GameRecorder, seed_game: int, flush) -> None:
+async def _dispatch_phase(
+    svc: LLMService,
+    clients,
+    engine: CodenamesDuetEngine,
+    recorder: GameRecorder,
+    seed_game: int,
+    flush,
+) -> None:
     """Dispatch exactly one turn for the current phase to the acting seat's client, with the
     per-(seat, turn) derived seeds. The engine is the single source of truth for whose turn it is.
 
-    Transient retry note: this is a plain dispatch - the client owns the bounded same-request retry 
-    of retriable LLM errors, so no telemetry is lost and a succeeded call is never re-run. A
+    Retry note: this is a plain dispatch - the client owns the bounded retry of retriable LLM
+    errors, so no telemetry is lost and a succeeded call is never re-run. A
     retriable error that exhausts the client's budget, and every deterministic error, propagates
     straight to the game-level error boundary as terminal."""
     phase = engine.state.current_phase
@@ -257,39 +359,67 @@ async def _dispatch_phase(svc: LLMService, clients, engine: CodenamesDuetEngine,
     game_id = engine.state.game_id
     if phase == GamePhase.GIVING_CLUE:
         cg = engine.state.clue_giver
-        logger.info("dispatch clue: game_id=%s turn=%s seat=%s",
-                    game_id, turn, cg)
-        await conduct_clue(svc, clients[cg], engine, recorder, player_id=cg,
-                           seed=_seed_play(seed_game, cg, turn))
+        logger.info("dispatch clue: game_id=%s turn=%s seat=%s", game_id, turn, cg)
+        await conduct_clue(
+            svc, clients[cg], engine, recorder, player_id=cg, seed=_seed_play(seed_game, cg, turn)
+        )
     elif phase == GamePhase.GUESSING:
         g = engine.state.guesser
-        logger.info("dispatch guess: game_id=%s turn=%s seat=%s",
-                    game_id, turn, g)
-        await conduct_guess(svc, clients[g], engine, recorder, player_id=g, flush=flush,
-                            on_reveal=None, seed=_seed_play(seed_game, g, turn),
-                            measurement_seed=_seed_meas(seed_game, g, turn))
+        logger.info("dispatch guess: game_id=%s turn=%s seat=%s", game_id, turn, g)
+        await conduct_guess(
+            svc,
+            clients[g],
+            engine,
+            recorder,
+            player_id=g,
+            flush=flush,
+            seed=_seed_play(seed_game, g, turn),
+            measurement_seed=_seed_meas(seed_game, g, turn),
+        )
     elif phase == GamePhase.SUDDEN_DEATH_LLM:
-        logger.info(
-            "dispatch sudden-death seat0: game_id=%s turn=%s", game_id, turn)
-        await conduct_sd_guess(svc, clients[0], engine, recorder, player_id=0, flush=flush,
-                               on_reveal=None, seed=_seed_play(seed_game, 0, turn),
-                               measurement_seed=_seed_meas(seed_game, 0, turn))
+        logger.info("dispatch sudden-death seat0: game_id=%s turn=%s", game_id, turn)
+        await conduct_sd_guess(
+            svc,
+            clients[0],
+            engine,
+            recorder,
+            player_id=0,
+            flush=flush,
+            seed=_seed_play(seed_game, 0, turn),
+            measurement_seed=_seed_meas(seed_game, 0, turn),
+        )
     elif phase == GamePhase.SUDDEN_DEATH_HUMAN:
-        logger.info(
-            "dispatch sudden-death seat1: game_id=%s turn=%s", game_id, turn)
-        await conduct_sd_guess(svc, clients[1], engine, recorder, player_id=1, flush=flush,
-                               on_reveal=None, seed=_seed_play(seed_game, 1, turn),
-                               measurement_seed=_seed_meas(seed_game, 1, turn))
+        logger.info("dispatch sudden-death seat1: game_id=%s turn=%s", game_id, turn)
+        await conduct_sd_guess(
+            svc,
+            clients[1],
+            engine,
+            recorder,
+            player_id=1,
+            flush=flush,
+            seed=_seed_play(seed_game, 1, turn),
+            measurement_seed=_seed_meas(seed_game, 1, turn),
+        )
     else:
-        raise RuntimeError(
-            f"Unexpected non-terminal phase {phase!r} in the dispatch loop.")
+        raise RuntimeError(f"Unexpected non-terminal phase {phase!r} in the dispatch loop.")
 
 
 # entry point
-async def run_single_game(*, board: Board, seat_specs, master_seed: int, temperature: float,
-                          run_id: Optional[str] = None, game_index: int = 0, persist: bool = True,
-                          client_factory: ClientFactory = _default_client_factory,
-                          enforce_digests: bool = False) -> GameRunResult:
+async def run_single_game(
+    *,
+    board: Board,
+    seat_specs,
+    master_seed: int,
+    temperature: float,
+    run_id: Optional[str] = None,
+    game_index: int = 0,
+    persist: bool = True,
+    client_factory: ClientFactory = default_client_factory,
+    enforce_digests: bool = False,
+    on_dispatch: Optional[DispatchHook] = None,
+    service: Optional[LLMService] = None,
+    strict_invariants: bool = True,
+) -> GameRunResult:
     """Play ONE complete LLM-vs-LLM Codenames Duet game and persist it.
 
     Game identity is deterministic in ``master_seed + game_index`` only (see ``_game_identity``);
@@ -303,33 +433,50 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
         seat_specs: a 2-element sequence of ``SeatSpec`` (index == seat).
         master_seed: the batch/game master seed; all per-call seeds derive from it.
         temperature: required and explicit - raised if None (never falls back to the default).
-        run_id: an existing run id to attach to; when None a minimal ``run`` row is created (DB only).
+        run_id: an existing run id to attach to; when None a minimal ``run`` row is created (DB
+            only).
         game_index: index of this game within its run, folded into the deterministic game id.
         persist: when True (default) the game is written to Postgres and a missing ``DATABASE_URL``
             is a hard error raised up front - refusing to burn provider calls on an unpersistable
             game. Pass False for a dry run (mock / reproducibility tests) that touches no database.
         client_factory: builds a client per (seat_index, spec); overridden by tests with mocks.
         enforce_digests: the reproducibility gate. False (default) keeps ``model_registry_snapshot``
-            a record-only witness (interactive parity). True (the batch path) compares each local 
-            seat's served ollama digest against ``config.EXPECTED_LOCAL_DIGESTS`` at run-row creation
-            and ABORTS (``ModelDigestMismatchError``) on a mismatch / unavailable digest, before the
-            run row exists and before any game is dispatched. Only meaningful when this call mints 
-            the run row (``run_id`` is None); games 1..N-1 reuse the vetted run.
+            a record-only witness. True (the batch path) compares each local seat's served ollama
+            digest against ``config.EXPECTED_LOCAL_DIGESTS`` at run-row creation and ABORTS
+            (``ModelDigestMismatchError``) on a mismatch / unavailable digest, before the run row
+            exists and before any game is dispatched. Only meaningful when this call mints the run
+            row (``run_id`` is None); games 1..N-1 reuse the vetted run.
+        on_dispatch: optional observer, called with the engine and the recorder before the first
+            dispatch and after every dispatch, so a caller can log the state or check it. It must
+            not change them, and it must not raise: an exception it raises ends the game as an
+            error.
+        service: the ``LLMService`` to play with, holding the prompt templates. A batch builds one
+            and hands it to every game, so its templates are read once and the run's
+            ``prompt_template_version`` is the fingerprint of what every game sent; when None, the
+            game builds its own. Its temperature must be ``temperature``.
+        strict_invariants: the game's state is checked against its rules (core/invariants.py)
+            before the first dispatch, after every dispatch, and once the game is over, before it
+            is stored; each breach is logged as an ERROR and returned in
+            ``invariant_violations``. True (the default, and the batch's) ends the game in error at
+            the first state that breaks one (``GameInvariantError``, error code
+            "invariant_broken"): a game played on a broken state is no valid observation, and it is
+            never stored as completed. False plays on, for the test games, which report it.
     """
     # temperature must be explicit; do not fall back to any default.
     if temperature is None:
         raise ValueError(
-            "run_single_game requires an explicit temperature; the 0.7 default is never used.")
+            "run_single_game requires an explicit temperature; the 0.7 default is never used."
+        )
     if len(seat_specs) != 2:
-        raise ValueError(
-            "seat_specs must have exactly two entries (one per seat).")
+        raise ValueError("seat_specs must have exactly two entries (one per seat).")
 
     # fail loud before any client/engine work so a missing DATABASE_URL wastes zero provider calls.
     # persist=False opts out entirely (no DB touched).
     if persist and not _db_enabled():
         raise RuntimeError(
             "run_single_game(persist=True) requires DATABASE_URL; refusing to burn provider calls "
-            "on a game that cannot be persisted. Pass persist=False for a dry run.")
+            "on a game that cannot be persisted. Pass persist=False for a dry run."
+        )
 
     # deterministic game id + game/engine seeds (independent of any DB-minted run_id).
     game_id, seed_game, seed_engine = _game_identity(master_seed, game_index)
@@ -337,7 +484,15 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     # The service carries the explicit temperature into every request (overriding its 0.7 default).
     # Built here (before the run row) so its template fingerprint can seed the run's provenance
     # without loading the templates twice.
-    svc = LLMService(temperature=temperature)
+    if service is None:
+        svc = LLMService(temperature=temperature)
+    elif service.temperature != temperature:
+        raise ValueError(
+            f"the service samples at temperature {service.temperature}, but this game is played "
+            f"at {temperature}."
+        )
+    else:
+        svc = service
 
     # minimal run row, committed first in its own short-lived session (FK: run before game). When a
     # run row is created here we also fill its provenance (which models served, which prompt texts
@@ -346,88 +501,148 @@ async def run_single_game(*, board: Board, seat_specs, master_seed: int, tempera
     # record-only: no lookup may abort the game (see backend...provenance).
     if run_id is None:
         run_id, _ = create_run(
-            seat_specs=seat_specs, master_seed=master_seed, temperature=temperature,
-            template_fingerprint=svc.template_fingerprint(), persist=persist,
-            enforce_digests=enforce_digests)
+            seat_specs=seat_specs,
+            master_seed=master_seed,
+            temperature=temperature,
+            template_fingerprint=svc.template_fingerprint(),
+            persist=persist,
+            enforce_digests=enforce_digests,
+        )
 
     logger.info(
         "run_single_game start: run_id=%s game_id=%s master_seed=%s temperature=%s seats=%s",
-        run_id, game_id, master_seed, temperature,
-        [(s.provider, s.model_name, s.think) for s in seat_specs])
+        run_id,
+        game_id,
+        master_seed,
+        temperature,
+        [(s.provider, s.model_name, s.think) for s in seat_specs],
+    )
 
     # two clients, seeded engine (injected game_id), two-seat recorder.
-    clients = [client_factory(0, seat_specs[0]),
-               client_factory(1, seat_specs[1])]
-    engine = CodenamesDuetEngine(
-        board, rng=random.Random(seed_engine), game_id=game_id)
-    # Both seats carry the constant per-game temperature (it has a referent); requested_seed is left
-    # NULL because the runner seeds per (seat, turn) - see GameSeatModel and _observe_seat0_sampling.
+    clients = [client_factory(0, seat_specs[0]), client_factory(1, seat_specs[1])]
+    engine = CodenamesDuetEngine(board, rng=random.Random(seed_engine), game_id=game_id)
+    # Both seats carry the constant per-game temperature; the seed of each call is on its llm_call,
+    # since the runner seeds per (seat, turn) - see GameSeatModel.
     recorder = GameRecorder(
-        game_id=game_id, board_id=board.board_id, start_player=engine.state.clue_giver,
-        seats=[SeatRecord(0, seat_specs[0].provider, seat_specs[0].model_name,
-                          requested_temperature=temperature, requested_seed=None),
-               SeatRecord(1, seat_specs[1].provider, seat_specs[1].model_name,
-                          requested_temperature=temperature, requested_seed=None)],
+        game_id=game_id,
+        board_id=board.board_id,
+        start_player=engine.state.clue_giver,
+        seats=[
+            SeatRecord(
+                0,
+                seat_specs[0].provider,
+                seat_specs[0].model_name,
+                requested_temperature=temperature,
+            ),
+            SeatRecord(
+                1,
+                seat_specs[1].provider,
+                seat_specs[1].model_name,
+                requested_temperature=temperature,
+            ),
+        ],
     )
     recorder.run_id = run_id
     recorder.derived_seed = seed_game
+    guard = InvariantGuard(game_id, strict=strict_invariants)
 
     def _flush_if_over(eng: CodenamesDuetEngine, rec: GameRecorder) -> None:
         """Terminal flush trigger passed to the conductors. Persists once at game-over (idempotent
-        via ``rec.flushed``). Unlike the interactive path this does not swallow a persist error - it
-        propagates to the game-level error boundary."""
+        via ``rec.flushed``), after checking the final state, so a strict game that broke a rule is
+        stored as an error. A persist error is not swallowed: it propagates to the game-level error
+        boundary."""
         if not eng.state.is_game_over or rec.flushed:
             return
+        guard.check_final(eng)
         rec.set_outcome(eng.state.result, eng.state.timer_tokens)
         if persist:
             writer.persist_game(rec, status="completed")
 
     try:
+        if on_dispatch is not None:
+            on_dispatch(engine, recorder)
+        guard.check(engine)
         dispatches = 0
         while not engine.state.is_game_over:
             if dispatches >= _MAX_DISPATCHES:
                 raise RuntimeError(
-                    f"Game {game_id} exceeded {_MAX_DISPATCHES} dispatches without terminating.")
+                    f"Game {game_id} exceeded {_MAX_DISPATCHES} dispatches without terminating."
+                )
             dispatches += 1
             await _dispatch_phase(svc, clients, engine, recorder, seed_game, _flush_if_over)
+            if on_dispatch is not None:
+                on_dispatch(engine, recorder)
+            # The state the game ended in is checked by the terminal flush, before it is stored.
+            if not engine.state.is_game_over:
+                guard.check(engine)
 
         # Defensive terminal flush: the conductor's per-reveal flush already fired at game-over, but
-        # re-asserting here (idempotent) guarantees persistence even for terminal transitions that do
-        # not end on a reveal.
+        # re-asserting here (idempotent) guarantees persistence even for terminal transitions that
+        # do not end on a reveal.
         _flush_if_over(engine, recorder)
-        logger.info("run_single_game completed: game_id=%s result=%s",
-                    game_id, engine.state.result)
-        return GameRunResult(game_id=game_id, run_id=run_id, seed_game=seed_game,
-                             status="completed", result=engine.state.result)
+        logger.info("run_single_game completed: game_id=%s result=%s", game_id, engine.state.result)
+        return GameRunResult(
+            game_id=game_id,
+            run_id=run_id,
+            seed_game=seed_game,
+            status="completed",
+            result=engine.state.result,
+            invariant_violations=list(guard.violations),
+        )
     except Exception as exc:
         # Terminal error: either deterministic, or a retriable error whose client-side retry budget
         # was exhausted. The boundary sees only terminals - transient retry lives in the client.
         # Flush the partial game as status='error', then return an error result.
-        logger.error("run_single_game failed: game_id=%s run_id=%s error=%s",
-                     game_id, run_id, exc, exc_info=True)
-        _error_flush(engine, recorder, game_id, persist=persist)
-        return GameRunResult(game_id=game_id, run_id=run_id, seed_game=seed_game,
-                             status="error", result=engine.state.result, error=str(exc))
+        logger.error(
+            "run_single_game failed: game_id=%s run_id=%s error=%s",
+            game_id,
+            run_id,
+            exc,
+            exc_info=True,
+        )
+        error_code = exc.code if isinstance(exc, (LLMError, GameInvariantError)) else None
+        _error_flush(engine, recorder, game_id, exc, error_code, persist=persist)
+        return GameRunResult(
+            game_id=game_id,
+            run_id=run_id,
+            seed_game=seed_game,
+            status="error",
+            result=engine.state.result,
+            error=str(exc),
+            error_code=error_code,
+            invariant_violations=list(guard.violations),
+        )
     finally:
         for client in clients:
             try:
                 await client.close()
             except Exception:
-                logger.debug("client close failed for game_id=%s",
-                             game_id, exc_info=True)
+                logger.debug("client close failed for game_id=%s", game_id, exc_info=True)
 
 
-def _error_flush(engine: CodenamesDuetEngine, recorder: GameRecorder, game_id: str, *,
-                 persist: bool) -> None:
-    """Hardened partial-game flush as status='error'. Never raises: if the error-flush itself fails
+def _error_flush(
+    engine: CodenamesDuetEngine,
+    recorder: GameRecorder,
+    game_id: str,
+    exc: Exception,
+    error_code: Optional[str],
+    *,
+    persist: bool,
+) -> None:
+    """Hardened partial-game flush as status='error', with why the game failed (``exc``, and its
+    code or None; see ``GameRunResult.error_code``). Never raises: if the error-flush itself fails
     it is logged richly so it cannot mask the original error that triggered it."""
     if recorder.flushed:
         return
     try:
         recorder.set_outcome(engine.state.result, engine.state.timer_tokens)
+        # The type names an error whose text alone does not (a KeyError's is just the key).
+        recorder.set_error(error_code, f"{type(exc).__name__}: {exc}")
         if persist:
             writer.persist_game(recorder, status="error")
     except Exception:
         logger.error(
             "hardened error-flush failed for game_id=%s; original error is preserved.",
-            game_id, exc_info=True)
+            game_id,
+            exc_info=True,
+        )

@@ -13,7 +13,9 @@ The board bank is built by a separate, isolated tool with its own documentation:
 **[`board_generator/README.md`](board_generator/README.md)**.
 
 Developed by **Álvaro Martínez Alfaro** as a final degree project (*Trabajo de Fin de Grado*) in
-Computer Science at the **University of Castilla-La Mancha**.
+Computer Science at the **University of Castilla-La Mancha**, and now being extended for a master's
+thesis (*Trabajo de Fin de Máster*). The tag **`tfg-final`** holds the platform as the TFG's
+experiment used it: check it out to reproduce that work.
 
 ---
 
@@ -26,48 +28,53 @@ Computer Science at the **University of Castilla-La Mancha**.
 5. [Running on Windows](#running-on-windows)
 6. [The board bank](#the-board-bank)
 7. [The experiment](#the-experiment)
-8. [Running the batch unattended](#running-the-batch-unattended)
-9. [Post-batch embedding backfill](#post-batch-embedding-backfill)
-10. [Analysis scripts](#analysis-scripts)
-11. [Reproducing the shipped results](#reproducing-the-shipped-results)
-12. [Data model](#data-model)
-13. [Interactive UI](#interactive-ui)
-14. [Development](#development)
-15. [Related documentation](#related-documentation)
-16. [About](#about)
+8. [Deviations from the Duet rules](#deviations-from-the-duet-rules)
+9. [Running the batch unattended](#running-the-batch-unattended)
+10. [Test games with a full log](#test-games-with-a-full-log)
+11. [Post-batch embedding backfill](#post-batch-embedding-backfill)
+12. [Analysis scripts](#analysis-scripts)
+13. [Reproducing the TFG's results](#reproducing-the-tfgs-results)
+14. [Data model](#data-model)
+15. [Development](#development)
+16. [Related documentation](#related-documentation)
+17. [About](#about)
+18. [License](#license)
 
 ---
 
 ## Architecture at a glance
 
-The platform has **two entry paths over one shared core**. The interactive path serves a browser
-game; the headless path plays the experiment. Both drive the same engine, the same LLM service and
-the same recorder, so what the experiment measures is what the UI plays.
+The platform plays the experiment headless: `scripts/run_batch.py` drives every game through one
+core (engine, LLM service, recorder), and the analysis scripts score what it stored.
+`scripts/play_games.py` plays test games through the same core, without a database.
 
 ```
-                 ┌──────────────── interactive ────────────────┐
-   browser ──▶  api/routes.py ──┐                              │
-                                ├─▶ game_conductor ─▶ engine ──┼─▶ recorder ─▶ writer ─▶ Postgres
-   scripts/run_batch.py ──▶ batch_runner ──▶ game_runner ──────┘                          │
-                                    │                                                     │
-                                    └─▶ llm_service ─▶ llm/client_{local,openrouter} ──▶  models
-                                                                                          │
-   scripts/run_*_metrics.py ──▶ backend/app/analysis/* ◀───────────────────────────────────┘
+   scripts/run_batch.py ──▶ batch_runner ──▶ game_runner ──▶ game_conductor ─▶ engine
+                                                  │                 │
+                                                  │                 └─▶ llm_service ─▶ llm/client_{local,openrouter} ──▶ models
+                                                  │
+                                                  └─▶ recorder ─▶ writer ─▶ Postgres
+                                                                               │
+   scripts/run_*_metrics.py ──▶ backend/app/analysis/* ◀───────────────────────┘
 ```
 
 | Component | File | Responsibility |
 |---|---|---|
-| Engine | `backend/app/core/engine.py` | Duet rules: phases, keycards, reveals, timer tokens, sudden death, win/loss. Owns the game state; seed-agnostic (an RNG is injected). |
-| Clue validator | `backend/app/core/clue_validator.py` | Rejects clues that are a visible word, a morphological form of one, a compound containing one, or a repeat from the clue history (WordNet-backed). |
-| Conductor | `backend/app/core/game_conductor.py` | Seat-parameterised turn orchestration (engine + service + recorder). No HTTP, no persistence — the caller injects `flush` / `on_reveal` hooks. |
-| LLM service | `backend/app/core/llm_service.py` | Prompt assembly from `data/prompt_templates/`, bounded clue re-sampling, and the out-of-band **measurement** ranking elicited at the same pre-resolution state. |
-| Clients | `backend/app/core/llm/client{,_local,_openrouter}.py` | Provider adapters (Ollama / OpenRouter) with a bounded same-request retry over retriable errors, structured-output enforcement and degenerate-response detection. |
+| Engine | `backend/app/core/engine.py` | Duet rules: phases, keycards, reveals, timer tokens, sudden death, win/loss. An invalid clue is played with a penalty token, as in the rules. Owns the game state; seed-agnostic (an RNG is injected). |
+| Clue validator | `backend/app/core/clue_validator.py` | Flags clues that are not a word (punctuation or symbols alone) or not a single word, or that are a visible word, a form of one (inflected, derived, or a compound containing it), or a part of a visible compound. Forms and compounds come from the MorphoLex-en word segmentations in `data/morpholex/`, with WordNet for inflections and as a fallback. The engine plays a flagged clue with a penalty token. Repeating an earlier clue is allowed, as in the rules. |
+| Conductor | `backend/app/core/game_conductor.py` | Seat-parameterised turn orchestration (engine + service + recorder). No persistence — the caller injects a `flush` hook. |
+| LLM service | `backend/app/core/llm_service.py` | Prompt assembly from `data/prompt_templates/`, and the out-of-band **measurement** ranking elicited at the same pre-resolution state. |
+| Clients | `backend/app/core/llm/client{,_local,_openrouter}.py` | Provider adapters (Ollama / OpenRouter) with a bounded retry of retriable errors (a bad draw is drawn again with a new seed, a network failure is re-sent as it was), structured-output enforcement and degenerate-response detection. |
 | Recorder | `backend/app/db/recorder.py` | Pure in-memory accumulator for one game. No DB imports. |
 | Writer | `backend/app/db/writer.py` | Atomic terminal flush of a whole game in one transaction; `delete_run` tears a run down via cascade. |
+| Runs | `backend/app/db/runs.py` | Runs read back with their games counted by status, for `scripts/manage_runs.py` and a resumed batch. |
 | Game runner | `backend/app/core/game_runner.py` | Headless single-game driver: deterministic identity + seed derivation, run minting, provenance, the model-digest gate. |
-| Batch | `backend/app/core/batch_schedule.py`, `batch_runner.py` | The deterministic 192-game calendar and the orchestration loop with two-level fault handling. |
+| Batch | `backend/app/core/batch_schedule.py`, `batch_runner.py` | The deterministic 192-game calendar, the bank ingestion into the database, and the orchestration loop with two-level fault handling and resume. |
 | Analysis | `backend/app/analysis/` | Read-only metric estimators (IAE, TAC/TAI, CIT, conc-SD, TV/PA/EP) over shared geometry and a generic cluster bootstrap. |
-| UI | `backend/app/api/routes.py`, `templates/` | FastAPI + Jinja + HTMX partials for a human-vs-LLM session. |
+
+> Earlier versions also had a browser UI (FastAPI + Jinja + HTMX) for a person to play against a
+> model, as seat 1. It was removed to focus on model-vs-model experiments. The tag `ui-final` holds its last
+> version.
 
 ---
 
@@ -85,28 +92,29 @@ codenames-llm-bias/
 │   │   │   ├── sd_metrics.py      conc-SD (sudden-death guesser)
 │   │   │   ├── skill_metrics.py   TV / PA / EP (skill, on control boards)
 │   │   │   └── inference.py       generic cluster bootstrap (games are the cluster)
-│   │   ├── api/routes.py      interactive endpoints
 │   │   ├── core/              engine, conductor, LLM service + clients, runner, batch, provenance
 │   │   ├── db/                ORM models, session, recorder, writer, ingestion, embedding backfill
 │   │   ├── models/            Pydantic schemas (game + LLM I/O) and the LLM error taxonomy
-│   │   ├── templates/         Jinja templates and partials
-│   │   ├── config.py          model roster + pinned local weight digests
-│   │   └── main.py            FastAPI entrypoint (startup ingestion)
-│   ├── migrations/            Alembic (head: 0005_run_delete_cascade)
+│   │   └── config.py          model roster, pinned local weight digests, request settings
+│   ├── migrations/            Alembic (head: 0008_llm_call_durations)
 │   ├── alembic.ini
 │   └── Dockerfile
 ├── board_generator/           standalone board-bank tool — see its own README
 ├── data/
 │   ├── boards/                the board bank + measurement_frame.json + balance_report.json
+│   ├── morpholex/             MorphoLex-en word segmentations for the clue validator (CC BY-NC-SA)
 │   └── prompt_templates/      system / user / one-shot templates, incl. the measurement prompts
-├── scripts/                   batch orchestrator CLI, analysis CLIs, embedding backfill
-├── tests/unit/                platform test suite (DB-backed tests gated on DATABASE_URL)
-├── docker-compose.yml         db (pgvector) + ollama + app (FastAPI)
+├── docs/                      documentation that goes with the code (docs/private/ is not versioned)
+├── scripts/                   batch orchestrator CLI, run management, test games with a full log,
+│                              golden-game recording, analysis CLIs, embedding backfill,
+│                              MorphoLex TSV build
+├── tests/                     platform test suite; conftest.py gives the `db` tests a
+│                              throwaway Postgres
+├── docker-compose.yml         db (pgvector) + ollama + app (the Python environment)
 ├── docker-compose.gpu.yml     optional override: reserves an NVIDIA GPU for ollama
-├── ollama_entrypoint.sh       pulls every model named in backend/app/config.py
+├── ollama_entrypoint.sh       pulls every Ollama model in backend/app/config.py
 ├── .gitattributes             forces LF on *.sh / Dockerfile (Windows checkouts)
 ├── .dockerignore              keeps docker_volumes/ and .env out of the app image
-├── exp_data.sql               pg_dump of the completed experiment (see Reproducing)
 ├── pyproject.toml             runtime deps + `dev` and `embeddings` extras
 └── .env.example               environment template
 ```
@@ -118,14 +126,16 @@ codenames-llm-bias/
 * **Docker** with Compose v2 — Docker Engine on Linux, Docker Desktop (WSL 2 backend) on Windows.
   See [Running on Windows](#running-on-windows) for what changes there.
 * An **NVIDIA GPU** for any serious run. The base `docker-compose.yml` runs Ollama on CPU, which is
-  enough to try the UI but makes a full batch impractical; the `docker-compose.gpu.yml` override
+  enough for a test game but makes a full batch impractical; the `docker-compose.gpu.yml` override
   reserves one GPU device (see the quick start). It needs the NVIDIA Container Toolkit on Linux, or
   just the NVIDIA Windows driver with Docker Desktop. Alternatively, point `OLLAMA_HOST` at an
   external daemon.
-* **Python 3.12+** on the host for the batch and analysis CLIs. [`uv`](https://docs.astral.sh/uv/)
-  is recommended; plain `pip install -e .` works too.
-* Disk: the four default models are ~35 GB of weights under `docker_volumes/ollama_data/`.
-* An **OpenRouter API key** only if you enable API-hosted seats (the shipped roster is all-local).
+* **Python 3.12** on the host for the batch and analysis CLIs, the one the `app` image runs
+  (`.python-version` names the exact release, 3.12.13). [`uv`](https://docs.astral.sh/uv/) installs
+  it and the dependencies at the versions of `uv.lock`, which the image installs too.
+* Disk: the four default models are ~49 GB in the `ollama_models` Docker volume: ~35 GB as pulled,
+  plus the variant Ollama 0.40 converts `mistral-small3.2` into the first time it loads it.
+* An **OpenRouter API key** only if you enable API-hosted seats (the shipped roster is all-local). Each OpenRouter model in `config.llm_models` must name the provider that serves it (and may name its quantization); the batch refuses to start on one that does not.
 
 ---
 
@@ -149,30 +159,35 @@ docker compose ps                      # db, ollama, app
 # 3. Create the schema. Migrations are NOT applied automatically.
 docker compose exec app alembic -c backend/alembic.ini upgrade head
 
-# 4. Restart the app so its startup ingestion sees the tables, then open the UI.
-docker compose restart app
-docker compose logs -f app             # "Measurement-frame ingestion complete", "Board ingestion complete (N new boards)"
+# 4. Check the wiring: the batch's dry run plays all 192 games with mock clients, no database.
+docker compose exec app python scripts/run_batch.py --master-seed 2026 --temperature 0.8 --dry-run
 ```
 
-The UI is then at **<http://localhost:8000>** (`/about` explains the game, `/config` starts one).
+The stack is then ready. Try the models with [test games](#test-games-with-a-full-log), and run the
+experiment with [the batch](#running-the-batch-unattended).
 
 **What each service does**
 
 | Service | Container | Port | Notes |
 |---|---|---|---|
-| `db` | `codenames-db` | 5432 | `ankane/pgvector`. Data in `./docker_volumes/postgres_data` (root-owned, gitignored). |
-| `ollama` | `codenames-ollama` | 11434 | Runs `ollama_entrypoint.sh`, which greps `"name:tag"` strings out of the bind-mounted `backend/app/config.py` and `ollama pull`s each one. **The roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. CPU unless `docker-compose.gpu.yml` is included. |
-| `app` | `codenames-backend` | 8000 | `uvicorn --reload` over the repo bind-mounted at `/workspace`. Reads `.env`. |
+| `db` | `codenames-db` | 5432 | `pgvector/pgvector:0.8.7-pg15-bookworm`. Data in `./docker_volumes/postgres_data` (root-owned, gitignored). |
+| `ollama` | `codenames-ollama` | 11434 | `ollama/ollama:0.40.2`, the version the pinned digests were validated with. Runs `ollama_entrypoint.sh`, which reads the keys of `llm_models["Ollama"]` from the bind-mounted `backend/app/config.py` and `ollama pull`s each one that is not installed. **The Ollama roster in `config.llm_models` is the pull list** — add a model there and restart the container to fetch it. The models live in the `ollama_models` named volume, which `docker compose down -v` deletes. CPU unless `docker-compose.gpu.yml` is included. |
+| `app` | `codenames-backend` | — | The Python environment, over the repo bind-mounted at `/workspace`. It serves nothing and stays up so that the migrations, the batch and the scripts can run in it (`docker compose exec app …`). Reads `.env`. |
 
-**Startup ingestion.** `backend/app/main.py` ingests `data/boards/measurement_frame.json` first (the
-board FK target) and then every board under `data/boards/`. Both are idempotent and *defensive*: if
-the database is unreachable the failure is logged as a warning and startup continues — so always
-check the logs rather than assuming ingestion happened. Boards must be in the database before games
-can be persisted; `writer.persist_game` refuses to write a game whose board row is absent.
+**Pinned images.** Both images are pinned, so a `docker compose pull` cannot change Ollama or
+Postgres under a batch. A database created by the `ankane/pgvector` image these replaced keeps
+working (the same Postgres 15 on the same Debian); its `vector` extension stays at the version it was
+created with (0.5.1) until `ALTER EXTENSION vector UPDATE;`, which nothing here needs.
+
+**Board ingestion.** The database needs only the migrated schema. The batch stores
+`data/boards/measurement_frame.json` (the board FK target) and then every board under `data/boards/`
+before it mints its run, and skips whatever is already stored (see
+[Failure semantics](#4-failure-semantics)).
 
 > **Host vs container hostnames.** Inside Compose the database is `db:5432` and Ollama is
 > `codenames-ollama:11434` — that is what `.env` holds. The batch and analysis CLIs are normally run
-> **from the host**, where the same services are `localhost:5432` and `localhost:11434`. Every
+> **from the host**, where the same services are `localhost:5432` and `localhost:11434` (published
+> on 127.0.0.1 only, so other machines on the network cannot reach them). Every
 > host-side snippet below overrides those two variables accordingly; forgetting to do so is the most
 > common failure. The host-side snippets are bash; on Windows see
 > [Running on Windows](#running-on-windows) for the PowerShell equivalents.
@@ -180,9 +195,9 @@ can be persisted; `writer.persist_game` refuses to write a game whose board row 
 **Host-side Python environment**
 
 ```sh
-uv sync                     # or: python -m venv .venv && .venv/bin/pip install -e .
-uv sync --extra dev         # + pytest
-uv sync --extra embeddings  # + sentence-transformers 5.5.1, only for the embedding backfill
+uv sync --frozen                     # the versions of uv.lock, on Python 3.12.13
+uv sync --frozen --extra dev         # + pytest, ruff and mypy
+uv sync --frozen --extra embeddings  # + sentence-transformers 5.5.1, only for the embedding backfill
 ```
 
 ---
@@ -223,6 +238,24 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
+**The models live in a named volume, not in a Windows folder.** In a game the model changes once
+per turn, and when the two models of a pairing do not fit in VRAM together, Ollama reloads one at
+every change (see [GPU memory](#gpu-memory-and-model-reloads)). From a Windows folder, which Docker
+Desktop mounts through 9p at ~200 MB/s and without page cache, each reload took 25-90 s; from the
+`ollama_models` volume, on the Docker VM's own disk and in its page cache, 3-7 s.
+A store pulled into the old `docker_volumes/ollama_data` folder is copied into the volume once, with
+the `ollama` container stopped. Copying keeps the digests: pulling again could serve another
+`mistral-small3.2` variant than the one `config.EXPECTED_LOCAL_DIGESTS` pins.
+
+```powershell
+docker compose stop ollama
+docker compose run --rm --no-deps --entrypoint sh `
+  -v "${PWD}\docker_volumes\ollama_data:/src:ro" ollama -c "cp -a /src/. /root/.ollama/"
+docker compose up -d ollama
+```
+
+The folder can be deleted afterwards, unless a [native Ollama](#test-games-with-a-full-log) reads it.
+
 > **Paths after `docker compose exec` are container paths** — write them with `/`, never `\`.
 > PowerShell's tab completion produces `.\backend\alembic.ini`, which inside the Linux container is a
 > single nonexistent filename; Alembic then reads an empty config and fails with the misleading
@@ -231,7 +264,7 @@ notepad .env
 **Host side, easy route: WSL 2.** The batch, backfill and analysis snippets in the rest of this
 README are bash. Cloning and working inside a WSL 2 distribution (e.g. Ubuntu) runs them verbatim,
 and bind mounts from the WSL filesystem are also noticeably faster than from `C:\`. A clone on `C:\`
-works too, `uvicorn --reload` included.
+works too.
 
 **Host side, native PowerShell.** Load `.env` into the session and point at the services as seen
 from the host — this replaces every `set -a; source .env; set +a` + `export …` prelude:
@@ -251,7 +284,7 @@ override it as above. The rest translates one-for-one:
 | bash | PowerShell |
 |---|---|
 | `VAR=value command` | `$env:VAR = "value"; command` |
-| `.venv/bin/pip install -e .` | `.venv\Scripts\pip install -e .` |
+| `.venv/bin/python` | `.venv\Scripts\python.exe` |
 | activate the venv | `.venv\Scripts\Activate.ps1` (or prefix commands with `uv run`) |
 | `python3` | `python` (or `py`) |
 | `curl -s localhost:11434/api/tags \| python3 -m json.tool` | `(Invoke-RestMethod http://localhost:11434/api/tags).models \| Select-Object name, digest` |
@@ -276,14 +309,16 @@ container instead (this works on Linux too). They connect through the local sock
 asked:
 
 ```powershell
-# pre-flight counts
+# counts (the batch stores the boards and the frame before its first game)
 docker compose exec db psql -U $env:POSTGRES_USER -d $env:POSTGRES_DB `
   -c "select count(*) as boards from board; select count(*) as frames from measurement_frame;"
 
-# restoring exp_data.sql (see "Reproducing the shipped results")
+# restoring a copy of exp_data.dump (see "Reproducing the TFG's results")
+(Get-FileHash exp_data.dump -Algorithm SHA256).Hash   # the SHA-256 given there, in capitals
 docker compose exec db createdb -U $env:POSTGRES_USER codenames_exp
-docker compose cp exp_data.sql db:/tmp/exp_data.sql
-docker compose exec db psql -U $env:POSTGRES_USER -d codenames_exp -v ON_ERROR_STOP=1 -f /tmp/exp_data.sql
+docker compose cp exp_data.dump db:/tmp/exp_data.dump
+docker compose exec db pg_restore -U $env:POSTGRES_USER -d codenames_exp --no-owner --no-privileges `
+  --exit-on-error --single-transaction /tmp/exp_data.dump
 ```
 
 ---
@@ -328,20 +363,105 @@ duplicates it.
 
 **Determinism.** `game_id = uuid5(ns, f"{master_seed}:{game_index}")`, and every per-call seed is
 derived by SHA-256 from it (`seed_game`, `seed_engine`, `seed_play(seat, turn)`,
-`seed_meas(seat, turn)`). `run_id` is deliberately *not* an input to identity — it is bookkeeping. A
+`seed_meas(seat, turn)`). A bad draw — an empty, degenerate or cut answer, or one that does not
+match the response schema — is drawn again with a seed derived the same way from the call's own
+(`redraw_seed(seed, k)` for the k-th new draw), since with the same seed a local model gives the
+same answer again. A provider is sent the seed masked to 31 bits (`client.provider_seed`): Ollama
+reads a seed as a float64 and samples with 32 bits of it, and every 64-bit seed of 2⁶³ or more
+sampled as the same one. `llm_call.requested_seed` holds the seed sent for the answer kept.
+`run_id` is deliberately *not* an input to identity — it is bookkeeping. A
 consequence worth internalising: re-running the same `(master_seed, game_index)` re-derives the same
 `game_id` and therefore **collides on the primary key**. That is the intended "this experiment is
-already recorded" signal; to legitimately re-run, delete the run first (see below).
+already recorded" signal; to legitimately re-run, delete the run first (see below). The same
+determinism is what lets a batch that stopped continue under its own run (`--resume`): the games
+still to play are the games the run would have played.
+
+**The same answer whatever came before.** A local model's answer to a request also depended on how
+Ollama loaded the model and on what its server had read before. On Ollama 0.40.2, the same request
+with the same seed got another answer with another split of the model's layers between GPU and CPU
+(which Ollama picks from the free VRAM), with another batch for reading the prompt (1024 for a model
+loaded alone, 512 next to another), and after another request than the one before (a cold load,
+another request, the same one: three answers). So:
+
+* `config.OLLAMA_NUM_CTX`, `OLLAMA_NUM_GPU` (every layer on the GPU) and `OLLAMA_NUM_BATCH` pin how
+  every local model is loaded, and the run's `model_registry_snapshot` records them;
+* `docker-compose.yml` turns off llama-server's RAM prompt cache (`LLAMA_ARG_CACHE_RAM=0`), which
+  would bring an older prompt back;
+* the local client sends a fixed request to the model just before each draw, so its one slot always
+  holds the same prompt when the draw's is read (15-50 ms).
+
+The golden games, recorded twice from two states of the daemon (no model loaded, and the models of
+other games loaded, in another order), come out the same. A native Ollama the batch runs against
+needs `LLAMA_ARG_CACHE_RAM=0` in its environment too.
 
 **The digest gate.** `config.EXPECTED_LOCAL_DIGESTS` pins the exact local weights the batch is
-validated against. On the batch path the served digests are resolved from the Ollama daemon once, at
-run minting, and any mismatch — or an unpinned model, or an unreachable daemon — raises
-`ModelDigestMismatchError` **before a single game is dispatched**. The interactive path leaves the
-snapshot as a record-only witness.
+validated against, and `config.EXPECTED_OLLAMA_VERSION` the Ollama release they were validated with
+(0.40.2, the image `docker-compose.yml` pins): another release may serve another digest, or the same
+weights another way. On the batch path the daemon's release and then the served digests are read
+once, at run minting, and any mismatch — or an unpinned model, or an unreachable daemon — raises
+`ModelDigestMismatchError` (`OllamaVersionMismatchError` for the release) **before a single game is
+dispatched**. Test games (`scripts/play_games.py`) log the release and the served digests, and
+enforce them only with `--enforce-digests`.
 
 **Provenance.** Each `run` row records `code_version` (git short SHA, `-dirty` suffixed),
-`prompt_template_version` (a fingerprint over the loaded templates), `model_registry_snapshot` (the
-served digest per seat), the `master_seed` and the `temperature`.
+`prompt_template_version` (a fingerprint over the loaded templates and the response schemas the
+requests carry), `model_registry_snapshot` (the served digest per seat), `stimulus_manifest` (each
+scheduled board with its content hash), the `master_seed` and the `temperature`. `environment_snapshot` records the rest of what a game depends
+on: the Python release and the platform, the versions of the key packages, the Ollama daemon (host
+and release), the GPUs `nvidia-smi` sees, the clue validator's data (the SHA-256 of the MorphoLex
+file, the NLTK release, the WordNet version and the SHA-256 of its corpora) and the working tree
+(the full commit, every file that differs from it, untracked ones included, and the SHA-256 of the
+diff). Nothing in it aborts a run: what cannot be read is recorded as null.
+
+---
+
+## Deviations from the Duet rules
+
+The engine follows the Codenames Duet rules, apart from these deliberate choices:
+
+* **No zero clues: the count is always at least 1.** The rules allow a clue with count 0. A zero clue
+  means "avoid the words related to this one", for example *lazy: 0* to steer the partner away from
+  the assassin SLOTH, and the guesser must still make at least one guess. The platform does not
+  support it, on purpose. To support it, both prompts would have to explain that inverted meaning:
+  the clue giver would need to know when a zero clue is worth giving, and the guesser that "count 0"
+  does not mean "do not guess". That makes the prompts longer and the task more complex, which makes
+  the models more likely to hallucinate. The rule applies to both seats: the clue-giver prompt asks
+  for a positive count, and a count of 0 fails validation because `ClueEntry.count` and
+  `ClueProposal.count` are `ge=1`.
+  Everything else about the count follows the rules: it is a hint, not a limit, and every turn still
+  needs at least one guess.
+* **Fixed sudden-death order: seat 0 first, then seat 1.** When the timer tokens run out with words
+  still pending, the game enters sudden death: seat 0 hunts its remaining agents first, then seat 1
+  hunts its own, with no clues available to either. The rules let both guess in any order; the
+  fixed order is a deliberate simplification that gives each seat a single sudden-death play. The
+  phases keep the names of the earlier human-vs-model setup: `sudden_death_llm` is seat 0's,
+  `sudden_death_human` seat 1's. Sudden death ends in a win, in a loss on any miss, or in a loss when
+  the seat guessing stops with words still pending, because its proposal ran out
+  (`loss_stopped_sd`).
+* **The clue validator has known limitations, accepted on purpose.** It checks the rules about the
+  form of a clue: one word, not a visible word, not a form of one, and not a part of a visible
+  compound. It does not check the rules about meaning, such as a clue that points to letters or to
+  positions on the table. Forms and compounds come from the word segmentations of
+  [MorphoLex-en](data/morpholex/README.md), and the rules are applied as written: a clue that only
+  shares a part with a visible word is valid (*raincoat* with RAINBOW, *firearm* with ARMAMENT). An
+  invalid clue is played with a penalty token, as in the rules, so a limitation that flags a legal
+  clue costs a token. These are the known ones:
+  * **Etymological segmentations.** MorphoLex segments some words by their history, so a few legal
+    clues are flagged: *tenant* with TEN visible (from Latin *tenere*), *potent* with POTTER, *irony*
+    with IRONING, *dent* with DENTIST, *cookie* with COOKING.
+  * **Compounds and derivations taken for one word.** MorphoLex takes some of them for words of
+    their own, and they pass when WordNet does not link them either: *wolf* with WEREWOLF visible,
+    *asleep* with SLEEP, *repay* with PAY.
+  * **Words MorphoLex does not have.** About 2% of the board words and clues (*mohawk*,
+    *childcare*, *sunup*). For those, the validator falls back to WordNet's derivational links and
+    to splitting the word in two pieces of at least three letters, which misses "-ly" adverbs and
+    shorter pieces.
+
+  Replayed on the shipped data, which was played with an earlier validator, the current one lets
+  through the 4 legal clue attempts that the earlier one rejected (*river* with DRIVER twice,
+  *under* with THUNDER, the letter *b* with BOIL), keeps the other 89 rejections, and flags 7
+  accepted clues that are forms of a visible word (*astronomical* with ASTRONOMY, *geometric* with
+  GEOMETRY, *corporate* with CORPORATION in 4 games, *domesticated* with DOMESTIC).
 
 ---
 
@@ -350,6 +470,26 @@ served digest per seat), the `master_seed` and the `temperature`.
 The batch is a long, sequential, GPU-bound job: 192 games, each many model calls, plus an extra
 out-of-band measurement call per guessing turn. On four local models expect **many hours**. Run it
 detached and let the preconditions protect you.
+
+### GPU memory and model reloads
+
+In a game the model changes once per turn: the guesser of a turn gives the next clue. When the two
+models of a pairing do not fit in VRAM together, Ollama unloads one to load the other at every
+change. Measured on an RTX 5080 (16 GB, ~1.2 GB taken by the Windows desktop) with Ollama 0.40.2 and
+`OLLAMA_NUM_CTX` = 8192:
+
+| Model | Loaded size | On the GPU |
+|---|---|---|
+| `llama3.1:8b` | 5.9 GB | all |
+| `gemma4:12b` | 8.4 GB | all |
+| `qwen2.5:14b` | 10.4 GB | all |
+| `mistral-small3.2:24b` | 15.6 GB | all, with `OLLAMA_NUM_GPU`; left to Ollama, 36 of its 41 layers (13.7 GB), the rest on the CPU and 2.7 times slower |
+
+Only `llama3.1:8b` + `gemma4:12b` stay loaded together; the other five pairings reload a model at
+every turn. Raising `OLLAMA_MAX_LOADED_MODELS` or `keep_alive` changes nothing here: Ollama already
+keeps up to three models, and the memory is the limit. What a reload costs is the read of the model
+from disk, which is why the models live in a named volume (see [Running on
+Windows](#running-on-windows)). `llm_call.load_ms` records each call's load: well above 0, a reload.
 
 ### 1. Pre-flight
 
@@ -361,9 +501,9 @@ set -a; source .env; set +a
 export OLLAMA_HOST="http://localhost:11434"
 export DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}"
 
-# Schema + boards present?  (both must be non-zero)
-psql "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}" \
-  -c "select count(*) as boards from board; select count(*) as frames from measurement_frame;"
+# Schema at head? The batch checks it too, and aborts if it is not. (It stores the frame and the
+# boards itself, before minting its run.)
+alembic -c backend/alembic.ini current
 
 # Models served and pinned?
 curl -s localhost:11434/api/tags | python3 -m json.tool | head -30
@@ -395,7 +535,7 @@ tmux new -s batch 'set -a; source .env; set +a; \
 ```
 
 **Required flags.** `--master-seed` and `--temperature` have no defaults — reproducibility is the
-point, so the batch refuses to guess. `--model provider:model` may be repeated **exactly four times**
+point, so the batch refuses to guess. (With `--resume` they are the run's, see below.) `--model provider:model` may be repeated **exactly four times**
 to override the roster in `config.llm_models` (e.g. `--model ollama:llama3.1:8b`); omit it to use the
 configured four.
 
@@ -405,12 +545,12 @@ configured four.
 tail -f logs/batch_2026.log                       # per-dispatch INFO lines: game_id, turn, seat
 grep -c "dispatch clue" logs/batch_2026.log       # rough progress
 
-# games actually persisted so far
-psql "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}" \
-  -c "select game_status, count(*) from game where run_id = '<run_id>' group by game_status;"
+# games actually persisted so far, with the run's provenance
+python scripts/manage_runs.py show <run_id>
 ```
 
-The run id is printed at mint time and again in the final report.
+The run id is printed at mint time and again in the final report; `python scripts/manage_runs.py
+list` shows every run in the database.
 
 ### 4. Failure semantics
 
@@ -418,31 +558,149 @@ Two levels, kept deliberately separate:
 
 * **Level 1 — preconditions.** Checked before any game plays; each aborts the whole batch with exit
   code `2` and zero games run: a board-bank shortfall (`ScheduleError`), a missing `DATABASE_URL`,
-  any of the 192 deterministic `game_id`s already present (`BatchPreconditionError`), or a digest
-  mismatch (`ModelDigestMismatchError`).
+  a database schema that is not at the head of the migrations (the games would be played and then
+  fail to be stored), any of the 192 deterministic `game_id`s already present, a bank that cannot
+  be stored (`BatchPreconditionError`), or a digest or Ollama-release mismatch
+  (`ModelDigestMismatchError`, `OllamaVersionMismatchError`). Storing
+  the bank comes after the `game_id` check and before the run is minted: the measurement frame,
+  then every board under `data/boards/`, skipping what is already stored. It fails if the frame's
+  sidecar is missing, if it contradicts the frame already stored (the frame is immutable:
+  `StaleFrameError`), if a file of the bank is not a valid board (the CLI also loads the bank
+  strictly, so a board left out is never replaced by the next one under the same game ids), or if a
+  stored board is not the one its file holds now: each board is stored with the SHA-256 of its
+  canonical JSON (`board.content_sha256`), and a file whose hash differs stops the batch
+  (`StaleBoardError`) instead of being played while the database keeps the old board. A board
+  stored before the hash was recorded is compared with its file field by field, and gets the hash
+  when they agree. The scheduled boards and their hashes are stored on the run as its
+  `stimulus_manifest`. On a resume, the `game_id` check and the minting give way to the checks of
+  the run being resumed (§6).
 * **Level 2 — per-game fault isolation.** A game that errors is recorded, classified
-  (`provider` / `model` / `collision` / `other`) and the loop continues. **Five consecutive failures
-  abort that pairing only** — its remaining cells are skipped and the batch moves to the next
-  pairing, because a systematic failure is a finding about one pairing, not a reason to lose the
-  other five.
+  (`provider` / `model` / `invariant` / `collision` / `other`) and the loop continues. The state of
+  every game is checked against the rules of the game (`backend/app/core/invariants.py`, the checks
+  listed under the test games) after every turn and before the game is stored: a game whose state
+  breaks one ends in error, `game.error_code = 'invariant_broken'`, and is never stored as
+  completed. **Five consecutive failures abort that pairing only** — its remaining cells are
+  skipped and the batch moves to the next pairing, because a systematic failure is a finding about
+  one pairing, not a reason to lose the other five.
+* **Level 2 — a game lost to the provider is played again.** When Ollama times out, is unavailable
+  or rate limits, and still fails after the client's own retries, the game was lost to the
+  provider, not the model. The batch probes both seats' providers (`health_check`, Ollama's
+  `/api/show` for the model) until they answer, deletes the game's error row and plays the
+  **same** game again: same `game_id`, same seeds, so the same game. At most two replays per game; a game the provider still
+  fails after them stays an error and counts like any other. If the provider does not answer within
+  `--provider-wait-minutes` (default 30), the batch **stops** there instead of failing pairing after
+  pairing: the games after it are not played, the report ends with `STOPPED: <reason>`
+  (`aborted_reason` in the JSON) and the exit code is `3`. Once the provider answers, continue the
+  run with `--resume` (§6).
 
 ### 5. The report
 
 The batch ends by printing a per-pairing table (`attempted / completed / errored / skipped`, abort
 reason, error-kind histogram) and then the same content as JSON. Keep the log: that JSON is the
-run's receipt.
+run's receipt. A resumed batch adds `previously_completed / previously_errored`: the games the run
+had recorded, which it did not play again. `skipped` counts only the games nobody played.
 
-### 6. Re-running a seed
+### 6. Resuming a batch that stopped
 
-```python
-# python, with DATABASE_URL exported
-from backend.app.db.writer import delete_run
-print(delete_run("<run_id>"))    # DeleteRunResult(found=True, games_deleted=192)
+A batch that stopped — exit `3`, a crash, a power cut, a `Ctrl+C` — continues under its own run:
+
+```sh
+python scripts/run_batch.py --resume <run_id>                  # leave the recorded errors as they are
+python scripts/run_batch.py --resume <run_id> --retry-errors   # play them again too
 ```
 
-`delete_run` cascades through every game, seat, turn, clue, target, LLM call, proposal, item and
+It plays only the games the run has not recorded. A game is stored when it ends, so a game cut
+short leaves no row and is simply played. A completed game is never played again. A game recorded
+as an error stays so, unless `--retry-errors`: then its row is deleted just before the game is
+played again, with the same seeds. The games a pairing skipped after five consecutive errors have
+no row, so a resume plays them; the errors already recorded do not count towards the threshold
+again.
+
+`--master-seed` and `--temperature` default to the run's. Nothing plays (exit `2`) unless the run is
+the one this batch would mint: the same master seed, temperature, prompt-template fingerprint and
+models, the same weights served (`model_registry_snapshot`, after the digest gate), the same boards
+with the same content (`stimulus_manifest`, each scheduled board with its `content_sha256`, recorded
+at mint), and every game it recorded on the board the schedule puts there now. The error lists every
+difference. A run minted before the manifest existed resumes with a warning. Another
+`code_version` only warns, since resuming after a fix is the usual case. Every resume is appended
+to the run's `notes` with its time and `code_version`, so the run's provenance shows where other
+code took over.
+
+### 7. Managing runs, and re-running a seed
+
+```sh
+python scripts/manage_runs.py list                 # every run, oldest first, games by status
+python scripts/manage_runs.py show <run_id>        # provenance, models and weights, notes, games
+python scripts/manage_runs.py delete <run_id>      # shows the run, then asks
+```
+
+A master seed is played again from scratch by deleting its run first (otherwise its games collide,
+see Level 1). `delete` shows the run and deletes it only on a `y`; `--yes` skips the question.
+The delete cascades through every game, seat, turn, clue, target, LLM call, proposal, item and
 reveal beneath the run. Shared ingest data (`board`, `word_card`, `measurement_frame`) is not
-run-owned and is never touched. It is idempotent — deleting an absent run is a no-op.
+run-owned and is never touched. A delete cannot be undone: a batch that stopped is continued with
+`--resume` (§6), not deleted.
+
+---
+
+## Test games with a full log
+
+`scripts/play_games.py` plays any number of games between two models (or one model against itself)
+and writes everything that happens to `logs/games_<timestamp>.log`. It uses the same driver as the
+batch, `run_single_game`, without a database. It is meant for finding errors before a batch.
+
+```sh
+python scripts/play_games.py --model-a ollama:llama3.1:8b --model-b ollama:qwen2.5:14b --games 4
+python scripts/play_games.py --model-a ollama:llama3.1:8b --games 2 --board-type control
+```
+
+The log holds:
+
+* **The run:** the git commit and uncommitted changes, the Ollama version, and each model's digest
+  checked against `EXPECTED_LOCAL_DIGESTS`. Also the seeds, and every prompt template in full, with
+  the id the call log uses for it.
+* **Each game:** the board with both sides of the key card, then every event in order:
+  * each model call: the rendered prompt and the raw response, with latency and tokens;
+  * each clue, and whether it is valid;
+  * each guess, with what the card is on both sides;
+  * skipped proposals and discarded draws;
+  * stops, turn changes, sudden death and the end of the game.
+* **After every turn:** the state, and a check of the game's invariants
+  (`backend/app/core/invariants.py`, the same check the batch runs). A broken invariant is logged
+  as an `ERROR`, and the game plays on, where the batch would end it in error. The checks are:
+  * the 9 tokens add up;
+  * `pending_words` matches the board;
+  * the clue validator's visible words are the uncovered ones;
+  * every time token sits on a word that was beige for the clue giver;
+  * the phase fits the reserve and the pending words.
+* **At the end:** the final board and the clues of each game, and a summary of every warning and
+  error, game by game.
+
+The console shows only the progress and the summary. The exit code is 1 if a game ended in error or
+broke an invariant. `--master-seed` replays a run; the default seed comes from the clock and is
+logged.
+
+**Ollama without Docker.** A native Ollama can serve the models that the `ollama` container already
+pulled, without downloading them again, from a Windows folder: the `docker_volumes/ollama_data` the
+container kept them in before they moved to a volume, or a copy of the volume
+(`docker compose cp ollama:/root/.ollama/models docker_volumes/ollama_data/`). On Windows, after
+quitting the tray app:
+
+```powershell
+$env:OLLAMA_MODELS = (Resolve-Path docker_volumes\ollama_data\models).Path
+$env:OLLAMA_NOPRUNE = "1"   # never delete files from the shared model directory
+$env:LLAMA_ARG_CACHE_RAM = "0"   # no RAM prompt cache, as in docker-compose.yml
+ollama serve
+```
+
+`OLLAMA_NOPRUNE` stops Ollama from deleting files, but not from adding them. Ollama 0.40 serves
+`mistral-small3.2` with its llamacpp runner: the first time it loads the model, it converts it into
+the shared directory (the text weights and the vision projector, 15 GB more) and rewrites the tag's
+manifest, so the served digest changes. `config.EXPECTED_LOCAL_DIGESTS` pins the converted one, as
+Ollama 0.40.2 serves it. An Ollama of another version may serve another digest, and the digest gate
+then stops the batch: a native Ollama must be 0.40.2 too. The batch runs against the container. A
+native Ollama binds `127.0.0.1:11434` as the container does, so only one of them can run at a time;
+with both up, `localhost` reaches one or the other depending on how it resolves.
 
 ---
 
@@ -510,7 +768,8 @@ stderr. Bootstrap defaults are `B = 2000` replicates, seed `2026`, percentile CI
   gender load is congruent with the clue's polarity are ranked above incongruent ones. **0.5 means no
   association**, not zero. It reads the out-of-band **measurement** ranking
   (`guess_proposal.kind='measurement'`), never the play proposal, so it reports belief uncontaminated
-  by game strategy.
+  by game strategy. For the same reason, only the play prompt shows the guesser its own side of the
+  key card, as the rules do: the measurement prompt leaves it out.
 * **conc-SD** — the sudden-death analogue of CIT, where the giver is silent and the guesser works from
   the clue *history* it received. The unit is the game, clue polarity is a history mean, and thematic
   proximity is measured against the whole history. Pre-registered power rule: **PRIMARY** for a model
@@ -538,22 +797,36 @@ stderr. Bootstrap defaults are `B = 2000` replicates, seed `2026`, percentile CI
 
 ---
 
-## Reproducing the shipped results
+## Reproducing the TFG's results
 
-`exp_data.sql` is a `pg_dump` of the completed experiment — schema **and** data, stamped
-`alembic_version = 0005_run_delete_cascade`. It contains the real run (`master_seed = 2026`,
-`temperature = 0.8`, `code_version = 26a115a`, four local Ollama seats: `llama3.1:8b`, `gemma4:12b`,
-`qwen2.5:14b`, `mistral-small3.2:24b`), the boards and frame, and the populated `embedding_mpnet`
-table. Restoring it is the fast path: every analysis script then runs against its defaults, with no
-GPU and without replaying 192 LLM games.
+The TFG's experiment is kept out of the tree as `exp_data.dump`, a `pg_dump` in custom format of its
+database — schema **and** data, stamped `alembic_version = 0005_run_delete_cascade`. It contains the
+real run (`master_seed = 2026`, `temperature = 0.8`, `code_version = 26a115a`, four local Ollama
+seats: `llama3.1:8b`, `gemma4:12b`, `qwen2.5:14b`, `mistral-small3.2:24b`), the boards and frame,
+and the populated `embedding_mpnet` table. Restoring it is the fast path: every analysis script then
+runs against its defaults, with no GPU and without replaying 192 LLM games.
+
+The dump is **not published yet**; it will be a release asset. Until then, the restore below needs a
+copy of the file, and its SHA-256 checks that the copy is the one described here.
+
+* **SHA-256** of `exp_data.dump`: `a2c34e889fd53e81af446b769a6289841f90d3fc7ad5f959c81ad9107b3a0c6c`
+* **Code:** the tag `tfg-final`. The board bank, the schedule and the analysis are being rewritten
+  for the TFM, so the analysis scripts reproduce the TFG's figures as that tag has them.
 
 ```sh
+git checkout tfg-final
 set -a; source .env; set +a
 
-# Restore into an EMPTY database. The dump creates its own tables and the pgvector extension;
-# it contains no CREATE DATABASE, so create the target first.
+# exp_data.dump in the current directory
+echo "a2c34e889fd53e81af446b769a6289841f90d3fc7ad5f959c81ad9107b3a0c6c  exp_data.dump" | sha256sum -c
+
+# Restore into an EMPTY database. The dump creates its own tables and the pgvector extension
+# (which takes a superuser, as the Compose db's POSTGRES_USER is); it contains no CREATE DATABASE,
+# so create the target first. --no-owner gives every object to the user restoring it, whatever
+# role recorded the run. Use pg_restore 15 or newer (the db container's is).
 createdb -h localhost -U "$POSTGRES_USER" codenames_exp
-psql -h localhost -U "$POSTGRES_USER" -d codenames_exp -v ON_ERROR_STOP=1 -f exp_data.sql
+pg_restore -h localhost -U "$POSTGRES_USER" -d codenames_exp --no-owner --no-privileges \
+  --exit-on-error --single-transaction exp_data.dump
 
 export DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/codenames_exp"
 
@@ -566,9 +839,18 @@ python scripts/run_skill_metrics.py
 python scripts/diagnose_skill_by_board_type.py
 ```
 
-> Restore into a **fresh** database. The dump issues bare `CREATE TABLE`s, so replaying it over a
-> database that already has the schema fails partway and leaves a half-loaded mess. Do not restore
-> over a database holding a run you care about.
+> Restore into a **fresh** database. The dump issues bare `CREATE TABLE`s, so restoring it over a
+> database that already has the schema fails (in one transaction, the database is left as it was).
+> Do not restore over a database holding a run you care about.
+
+The analysis scripts read the dump as it is, and give the same results once it is upgraded to the
+current schema (`alembic -c backend/alembic.ini upgrade head`), which recording new games into it
+needs.
+
+The dump was made from a fresh restore of the `exp_data.sql` the repository shipped until it moved
+out of the tree (still in the history, at `52f954f`), with `pg_dump -Fc --no-owner --no-privileges`:
+its tables hold the same rows. That file's `ALTER ... OWNER TO alvaro` statements stopped its
+documented restore for anyone whose role was not `alvaro`.
 
 Add `--json` to any script to capture machine-readable output for downstream aggregation.
 
@@ -586,13 +868,13 @@ Add `--json` to any script to capture machine-readable output for downstream agg
 | Stimulus | `board`, `word_card` | Ingested board artifacts and their 25 cards with per-seat roles, WEAT sets and covariates. |
 | Play | `game`, `game_seat`, `turn`, `clue`, `clue_target`, `reveal_event` | One row per game / seat / turn / clue / resolved intended target / engine card resolution. |
 | Belief | `guess_proposal`, `guess_proposal_item` | The guesser's ordered proposals with self-reported confidence, split by `kind` into `play` and `measurement`. |
-| Telemetry | `llm_call` | Per-invocation sampling telemetry for every model call. |
+| Telemetry | `llm_call` | Per-invocation sampling telemetry for every model call, with the server's breakdown of a local call's latency (`load_ms`, `prompt_eval_ms`, `eval_ms`). |
 | Geometry | `embedding_mpnet`, `embedding_llama`, `embedding_mistral`, `word_load` | Extrinsic φ\* vectors keyed by `(frame, text)`, intrinsic vectors keyed by `(recipe, text)`, and derived per-word gender load `rho`. |
 
 **Migrations.** Alembic is wired to `Base.metadata` and reads `DATABASE_URL` from the environment.
 
 ```sh
-alembic -c backend/alembic.ini upgrade head      # apply (head: 0005_run_delete_cascade)
+alembic -c backend/alembic.ini upgrade head      # apply (head: 0008_llm_call_durations)
 alembic -c backend/alembic.ini current           # inspect
 alembic -c backend/alembic.ini revision --autogenerate -m "..."   # after editing db/models.py
 ```
@@ -602,56 +884,92 @@ pgvector columns and the cascade rules do not always round-trip.
 
 ---
 
-## Interactive UI
-
-`GET /` landing, `GET /about` the rules, `GET /config` the setup form (`GET /config/models` fills the
-model list per provider), `GET /play` starts a game against a chosen model on a board drawn from the
-selected category. During play the human acts through `POST /play/{game_id}/{clue,guess,pass}` and
-the model through `POST /play/{game_id}/{llm-clue,llm-guess,llm-sd-guess}`; each returns rendered
-partials that patch the board in place.
-
-Duet phases are `giving_clue`, `guessing`, `sudden_death_human`, `sudden_death_llm`, `game_over`.
-When the timer tokens run out the game enters sudden death: the human hunts their remaining agents
-first, then the model hunts its own, with no clues available to either.
-
-Two deliberate differences from the headless path: the interactive path **never enforces model
-digests** (the registry snapshot stays a record-only witness), and a persistence failure at game end
-is logged and swallowed so it cannot change the HTTP response. Interactive games are still written to
-the same tables, under a minimal run row — filter them out by `run_id` before analysing a batch.
-
----
-
 ## Development
 
 ```sh
-uv sync --extra dev
+uv sync --frozen --extra dev
 pytest                       # from the repo root; asyncio_mode = auto
 pytest tests/unit/test_engine.py -q
+ruff check .                 # lint, as pyproject.toml configures it (board_generator/ has its own)
+ruff format .                # format (the migrations already applied are left as they are)
+mypy                         # types of backend/ and scripts/
 ```
 
-Nine test modules are gated on `DATABASE_URL` (`pytest.mark.skipif`) and are skipped without it. When
-you do enable them, point them at a **throwaway database** — they create, write and delete rows:
+CI (`.github/workflows/ci.yml`) runs the same on every push and pull request: ruff (lint and
+`format --check`), mypy, the whole suite (the database tests on the throwaway Postgres) and the
+batch's `--dry-run`. The commits that only reformatted are listed in `.git-blame-ignore-revs`, which
+GitHub's blame skips; `git config blame.ignoreRevsFile .git-blame-ignore-revs` makes yours skip them
+too.
+
+Two kinds of test guard the game itself:
+
+* **Property tests** (`tests/unit/test_engine_properties.py`): Hypothesis plays the engine with
+  random legal actions, and some it must refuse, on every board of the bank; every state must keep
+  the invariants of `backend/app/core/invariants.py`, a refused action must change nothing, and
+  every game must end.
+* **Golden games** (`tests/fixtures/golden/`, `tests/unit/test_golden_games.py`): games real models
+  played against Ollama, recorded at the daemon (`backend/app/core/golden.py`), are played again
+  through the real local client with the recorded answers. Every request must be the one recorded,
+  and the game must come out the same, clue for clue and reveal for reveal. A refactor must keep
+  them passing. A change to what the models are sent (a template, a response schema, a seed) fails
+  at the first request that differs, by design: record the games again, with the same arguments
+  (each fixture keeps them), once the change is meant.
 
 ```sh
-createdb -h localhost -U "$POSTGRES_USER" codenames_test
-DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/codenames_test" \
-  alembic -c backend/alembic.ini upgrade head
-DATABASE_URL="postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/codenames_test" \
-  pytest
+python scripts/record_golden_game.py --model-a ollama:llama3.1:8b --board-id probe-gender-career-001 \
+  --master-seed 11 --out tests/fixtures/golden/llama_probe.json --description "..."
 ```
 
-Never point them at the experiment database.
+The tests that need Postgres are marked `db`. A bare `pytest` gives them a database of their own
+(`tests/conftest.py`): a throwaway container of the `pgvector` image `docker-compose.yml` pins, on a
+free loopback port, with its data in memory, migrated to head and removed when the session ends. It
+takes Docker and about three seconds. It never uses the `DATABASE_URL` of your shell or of `.env`,
+so the tests cannot write into the development database.
+
+```sh
+pytest -m "not db"           # without the database tests: starts nothing
+TEST_DATABASE_URL="postgresql+psycopg2://user:password@localhost:5432/codenames_test" \
+  pytest                     # on a database of yours instead (migrated to head first)
+```
+
+Without Docker and without `TEST_DATABASE_URL` (in the devcontainer, say), the database tests are
+skipped, saying why. Point `TEST_DATABASE_URL` only at a database the tests may fill — they insert
+rows and never delete them — and never at the experiment database. A test session that is killed
+leaves its container running: `docker ps --filter name=codenames-test-db` finds it.
+
+**Dependencies** are pinned by `uv.lock`, which is versioned: the local venv and the `app` image
+(`uv export --frozen` in its Dockerfile) install the same versions. Change one with
+`uv add <package>==<version>` or `uv lock --upgrade-package <package>`, and commit the lock.
 
 **Prompt templates** live in `data/prompt_templates/` — system, user and one-shot templates for the
 clue giver and guesser, plus the sudden-death and out-of-band **measurement** variants. Editing one
 changes the run's `prompt_template_version` fingerprint, which is exactly the point: a run is
-comparable only to runs sharing its fingerprint.
+comparable only to runs sharing its fingerprint. The response schemas sent with each request
+(`RESPONSE_FORMATS` in `llm_service.py`: `ClueJSONFormat`, `GuessJSONFormat` and
+`ConfidenceRankingJSONFormat` in `models/llm_schemas.py`) are part of the same fingerprint,
+docstrings included, since pydantic sends each format's docstring as its description.
+Every prompt comes from its file: the service reads them all when it is built
+(`TEMPLATE_FILES` in `llm_service.py`), and refuses to start, naming the file, when one is missing.
 
-**Model roster** lives in `backend/app/config.py`: `llm_models` (what the UI offers, what the batch
-defaults to, and what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the
-batch is validated against). Changing a model means updating both.
+**Model roster** lives in `backend/app/config.py`: `llm_models` (what the batch defaults to, and
+what `ollama_entrypoint.sh` pulls) and `EXPECTED_LOCAL_DIGESTS` (the weights the
+batch is validated against; for `mistral-small3.2`, the variant Ollama converts it to, see
+[Ollama without Docker](#test-games-with-a-full-log)). Changing a model means updating both.
+Changing the Ollama release means updating `EXPECTED_OLLAMA_VERSION`, the image in
+`docker-compose.yml`, and the digests it serves. The
+same file sets what every request is sent with:
+* `OLLAMA_NUM_CTX`, the context window of every local request. Without it, ollama picks one from
+  the GPU's memory, so the same batch would run differently on another machine.
+* `OLLAMA_NUM_GPU` and `OLLAMA_NUM_BATCH`, the layers of every local model on the GPU (all) and the
+  batch its prompts are read in. Left to ollama, both depend on the free memory, and both change the
+  answer (see [Determinism](#the-experiment)).
+* `LLM_MAX_OUTPUT_TOKENS`, the answer cap for every provider. An answer cut at the cap (a model
+  that loops) is drawn again with a new seed, like an empty or a degenerate one.
 
-**Devcontainer**: `.devcontainer/devcontainer.json` attaches VS Code to the Compose `app` service.
+The run's `model_registry_snapshot` records them with each local model.
+
+**Devcontainer**: `.devcontainer/devcontainer.json` attaches VS Code to the Compose `app` service,
+as `appuser`, in the bind-mounted repo at `/workspace` (not `/app`, the copy baked into the image).
 
 **`board_generator` has its own toolchain** — `uv run pytest`, `uv run ruff check .`, `uv run mypy`
 from inside `board_generator/`. See its README.
@@ -673,9 +991,20 @@ from inside `board_generator/`. See its README.
 ## About
 
 This platform was designed and developed by **Álvaro Martínez Alfaro** as a final degree project
-(*Trabajo de Fin de Grado*) in Computer Science at the **University of Castilla-La Mancha (UCLM)**.
+(*Trabajo de Fin de Grado*) in Computer Science at the **University of Castilla-La Mancha (UCLM)**,
+and is now being extended for a master's thesis (*Trabajo de Fin de Máster*).
 
 Both halves of the project — this measurement platform and the
 [`board_generator`](board_generator/README.md) tool that builds its stimulus set — were written for
 that work, and the chapter references scattered through the module docstrings (sections 4.5.1, eqs
 4.1 and 4.6–4.14) point to the accompanying dissertation.
+
+---
+
+## License
+
+The code is under the MIT License (see [`LICENSE`](LICENSE)). The word segmentations in
+[`data/morpholex/`](data/morpholex/README.md) are adapted from MorphoLex-en and keep its license,
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0, so they cannot be used for commercial
+purposes. To reuse the platform commercially, remove them or replace them with word segmentations
+under a license that allows that use, in the same format.

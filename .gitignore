@@ -7,12 +7,18 @@ __pycache__/
 # virtual environments
 venv/
 .venv/
-uv.lock
 *.egg-info
 
 # IDE and editor files
 .vscode/
 .coverage
 
-# database files
+# database files, and database dumps (the TFG experiment's is kept out of the tree, see the README)
 docker_volumes/
+*.dump
+
+# game logs written by scripts/play_games.py, and the local Ollama server's logs
+logs/
+
+# personal notes; the rest of docs/ is versioned
+docs/private/

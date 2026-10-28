@@ -1,0 +1,140 @@
+{
+  "_about": "OpenRouter's answers to a chat completion, as the HTTP status and the JSON body it sends. Built by hand from OpenRouter's documentation (API reference and error codes), not recorded: the roster is all local. tests/unit/test_llm_client_openrouter.py serves them through the real openai SDK. Replace them with recordings once an API seat is played.",
+  "clue": {
+    "status": 200,
+    "body": {
+      "id": "gen-1761130000-k2mQ7vXwYpR4sT8uLz3n",
+      "provider": "DeepInfra",
+      "model": "mistralai/mistral-small-3.2-24b-instruct",
+      "object": "chat.completion",
+      "created": 1761130000,
+      "choices": [
+        {
+          "logprobs": null,
+          "finish_reason": "stop",
+          "native_finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "{\"reasoning\": \"war and army both point to battle\", \"clue\": \"battle\", \"count\": 2, \"targets\": [\"war\", \"army\"]}",
+            "refusal": null,
+            "reasoning": null
+          }
+        }
+      ],
+      "system_fingerprint": "fp_6f2b9a4c1d",
+      "usage": {"prompt_tokens": 812, "completion_tokens": 41, "total_tokens": 853}
+    }
+  },
+  "error_in_body": {
+    "status": 200,
+    "body": {
+      "error": {
+        "code": 502,
+        "message": "Provider returned error",
+        "metadata": {"raw": "upstream connect error", "provider_name": "DeepInfra"}
+      },
+      "user_id": "user_2xYzAbCdEfGhIjKlMnOp"
+    }
+  },
+  "error_in_choice": {
+    "status": 200,
+    "body": {
+      "id": "gen-1761130001-Qw8eRt5yUi2oPa6sDf9g",
+      "provider": "DeepInfra",
+      "model": "mistralai/mistral-small-3.2-24b-instruct",
+      "object": "chat.completion",
+      "created": 1761130001,
+      "choices": [
+        {
+          "logprobs": null,
+          "finish_reason": "error",
+          "native_finish_reason": null,
+          "index": 0,
+          "message": {"role": "assistant", "content": "", "refusal": null, "reasoning": null},
+          "error": {"code": 502, "message": "Upstream error from DeepInfra: model stopped responding"}
+        }
+      ],
+      "usage": {"prompt_tokens": 812, "completion_tokens": 0, "total_tokens": 812}
+    }
+  },
+  "refusal": {
+    "status": 200,
+    "body": {
+      "id": "gen-1761130002-Zx4cVb7nMm1lKj3hGf5d",
+      "provider": "OpenAI",
+      "model": "openai/gpt-4o-mini",
+      "object": "chat.completion",
+      "created": 1761130002,
+      "choices": [
+        {
+          "logprobs": null,
+          "finish_reason": "stop",
+          "native_finish_reason": "stop",
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "refusal": "I'm sorry, I can't help with that request.",
+            "reasoning": null
+          }
+        }
+      ],
+      "system_fingerprint": "fp_0aa8d3e20b",
+      "usage": {"prompt_tokens": 812, "completion_tokens": 12, "total_tokens": 824}
+    }
+  },
+  "bad_request": {
+    "status": 400,
+    "body": {"error": {"code": 400, "message": "mistralai/mistral-small-3.2-24b is not a valid model ID"}}
+  },
+  "invalid_key": {
+    "status": 401,
+    "body": {"error": {"code": 401, "message": "No auth credentials found"}}
+  },
+  "insufficient_credits": {
+    "status": 402,
+    "body": {
+      "error": {
+        "code": 402,
+        "message": "This request requires more credits, or fewer max_tokens. You requested up to 400 tokens, but can only afford 120. To increase, visit https://openrouter.ai/settings/credits and add more credits"
+      }
+    }
+  },
+  "moderation": {
+    "status": 403,
+    "body": {
+      "error": {
+        "code": 403,
+        "message": "openai/gpt-4o-mini requires moderation on OpenAI. Your input was flagged for \"violence\". No credits were charged.",
+        "metadata": {
+          "reasons": ["violence"],
+          "flagged_input": "...assassin...",
+          "provider_name": "OpenAI",
+          "model_slug": "openai/gpt-4o-mini"
+        }
+      }
+    }
+  },
+  "timed_out": {
+    "status": 408,
+    "body": {"error": {"code": 408, "message": "Request timed out"}}
+  },
+  "rate_limited": {
+    "status": 429,
+    "body": {"error": {"code": 429, "message": "Rate limit exceeded: free-models-per-min"}}
+  },
+  "model_down": {
+    "status": 502,
+    "body": {"error": {"code": 502, "message": "Provider returned error"}}
+  },
+  "no_provider": {
+    "status": 503,
+    "body": {
+      "error": {
+        "code": 503,
+        "message": "No endpoints found that can handle the requested parameters."
+      }
+    }
+  }
+}

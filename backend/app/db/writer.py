@@ -1,20 +1,24 @@
 """Atomic terminal flush of one completed game to Postgres.
 
 ``persist_game`` reads a fully-accumulated ``GameRecorder`` and writes the whole game in ONE
-transaction via ``session_scope``. Status is written directly as its terminal value 
+transaction via ``session_scope``. Status is written directly as its terminal value
 (``'completed'`` / ``'error'``); ``'in_progress'`` is never written, so the absence of a game row
 means the game never completed.
 
-The writer RAISES on failure and does not swallow - swallowing is the caller's choice (the
-interactive routes swallow so a flush failure never changes the HTTP response; a future headless
-runner will not). ``recorder.flushed`` is set only after the transaction commits successfully.
+The writer RAISES on failure and does not swallow; the game runner lets the error end the game.
+``recorder.flushed`` is set only after the transaction commits successfully.
 """
+
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from typing import Any, cast
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.engine import CursorResult
 
 from backend.app.db.models import (
     LlmCallModel,
@@ -35,6 +39,17 @@ from backend.app.db.session import session_scope
 
 logger = logging.getLogger(__name__)
 
+# game.error_message keeps at most this many characters of the error's text; the game log keeps it
+# whole, with its traceback.
+ERROR_MESSAGE_MAX_CHARS = 2000
+
+
+def _truncated(text: str | None, limit: int) -> str | None:
+    """``text`` cut to ``limit`` characters, ending in an ellipsis when it was cut."""
+    if text is None or len(text) <= limit:
+        return text
+    return text[: limit - 1] + "…"
+
 
 def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int) -> LlmCallModel:
     """Map an in-memory ``LLMCallRecord`` to an ``llm_call`` row (rendered_prompt -> JSONB)."""
@@ -51,6 +66,9 @@ def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int) -> Llm
         requested_temperature=record.requested_temperature,
         requested_seed=record.requested_seed,
         latency_ms=record.latency_ms,
+        load_ms=record.load_ms,
+        prompt_eval_ms=record.prompt_eval_ms,
+        eval_ms=record.eval_ms,
         prompt_tokens=record.prompt_tokens,
         completion_tokens=record.completion_tokens,
         finish_reason=record.finish_reason,
@@ -60,16 +78,17 @@ def _new_llm_call(record, *, game_id: str, turn_id: int, seat_index: int) -> Llm
     )
 
 
-def _write_play(session, gp, *, game_id: str, turn_id: int, guesser_seat: int,
-                word_map: dict[str, int]) -> list[GuessProposalItemModel]:
-    """Insert one ``kind='play'`` guess_proposal (+ its llm_call and ordered items) for ``guesser_seat``.
+def _write_play(
+    session, gp, *, game_id: str, turn_id: int, guesser_seat: int, word_map: dict[str, int]
+) -> list[GuessProposalItemModel]:
+    """Insert one ``kind='play'`` guess_proposal (+ its llm_call and ordered items) for
+    ``guesser_seat``.
 
     Returns the item rows in position order so the caller can index-align reveal backfill.
     """
     play_call_id = None
     if gp.llm_call is not None:
-        call = _new_llm_call(gp.llm_call, game_id=game_id,
-                             turn_id=turn_id, seat_index=guesser_seat)
+        call = _new_llm_call(gp.llm_call, game_id=game_id, turn_id=turn_id, seat_index=guesser_seat)
         session.add(call)
         session.flush()
         play_call_id = call.id
@@ -84,7 +103,7 @@ def _write_play(session, gp, *, game_id: str, turn_id: int, guesser_seat: int,
     session.add(proposal)
     session.flush()
     items: list[GuessProposalItemModel] = []
-    for position, (word, confidence) in enumerate(zip(gp.proposals, gp.confidence)):
+    for position, (word, confidence) in enumerate(zip(gp.proposals, gp.confidence, strict=True)):
         item = GuessProposalItemModel(
             guess_proposal_id=proposal.id,
             position=position,
@@ -98,16 +117,17 @@ def _write_play(session, gp, *, game_id: str, turn_id: int, guesser_seat: int,
     return items
 
 
-def _write_measurement(session, cr, *, game_id: str, turn_id: int, guesser_seat: int,
-                       word_map: dict[str, int]) -> None:
-    """Insert one ``kind='measurement'`` guess_proposal (+ its llm_call and items) for ``guesser_seat``.
+def _write_measurement(
+    session, cr, *, game_id: str, turn_id: int, guesser_seat: int, word_map: dict[str, int]
+) -> None:
+    """Insert one ``kind='measurement'`` guess_proposal (+ its llm_call and items) for
+    ``guesser_seat``.
 
     Measurement items never reference a reveal (they are an out-of-band ranking, not plays).
     """
     meas_call_id = None
     if cr.llm_call is not None:
-        call = _new_llm_call(cr.llm_call, game_id=game_id,
-                             turn_id=turn_id, seat_index=guesser_seat)
+        call = _new_llm_call(cr.llm_call, game_id=game_id, turn_id=turn_id, seat_index=guesser_seat)
         session.add(call)
         session.flush()
         meas_call_id = call.id
@@ -170,8 +190,9 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
     # clue (+ its llm_call attempts)
     if turn.clue is not None:
         clue_calls = [
-            _new_llm_call(rec, game_id=game_id, turn_id=turn_row.id,
-                          seat_index=turn.clue_giver_seat)
+            _new_llm_call(
+                rec, game_id=game_id, turn_id=turn_row.id, seat_index=turn.clue_giver_seat
+            )
             for rec in turn.clue.llm_calls
         ]
         if clue_calls:
@@ -187,6 +208,7 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
             count=turn.clue.count,
             reasoning=turn.clue.reasoning,
             targets_raw=list(turn.clue.targets_raw),
+            invalid_reason=turn.clue.invalid_reason,
         )
         session.add(clue_row)
         session.flush()
@@ -206,37 +228,51 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
 
     if turn.phase == "sudden_death":
         # Sudden death is one collective turn on which both seats may guess/measure. Emit a
-        # guess_proposal row per (seat, kind); UNIQUE(turn_id, kind, guesser_seat) admits both seats.
+        # guess_proposal row per (seat, kind); UNIQUE(turn_id, kind, guesser_seat) admits both
+        # seats.
         play_items_by_seat: dict[int, list[GuessProposalItemModel]] = {}
         for seat, gp in sorted(turn.sd_play_by_seat.items()):
             play_items_by_seat[seat] = _write_play(
-                session, gp, game_id=game_id, turn_id=turn_row.id,
-                guesser_seat=seat, word_map=word_map)
+                session,
+                gp,
+                game_id=game_id,
+                turn_id=turn_row.id,
+                guesser_seat=seat,
+                word_map=word_map,
+            )
         for seat, cr in sorted(turn.sd_measurement_by_seat.items()):
-            _write_measurement(session, cr, game_id=game_id, turn_id=turn_row.id,
-                               guesser_seat=seat, word_map=word_map)
+            _write_measurement(
+                session,
+                cr,
+                game_id=game_id,
+                turn_id=turn_row.id,
+                guesser_seat=seat,
+                word_map=word_map,
+            )
 
-        reveal_rows = _write_reveals(
-            session, turn.reveals, turn_id=turn_row.id)
+        reveal_rows = _write_reveals(session, turn.reveals, turn_id=turn_row.id)
         # Per-seat index-aligned backfill: a reveal by seat s indexes seat s's play items only.
         # CONTRACT: reveal.proposal_index is 0-based relative to acting_seat's own SD play proposal,
         # never a global index over turn.reveals - the SD conductor resets it per seat. A global
         # counter would overshoot len(items) and drop the backfill.
         backfilled = False
-        for reveal, row in zip(turn.reveals, reveal_rows):
+        for reveal, row in zip(turn.reveals, reveal_rows, strict=True):
             idx = reveal.proposal_index
             items = play_items_by_seat.get(reveal.acting_seat, [])
             if idx is not None and 0 <= idx < len(items):
                 items[idx].reveal_event_id = row.id
                 backfilled = True
             elif idx is not None and idx >= len(items):
-                # Out-of-range index breaks the per-seat contract (e.g. a global counter leaking in);
-                # skip rather than raise but surface it.
+                # Out-of-range index breaks the per-seat contract (e.g. a global counter leaking
+                # in); skip rather than raise but surface it.
                 logger.warning(
                     "SD reveal proposal_index %d out of range for game %s turn %d seat %d "
                     "(%d play items); reveal_event backfill skipped",
-                    idx, game_id, turn.turn_number, reveal.acting_seat, len(
-                        items),
+                    idx,
+                    game_id,
+                    turn.turn_number,
+                    reveal.acting_seat,
+                    len(items),
                 )
         if backfilled:
             session.flush()
@@ -246,17 +282,27 @@ def _write_turn(session, turn: TurnRecord, *, game_id: str, word_map: dict[str, 
         play_items: list[GuessProposalItemModel] = []
         if turn.play_proposal is not None:
             play_items = _write_play(
-                session, turn.play_proposal, game_id=game_id, turn_id=turn_row.id,
-                guesser_seat=guesser_seat, word_map=word_map)
+                session,
+                turn.play_proposal,
+                game_id=game_id,
+                turn_id=turn_row.id,
+                guesser_seat=guesser_seat,
+                word_map=word_map,
+            )
         if turn.measurement is not None:
-            _write_measurement(session, turn.measurement, game_id=game_id, turn_id=turn_row.id,
-                               guesser_seat=guesser_seat, word_map=word_map)
+            _write_measurement(
+                session,
+                turn.measurement,
+                game_id=game_id,
+                turn_id=turn_row.id,
+                guesser_seat=guesser_seat,
+                word_map=word_map,
+            )
 
-        reveal_rows = _write_reveals(
-            session, turn.reveals, turn_id=turn_row.id)
+        reveal_rows = _write_reveals(session, turn.reveals, turn_id=turn_row.id)
         # index-aligned backfill of play items' reveal_event_id; the unreached / off-board tail
         # (items with no reveal) keeps reveal_event_id NULL.
-        for reveal, row in zip(turn.reveals, reveal_rows):
+        for reveal, row in zip(turn.reveals, reveal_rows, strict=True):
             idx = reveal.proposal_index
             if idx is not None and 0 <= idx < len(play_items):
                 play_items[idx].reveal_event_id = row.id
@@ -273,19 +319,19 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
     """
     with session_scope() as session:
         board_present = session.execute(
-            select(BoardModel.board_id).where(
-                BoardModel.board_id == recorder.board_id)
+            select(BoardModel.board_id).where(BoardModel.board_id == recorder.board_id)
         ).first()
         if board_present is None:
             raise ValueError(
-                f"Cannot persist game {recorder.game_id}: board {recorder.board_id!r} is not in the "
-                "database. Ingest the board before persisting games that reference it."
+                f"Cannot persist game {recorder.game_id}: board {recorder.board_id!r} is not in "
+                "the database. Ingest the board before persisting games that reference it."
             )
 
         # Case-insensitive word -> card_id map (mirrors Board.get_card_id_by_word).
         word_rows = session.execute(
             select(WordCardModel.text, WordCardModel.card_id).where(
-                WordCardModel.board_id == recorder.board_id)
+                WordCardModel.board_id == recorder.board_id
+            )
         ).all()
         word_map = {text.lower(): card_id for text, card_id in word_rows}
 
@@ -298,7 +344,13 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
             game_status=status,
             result=recorder.result,
             timer_tokens_final=recorder.timer_tokens_final,
-            completed_at=func.now(),
+            # Both ends from the game process's clock, so completed_at - started_at is how long the
+            # game took. The database's now() reads the database server's clock, which can drift
+            # from it (under Docker Desktop, it is a VM's).
+            started_at=recorder.started_at,
+            completed_at=datetime.now(timezone.utc),
+            error_code=recorder.error_code,
+            error_message=_truncated(recorder.error_message, ERROR_MESSAGE_MAX_CHARS),
         )
         session.add(game)
         session.flush()
@@ -311,7 +363,6 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
                     model_ref=seat.model_ref,
                     provider=seat.provider,
                     requested_temperature=seat.requested_temperature,
-                    requested_seed=seat.requested_seed,
                 )
             )
         session.flush()
@@ -321,6 +372,35 @@ def persist_game(recorder: GameRecorder, *, status: str) -> None:
 
     # Only latch after the transaction has committed successfully.
     recorder.flushed = True
+
+
+def delete_error_game(game_id: str, run_id: str) -> bool:
+    """Delete one game of ``run_id`` that was recorded as an error, so it can be played again.
+
+    Game identity is deterministic, so playing a game again writes the same ``game.id``, which
+    collides with the error row unless that row goes first. The batch does this before it plays
+    again a game the provider failed. Like ``delete_run``, it leans on ``ON DELETE CASCADE`` from
+    ``game.id`` for the whole subtree.
+
+    Only a row of this run whose status is ``'error'`` is deleted: a completed game, or a game of
+    another run, is never touched.
+
+    :returns: whether a row was deleted (False when there was none: the error flush may have
+        failed).
+    """
+    with session_scope() as session:
+        # A DML statement's result is a CursorResult, which carries the rows it touched.
+        result = cast(
+            CursorResult[Any],
+            session.execute(
+                delete(GameModel).where(
+                    GameModel.id == game_id,
+                    GameModel.run_id == run_id,
+                    GameModel.game_status == "error",
+                )
+            ),
+        )
+    return bool(result.rowcount)
 
 
 @dataclass(frozen=True)
@@ -339,14 +419,13 @@ class DeleteRunResult:
 def delete_run(run_id: str) -> DeleteRunResult:
     """Delete a run and, via DB cascade, all its games and their entire subtree.
 
-    Removing a run is how a re-run gets unblocked: game identity is deterministic in
-    ``(master_seed, game_index)`` (a uuid5 ``game.id``), so re-persisting the same experiment
-    collides on the primary key; the run must be deleted first. It is also how throwaway pilot
-    batches are cleaned up. The delete leans entirely on ``ON DELETE CASCADE`` from ``game.run_id`` - 
-    deleting the ``run`` row tears down every ``game``, ``game_seat``, ``turn``,
-    ``clue``, ``clue_target``, ``llm_call``, ``guess_proposal``, ``guess_proposal_item`` and
-    ``reveal_event`` beneath it. Shared ingest data (``board`` / ``word_card``) is not run-owned and
-    is never touched.
+    Removing a run is how a re-run gets unblocked: game identity is deterministic in ``(master_seed,
+    game_index)`` (a uuid5 ``game.id``), so re-persisting the same experiment collides on the
+    primary key; the run must be deleted first. It is also how throwaway pilot batches are cleaned
+    up. The delete leans entirely on ``ON DELETE CASCADE`` from ``game.run_id`` - deleting the
+    ``run`` row tears down every ``game``, ``game_seat``, ``turn``, ``clue``, ``clue_target``,
+    ``llm_call``, ``guess_proposal``, ``guess_proposal_item`` and ``reveal_event`` beneath it.
+    Shared ingest data (``board`` / ``word_card``) is not run-owned and is never touched.
 
     Idempotent: deleting a run that does not exist is a no-op returning ``found=False`` (re-running
     the pilot -> inspect -> delete -> re-run cycle stays safe to repeat). Genuine database errors
@@ -355,15 +434,12 @@ def delete_run(run_id: str) -> DeleteRunResult:
     :returns: a :class:`DeleteRunResult` with ``found`` and the ``games_deleted`` count.
     """
     with session_scope() as session:
-        run_present = session.execute(
-            select(RunModel.id).where(RunModel.id == run_id)
-        ).first()
+        run_present = session.execute(select(RunModel.id).where(RunModel.id == run_id)).first()
         if run_present is None:
             return DeleteRunResult(found=False, games_deleted=0)
 
         games_deleted = session.execute(
-            select(func.count()).select_from(GameModel).where(
-                GameModel.run_id == run_id)
+            select(func.count()).select_from(GameModel).where(GameModel.run_id == run_id)
         ).scalar_one()
 
         session.execute(delete(RunModel).where(RunModel.id == run_id))

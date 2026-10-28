@@ -11,10 +11,10 @@ Two rules are derived from this mapping. This module deliberately builds no sets
   * **guesser target-agent set** for seat ``s`` = the cards whose ``perspective_column(1 - s)`` is
     ``'agent'``. The guesser is hunting the *giver's* agents, which is the opposite seat's column.
 
-WARNING - do not use ``engine.state.agents_remaining[s]`` (``backend/app/core/engine.py:297-303``)
-as "seat s's own agents". That counter is **guesser-indexed**: it tracks how many agents seat ``s``
-still has to find, which is the opposite seat's column, ``perspective_column(1 - s)``. Reading it as
-the seat's own agent set inverts the perspective on every two-seat metric.
+WARNING - ``engine.state.pending_words[s]`` is not "seat s's own agents". That counter is
+**guesser-indexed**: it counts the words seat ``s`` still has to find, which are agents in the
+opposite seat's column, ``perspective_column(1 - s)``. Reading it as the seat's own agent set
+inverts the perspective on every two-seat metric.
 """
 
 from __future__ import annotations
@@ -31,10 +31,11 @@ _SEAT_COLUMNS: dict[int, str] = {
 def perspective_column(seat: int) -> str:
     """Return the ``card`` column holding ``seat``'s own view of each card's role.
 
-    Seat 0 is the LLM, seat 1 the human. Any other seat is a programming error, not a default.
+    Seat 0 reads ``llm_perspective_role``, seat 1 ``human_perspective_role``; both seats are LLMs,
+    the names are from the earlier human-vs-model setup. Any other seat is a programming error, not
+    a default.
     """
     try:
         return _SEAT_COLUMNS[seat]
     except KeyError:
-        raise ValueError(
-            f"seat must be {LLM_SEAT} or {HUMAN_SEAT}, got {seat!r}") from None
+        raise ValueError(f"seat must be {LLM_SEAT} or {HUMAN_SEAT}, got {seat!r}") from None

@@ -62,12 +62,10 @@ def _as_unit_vector(raw: Sequence[float] | np.ndarray, *, what: str) -> np.ndarr
     """Return ``raw`` as a float64 ndarray of ``EXPECTED_DIM``, verified and exactly unit-norm."""
     vec = np.asarray(raw, dtype=np.float64)
     if vec.shape != (EXPECTED_DIM,):
-        raise ValueError(
-            f"{what}: expected shape ({EXPECTED_DIM},), got {vec.shape}")
+        raise ValueError(f"{what}: expected shape ({EXPECTED_DIM},), got {vec.shape}")
     norm = float(np.linalg.norm(vec))
     if abs(norm - 1.0) > _NORM_TOL:
-        raise ValueError(
-            f"{what}: expected a unit-norm vector, got norm {norm!r}")
+        raise ValueError(f"{what}: expected a unit-norm vector, got norm {norm!r}")
     # Divide anyway so the returned vector is exactly unit and dot products are true cosines.
     return vec / norm
 
@@ -80,13 +78,10 @@ def load_gender_axis(session: Session, frame_id: str) -> np.ndarray:
     wrong field or corrupt storage and is raised rather than quietly rescaled.
     """
     axis = session.execute(
-        select(MeasurementFrameModel.gender_axis).where(
-            MeasurementFrameModel.frame_id == frame_id
-        )
+        select(MeasurementFrameModel.gender_axis).where(MeasurementFrameModel.frame_id == frame_id)
     ).scalar_one_or_none()
     if axis is None:
-        raise MissingFrameError(
-            f"no measurement_frame row for frame_id {frame_id!r}")
+        raise MissingFrameError(f"no measurement_frame row for frame_id {frame_id!r}")
     return _as_unit_vector(axis, what=f"gender_axis for frame {frame_id}")
 
 
@@ -159,9 +154,7 @@ def is_admissible(P: float, tau_P: float = TAU_P) -> bool:
     return abs(P) > tau_P
 
 
-def classify_congruence(
-    rho_i: float, P: float, tau_rho: float = TAU_RHO
-) -> CongruenceClass:
+def classify_congruence(rho_i: float, P: float, tau_rho: float = TAU_RHO) -> CongruenceClass:
     """Classify word ``i`` against clue polarity ``P``.
 
     ``tau_rho`` has exactly one role: the neutrality cut on the word's **own** load, ``abs(rho_i)``.
@@ -202,8 +195,7 @@ def compute_tercile_cuts(values: Sequence[float]) -> tuple[float, float]:
     """
     if len(values) == 0:
         raise ValueError("cannot compute tercile cuts from an empty sequence")
-    c33, c66 = np.percentile(np.asarray(values, dtype=np.float64), [
-                             100.0 / 3.0, 200.0 / 3.0])
+    c33, c66 = np.percentile(np.asarray(values, dtype=np.float64), [100.0 / 3.0, 200.0 / 3.0])
     return float(c33), float(c66)
 
 

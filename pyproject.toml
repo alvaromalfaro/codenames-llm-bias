@@ -5,13 +5,9 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "codenames-llm-bias"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = "==3.12.*"
 dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
     "pydantic",
-    "pydantic-settings",
-    "jinja2",
     "psycopg2-binary",
     "SQLAlchemy>=2.0",
     "alembic",
@@ -19,17 +15,21 @@ dependencies = [
     "openai",
     "numpy",
     "ollama",
-    "python-multipart",
+    # Imported directly by the local client, for its timeout; ollama itself is built on it.
+    "httpx",
     "nltk",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "hypothesis>=6.170.5",
+    "mypy>=2.4.0",
     "pytest",
     "pytest-asyncio",
+    "ruff>=0.17.1",
 ]
 # Offline phi* embedding backfill only (scripts/backfill_embeddings.py). Deliberately not a default
-# dependency: it pulls torch, which has no business in the FastAPI image. Pinned to the exact version
+# dependency: it pulls torch, which has no business in the app image. Pinned to the exact version
 # in board_generator/uv.lock so platform-side vectors stay comparable to the generator's.
 embeddings = [
     "sentence-transformers==5.5.1",
@@ -39,5 +39,50 @@ embeddings = [
 where = ["."]
 include = ["backend*"]
 
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# board_generator/ is a project of its own, with its own ruff configuration.
+extend-exclude = ["board_generator"]
+
+[tool.ruff.format]
+# A migration that was applied stays as it was written.
+exclude = ["backend/migrations/versions/*"]
+
+[tool.ruff.lint]
+# pycodestyle (long lines included), pyflakes and bugbear.
+select = ["E", "W", "F", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# A migration that was applied stays as it was written, trailing spaces and long lines included.
+"backend/migrations/versions/*" = ["W291", "E501"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["backend", "scripts"]
+# backend/ and backend/app/ are namespace packages: modules are named from the repo root.
+explicit_package_bases = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+# These ship without type information.
+module = ["nltk.*", "sentence_transformers.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The analysis reads nullable columns (game_seat.model_ref, board.type) into records typed str, and
+# a fix there changes what the metrics do with a NULL. Its types are put right once it has tests of
+# its own; until then mypy reads it but reports nothing.
+module = ["backend.app.analysis.*", "scripts.diagnose_skill_by_board_type"]
+ignore_errors = true
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# board_generator/ is a separate project with its own venv and test suite (it needs scipy, which
+# this one does not install), so a bare `pytest` here must not walk into it.
+testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "db: needs a Postgres migrated to head; tests/conftest.py provides one",
+]

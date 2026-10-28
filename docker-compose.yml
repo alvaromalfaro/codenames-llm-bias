@@ -1,50 +1,64 @@
 services:
   # Relational database for games, words, and embeddings
   db:
-    image: ankane/pgvector:latest
+    # Pinned, like every image here: a pull must not change the stack under a batch. Postgres 15 and
+    # Debian bookworm, as the ankane/pgvector image this replaced, so its data directory still works.
+    image: pgvector/pgvector:0.8.7-pg15-bookworm
     container_name: codenames-db
     restart: always
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # Loopback only: the host's scripts reach it, the rest of the network does not.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - ./docker_volumes/postgres_data:/var/lib/postgresql/data
 
   # Local LLM inference via Ollama. Runs on CPU by default; add docker-compose.gpu.yml
   # to reserve an NVIDIA GPU (see README).
   ollama:
-    image: ollama/ollama:latest
+    # The version config.EXPECTED_LOCAL_DIGESTS was validated with: another Ollama may serve another
+    # digest (it converts mistral-small3.2 on first load), and the digest gate then stops the batch.
+    image: ollama/ollama:0.40.2
     container_name: codenames-ollama
     # Strip any CR before running, so a CRLF checkout on Windows still works
     entrypoint:
       - /bin/bash
       - -c
       - sed 's/\r$$//' /ollama_entrypoint.sh > /tmp/ollama_entrypoint.sh && exec /bin/bash /tmp/ollama_entrypoint.sh
+    # Loopback only: Ollama has no authentication, so the rest of the network must not reach it.
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
+    environment:
+      # llama-server's RAM prompt cache off: it keeps the prompts a model read and brings back the
+      # likest one for the next request, so an answer would depend on which calls came before it.
+      # The local client sends a fixed request before each draw (client_local._RESET_PROMPT), which
+      # makes the answer the same whatever came before, but only with this cache off.
+      LLAMA_ARG_CACHE_RAM: "0"
     volumes:
-      - ./docker_volumes/ollama_data:/root/.ollama
+      # The models in a named volume, on the Docker VM's own disk: Ollama reloads a model at every
+      # turn when the two of a pairing do not fit in VRAM together, and from a Windows folder
+      # (bind-mounted through 9p, ~200 MB/s, no page cache) each reload took 25-90 s.
+      - ollama_models:/root/.ollama
       - ./ollama_entrypoint.sh:/ollama_entrypoint.sh:ro
       - ./backend/app/config.py:/llm_models.py:ro
 
-  # Backend with FastAPI
+  # The Python environment for the migrations, the batch and the scripts. It serves nothing: it
+  # stays up so they can run in it with `docker compose exec app ...`.
   app:
     build:
       context: .
       dockerfile: backend/Dockerfile
     container_name: codenames-backend
     working_dir: /workspace
-    # Watch only the app code: the repo root also holds docker_volumes/postgres_data, which this
-    # user cannot read and which would crash the reloader
-    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir backend
+    command: sleep infinity
+    # An init process as PID 1 forwards the stop signal, which sleep alone ignores.
+    init: true
     volumes:
       - ./:/workspace # Backend source code
       - ./data:/workspace/data # External files for words and biases
-    ports:
-      - "8000:8000"
     environment:
       PYTHONPATH: /workspace
     env_file:
@@ -52,3 +66,7 @@ services:
     depends_on:
       - db
       - ollama
+
+volumes:
+  # Ollama's model store (see the ollama service). `docker compose down -v` deletes it.
+  ollama_models:

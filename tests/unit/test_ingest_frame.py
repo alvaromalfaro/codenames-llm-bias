@@ -1,13 +1,12 @@
 """DB-gated tests for measurement-frame ingestion and the frame→boards FK link (A.5).
 
-These require a live Postgres (the disposable migrated pgvector) and are skipped when DATABASE_URL is
-unset. They are order-independent: every ingest is idempotent, so they neither require nor perform
+Marked ``db``: they run on the test session's Postgres (tests/conftest.py). They are
+order-independent: every ingest is idempotent, so they neither require nor perform
 table cleanup.
 """
 
 import json
 import math
-import os
 from pathlib import Path
 
 import pytest
@@ -22,9 +21,7 @@ from backend.app.db.ingest_frame import (
 )
 from backend.app.db.models import BoardModel, MeasurementFrameModel
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DATABASE_URL"), reason="requires a live Postgres database"
-)
+pytestmark = pytest.mark.db
 
 _BOARDS_DIR = Path(__file__).resolve().parents[2] / "data" / "boards"
 _FRAME_FILE = _BOARDS_DIR / "measurement_frame.json"
@@ -68,9 +65,10 @@ def test_frame_row_shape_columns_and_jsonb():
         assert construction["method"] == "mean_difference"
         assert construction["weat_sets"] == [6, 7, 8]
         cref = construction["mu_bar"]["centering_reference"]
-        assert cref["n_reference_items"] == sidecar["mu_bar"]["centering_reference"][
-            "n_reference_items"
-        ]
+        assert (
+            cref["n_reference_items"]
+            == sidecar["mu_bar"]["centering_reference"]["n_reference_items"]
+        )
         assert cref["attribute_counts_by_pole"]["male"] == 19
         assert cref["attribute_counts_by_pole"]["female"] == 19
         assert cref["loaded_counts_by_pole"] == {
@@ -126,11 +124,15 @@ def test_full_startup_order_frame_then_boards_links_all_28():
         ).all()
         assert len(joined) == 28
 
-        distinct = session.execute(
-            select(BoardModel.measurement_frame_id)
-            .where(BoardModel.measurement_frame_id.isnot(None))
-            .distinct()
-        ).scalars().all()
+        distinct = (
+            session.execute(
+                select(BoardModel.measurement_frame_id)
+                .where(BoardModel.measurement_frame_id.isnot(None))
+                .distinct()
+            )
+            .scalars()
+            .all()
+        )
         assert distinct == [target]
 
 

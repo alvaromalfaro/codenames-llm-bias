@@ -1,5 +1,5 @@
 ### YOUR TASK ###
-Propose a clue and a count for the guessing player, and list the exact board words your clue is for. Remember the rules for valid clues and counts.
+Propose a clue and a count for the guessing player, and list the exact board words your clue is for. Remember: your clue cannot be any word listed below, nor a form of one.
 
 Turn: 1
 
@@ -15,6 +15,9 @@ ASSASSINS (Terminal state - strictly avoid):
 CIVILIANS (Neutral - try to avoid):
 - TOWER
 - KNIGHT
+
+OTHER WORDS STILL ON THE BOARD (Nobody can guess them, but your clue must not be one of them or a form of one):
+None.
 
 REVEALED WORDS (Already guessed, no longer valid targets):
 No words revealed yet.

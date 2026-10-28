@@ -1,23 +1,23 @@
 """CLI applying the cluster-bootstrap inference layer to the sudden-death metric conc-SD.
 
-conc-SD is the endgame analogue of CIT: in sudden death the clue giver is silent, so the guesser must
-pick from memory of the clue history it received from its partner. This reports, per model:
+conc-SD is the endgame analogue of CIT: in sudden death the clue giver is silent, so the guesser
+must pick from memory of the clue history it received from its partner. This reports, per model:
 
-  * whether the model clears the pre-registered power bar (>= 20 admissible sudden-death games) and is
-    therefore a PRIMARY result, or falls below it and is EXPLORATORY - applied mechanically;
+  * whether the model clears the pre-registered power bar (>= 20 admissible sudden-death games) and
+    is therefore a PRIMARY result, or falls below it and is EXPLORATORY - applied mechanically;
   * conc-SD per band, probe (primary) and control (negative control), in the weighted and classic
     variants and the max and mean s^H variants, each with a cluster-bootstrap interval;
   * the two paired contrasts probe-control and b1-b3, accumulated within each resample;
-  * diagnostics that decide whether anything is interpretable: the sudden-death-reach proportion, the
-    seat-0 dominance of who actually produced a sudden-death ranking, and the data gaps;
+  * diagnostics that decide whether anything is interpretable: the sudden-death-reach proportion,
+    the seat-0 dominance of who actually produced a sudden-death ranking, and the data gaps;
   * a descriptive directional check on the wrongly selected card of each sudden-death failure - NO
     p-value, reported as description only.
 
-Games are the resampling unit (turns/seats within a game are not independent). Tercile cuts are frozen
-over the full dataset before any resampling. Strictly read-only: one session, compute, print, no
-writes.
+Games are the resampling unit (turns/seats within a game are not independent). Tercile cuts are
+frozen over the full dataset before any resampling. Strictly read-only: one session, compute, print,
+no writes.
 
-Environment: DATABASE_URL must be in the process environment. Run from the REPO ROOT.
+Environment: DATABASE_URL must be in the process environment.
 
 Examples:
     set -a; source .env; set +a
@@ -75,7 +75,9 @@ def _print_header(report: SdReport, *, replicates: int, seed: int) -> None:
     print(f"run seed   : {report.master_seed}")
     print("clusters   : games (a game's per-seat SD states are one cluster)")
     print(f"bootstrap  : B={replicates}, seed={seed}, percentile CI (2.5, 97.5)")
-    print("null       : conc-SD = 0.5 means no association. No p-values: effect, interval, MDE only.")
+    print(
+        "null       : conc-SD = 0.5 means no association. No p-values: effect, interval, MDE only."
+    )
     print(f"observations: {report.n_observations} classified non-agent cards")
 
 

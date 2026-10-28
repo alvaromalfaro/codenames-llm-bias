@@ -1,30 +1,41 @@
 import pytest
 from pydantic import ValidationError
-from backend.app.models.llm_schemas import LLMMessage, TokenUsage, LLMRequest, LLMResponse, \
-    ClueProposal, GuessProposal, ClueJSONFormat
+from backend.app.models.llm_schemas import (
+    LLMMessage,
+    TokenUsage,
+    LLMRequest,
+    LLMResponse,
+    ClueProposal,
+    GuessProposal,
+    ClueJSONFormat,
+    ProposalFormat,
+    RankingFormat,
+)
 
 
 def test_llm_message_valid():
     """
     Validates that a correctly structured LLMMessage instance passes validation without errors.
     """
-    message = LLMMessage(
-        role="user", content="Hope it passes validation without errors...")
+    message = LLMMessage(role="user", content="Hope it passes validation without errors...")
     assert isinstance(message, LLMMessage)
     assert message.role == "user"
     assert message.content == "Hope it passes validation without errors..."
 
 
-@pytest.mark.parametrize("content, expected_error", [
-    ("", "Content of the message cannot be empty."),
-    ("   ", "Content of the message cannot be empty.")
-])
+@pytest.mark.parametrize(
+    "content, expected_error",
+    [
+        ("", "Content of the message cannot be empty."),
+        ("   ", "Content of the message cannot be empty."),
+    ],
+)
 def test_llm_message_invalid_content(content, expected_error):
     """
     Validates that an LLMMessage instance with empty or whitespace-only content fails validation.
 
     :param content: A string representing the content of the message to be tested.
-    :param expected_error: A string indicating the expected error message to be raised during 
+    :param expected_error: A string indicating the expected error message to be raised during
         validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -80,7 +91,8 @@ def test_token_usage_invalid_total_tokens():
         TokenUsage(prompt_tokens=10, completion_tokens=5, total_tokens=20)
 
     assert "Total tokens must be equal to the sum of prompt tokens and completion tokens." in str(
-        exc_info.value)
+        exc_info.value
+    )
 
 
 def test_token_usage_negative_tokens():
@@ -98,6 +110,22 @@ def test_token_usage_negative_tokens():
     assert "completion_tokens" in str(exc_info.value)
 
 
+def test_token_usage_unknown_count_leaves_total_unknown():
+    """
+    Validates that a count the provider did not report is None, and that the total is then left
+    unknown instead of being summed as if the missing count were 0.
+    """
+    token_usage = TokenUsage(prompt_tokens=None, completion_tokens=5)
+
+    assert token_usage.prompt_tokens is None
+    assert token_usage.completion_tokens == 5
+    assert token_usage.total_tokens is None
+
+    # Both counts stay required, so a client cannot leave one out by mistake.
+    with pytest.raises(ValidationError):
+        TokenUsage(completion_tokens=5)
+
+
 def test_llm_request_valid():
     """
     Validates that a correctly structured LLMRequest instance passes validation without errors.
@@ -106,14 +134,14 @@ def test_llm_request_valid():
         messages=[
             LLMMessage(role="system", content="You are a helpful assistant."),
             LLMMessage(role="user", content="Hello, how are you?"),
-            LLMMessage(role="assistant", content="I'm doing well, thank you!")
+            LLMMessage(role="assistant", content="I'm doing well, thank you!"),
         ],
         model="test-model",
         temperature=0.5,
         max_tokens=100,
         timeout_s=10,
         metadata={"request_id": "12345"},
-        response_format="text"
+        response_format="text",
     )
 
     assert isinstance(request, LLMRequest)
@@ -138,34 +166,29 @@ def test_llm_request_empty_messages():
             max_tokens=100,
             timeout_s=10,
             metadata={"request_id": "12345"},
-            response_format="text"
+            response_format="text",
         )
 
-    assert "At least one message must be provided in the request." in str(
-        exc_info.value)
+    assert "At least one message must be provided in the request." in str(exc_info.value)
 
 
 def test_llm_request_no_user_role_in_message():
     """
-    Validates that an LLMRequest instance with messages that do not include a user role fails 
+    Validates that an LLMRequest instance with messages that do not include a user role fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
         LLMRequest(
-            messages=[
-                LLMMessage(role="system",
-                           content="This message is missing the role field.")
-            ],
+            messages=[LLMMessage(role="system", content="This message is missing the role field.")],
             model="test-model",
             temperature=0.5,
             max_tokens=100,
             timeout_s=10,
             metadata={"request_id": "12345"},
-            response_format="text"
+            response_format="text",
         )
 
-    assert "At least one message must have the role of 'user'." in str(
-        exc_info.value)
+    assert "At least one message must have the role of 'user'." in str(exc_info.value)
 
 
 def test_llm_request_no_model():
@@ -174,15 +197,12 @@ def test_llm_request_no_model():
     """
     with pytest.raises(ValidationError) as exc_info:
         LLMRequest(
-            messages=[
-                LLMMessage(
-                    role="user", content="This request is missing the model field.")
-            ],
+            messages=[LLMMessage(role="user", content="This request is missing the model field.")],
             temperature=0.5,
             max_tokens=100,
             timeout_s=10,
             metadata={"request_id": "12345"},
-            response_format="text"
+            response_format="text",
         )
 
     assert "model" in str(exc_info.value)
@@ -194,28 +214,24 @@ def test_llm_request_empty_model():
     """
     with pytest.raises(ValidationError) as exc_info:
         LLMRequest(
-            messages=[
-                LLMMessage(
-                    role="user", content="This request has an empty model field.")
-            ],
+            messages=[LLMMessage(role="user", content="This request has an empty model field.")],
             model="",
             temperature=0.5,
             max_tokens=100,
             timeout_s=10,
             metadata={"request_id": "12345"},
-            response_format="text"
+            response_format="text",
         )
 
     assert "Model name cannot be empty." in str(exc_info.value)
 
 
-@pytest.mark.parametrize("temperature, expected_error_substring", [
-    (-0.1, "temperature"),
-    (2.1, "temperature")
-])
+@pytest.mark.parametrize(
+    "temperature, expected_error_substring", [(-0.1, "temperature"), (2.1, "temperature")]
+)
 def test_llm_request_temperature_out_of_bounds(temperature, expected_error_substring):
     """
-    Validates that an LLMRequest instance with a temperature value outside the valid range fails 
+    Validates that an LLMRequest instance with a temperature value outside the valid range fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -223,7 +239,7 @@ def test_llm_request_temperature_out_of_bounds(temperature, expected_error_subst
             messages=[
                 LLMMessage(
                     role="user",
-                    content="This request has a temperature value outside the valid range."
+                    content="This request has a temperature value outside the valid range.",
                 )
             ],
             model="test-model",
@@ -231,7 +247,7 @@ def test_llm_request_temperature_out_of_bounds(temperature, expected_error_subst
             max_tokens=100,
             timeout_s=10,
             metadata={"request_id": "12345"},
-            response_format="text"
+            response_format="text",
         )
 
     assert expected_error_substring in str(exc_info.value)
@@ -244,15 +260,14 @@ def test_llm_request_max_tokens_out_of_bounds():
     with pytest.raises(ValidationError) as exc_info:
         LLMRequest(
             messages=[
-                LLMMessage(
-                    role="user", content="This request has a max_tokens value less than 1.")
+                LLMMessage(role="user", content="This request has a max_tokens value less than 1.")
             ],
             model="test-model",
             temperature=0.5,
             max_tokens=0,
             timeout_s=10,
             metadata={"request_id": "12345"},
-            response_format="text"
+            response_format="text",
         )
 
     assert "max_tokens" in str(exc_info.value)
@@ -260,7 +275,7 @@ def test_llm_request_max_tokens_out_of_bounds():
 
 def test_llm_request_timeout_out_of_bounds():
     """
-    Validates that an LLMRequest instance with a timeout_s value less than or equal to 0 fails 
+    Validates that an LLMRequest instance with a timeout_s value less than or equal to 0 fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -268,7 +283,7 @@ def test_llm_request_timeout_out_of_bounds():
             messages=[
                 LLMMessage(
                     role="user",
-                    content="This request has a timeout_s value less than or equal to 0."
+                    content="This request has a timeout_s value less than or equal to 0.",
                 )
             ],
             model="test-model",
@@ -276,7 +291,7 @@ def test_llm_request_timeout_out_of_bounds():
             max_tokens=100,
             timeout_s=0,
             metadata={"request_id": "12345"},
-            response_format="text"
+            response_format="text",
         )
 
     assert "timeout_s" in str(exc_info.value)
@@ -290,8 +305,7 @@ def test_llm_request_invalid_metadata_type():
         LLMRequest(
             messages=[
                 LLMMessage(
-                    role="user",
-                    content="This request has metadata that is not a dictionary."
+                    role="user", content="This request has metadata that is not a dictionary."
                 )
             ],
             model="test-model",
@@ -299,7 +313,7 @@ def test_llm_request_invalid_metadata_type():
             max_tokens=100,
             timeout_s=10,
             metadata="This should be a dictionary, not a string.",
-            response_format="text"
+            response_format="text",
         )
 
     assert "metadata" in str(exc_info.value)
@@ -313,8 +327,7 @@ def test_llm_request_invalid_response_format():
         LLMRequest(
             messages=[
                 LLMMessage(
-                    role="user",
-                    content="This request has an invalid response_format value."
+                    role="user", content="This request has an invalid response_format value."
                 )
             ],
             model="test-model",
@@ -322,7 +335,7 @@ def test_llm_request_invalid_response_format():
             max_tokens=100,
             timeout_s=10,
             metadata={"request_id": "12345"},
-            response_format="invalid_format"
+            response_format="invalid_format",
         )
 
     assert "response_format" in str(exc_info.value)
@@ -341,7 +354,7 @@ def test_llm_response_valid():
         raw_payload={"response": "This is a test response."},
         request_id="12345",
         execution_mode="local",
-        provider="ollama"
+        provider="ollama",
     )
 
     assert isinstance(response, LLMResponse)
@@ -372,7 +385,7 @@ def test_llm_response_missing_test_field():
             raw_payload={"response": "This is a test response."},
             request_id="12345",
             execution_mode="local",
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "text" in str(exc_info.value)
@@ -392,7 +405,7 @@ def test_llm_response_empty_text():
             raw_payload={"response": "This is a test response."},
             request_id="12345",
             execution_mode="local",
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "text" in str(exc_info.value)
@@ -400,7 +413,7 @@ def test_llm_response_empty_text():
 
 def test_llm_response_model_not_provided():
     """
-    Validates that an LLMResponse instance with an empty or whitespace-only model_used field fails 
+    Validates that an LLMResponse instance with an empty or whitespace-only model_used field fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -412,7 +425,7 @@ def test_llm_response_model_not_provided():
             raw_payload={"response": "This is a test response."},
             request_id="12345",
             execution_mode="local",
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "model_used" in str(exc_info.value)
@@ -432,7 +445,7 @@ def test_llm_response_model_used_empty():
             raw_payload={"response": "This is a test response."},
             request_id="12345",
             execution_mode="local",
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "Model used cannot be empty." in str(exc_info.value)
@@ -452,7 +465,7 @@ def test_llm_response_negative_latency():
             raw_payload={"response": "This is a test response."},
             request_id="12345",
             execution_mode="local",
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "latency_ms" in str(exc_info.value)
@@ -472,7 +485,7 @@ def test_llm_response_invalid_usage():
             raw_payload={"response": "This is a test response."},
             request_id="12345",
             execution_mode="local",
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "usage" in str(exc_info.value)
@@ -492,7 +505,7 @@ def test_llm_response_invalid_finish_reason():
             raw_payload={"response": "This is a test response."},
             request_id="12345",
             execution_mode="local",
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "finish_reason" in str(exc_info.value)
@@ -513,7 +526,7 @@ def test_llm_response_invalid_raw_payload():
             raw_payload="This should be a dictionary, not a string.",
             request_id="12345",
             execution_mode="local",
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "raw_payload" in str(exc_info.value)
@@ -533,7 +546,7 @@ def test_llm_response_invalid_request_id():
             raw_payload={"response": "This is a test response."},
             request_id=12345,  # Invalid type for request_id
             execution_mode="local",
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "request_id" in str(exc_info.value)
@@ -553,7 +566,7 @@ def test_llm_response_invalid_execution_mode():
             raw_payload={"response": "This is a test response."},
             request_id="12345",
             execution_mode="invalid_mode",  # Invalid value for execution_mode
-            provider="ollama"
+            provider="ollama",
         )
 
     assert "execution_mode" in str(exc_info.value)
@@ -573,7 +586,7 @@ def test_llm_response_invalid_provider():
             raw_payload={"response": "This is a test response."},
             request_id="12345",
             execution_mode="local",
-            provider=123  # Invalid type for provider
+            provider=123,  # Invalid type for provider
         )
 
     assert "provider" in str(exc_info.value)
@@ -587,7 +600,7 @@ def test_llm_clue_proposal_valid():
         clue="Test clue",
         count=3,
         reasoning="This is the reasoning for the clue proposal.",
-        raw_payload={"proposal": "Test clue proposal."}
+        raw_payload={"proposal": "Test clue proposal."},
     )
 
     assert isinstance(proposal, ClueProposal)
@@ -605,7 +618,7 @@ def test_llm_clue_proposal_not_clue():
         ClueProposal(
             count=3,
             reasoning="This is the reasoning for the clue proposal.",
-            raw_payload={"proposal": "Test clue proposal."}
+            raw_payload={"proposal": "Test clue proposal."},
         )
 
     assert "clue" in str(exc_info.value)
@@ -620,7 +633,7 @@ def test_llm_clue_proposal_empty_clue():
             clue="   ",
             count=3,
             reasoning="This is the reasoning for the clue proposal.",
-            raw_payload={"proposal": "Test clue proposal."}
+            raw_payload={"proposal": "Test clue proposal."},
         )
 
     assert "clue" in str(exc_info.value)
@@ -635,7 +648,7 @@ def test_llm_clue_proposal_count_out_of_bounds():
             clue="Test clue",
             count=0,
             reasoning="This is the reasoning for the clue proposal.",
-            raw_payload={"proposal": "Test clue proposal."}
+            raw_payload={"proposal": "Test clue proposal."},
         )
 
     assert "count" in str(exc_info.value)
@@ -650,7 +663,7 @@ def test_llm_clue_proposal_invalid_reasoning():
             clue="Test clue",
             count=3,
             reasoning=123,  # Invalid type for reasoning
-            raw_payload={"proposal": "Test clue proposal."}
+            raw_payload={"proposal": "Test clue proposal."},
         )
 
     assert "reasoning" in str(exc_info.value)
@@ -666,7 +679,7 @@ def test_llm_clue_proposal_invalid_raw_payload():
             count=3,
             reasoning="This is the reasoning for the clue proposal.",
             # Invalid type for raw_payload
-            raw_payload="This should be a dictionary, not a string."
+            raw_payload="This should be a dictionary, not a string.",
         )
 
     assert "raw_payload" in str(exc_info.value)
@@ -690,6 +703,29 @@ def test_clue_json_format_accepts_targets_and_field_order():
     # Round-trips through JSON preserving the target set.
     reparsed = ClueJSONFormat.model_validate_json(fmt.model_dump_json())
     assert reparsed.targets == ["CROWN", "THRONE"]
+
+
+@pytest.mark.parametrize("fmt", [ProposalFormat, RankingFormat])
+@pytest.mark.parametrize(
+    "entry",
+    [
+        '{"word": "OCEAN", "confidence": 95}',  # a percentage
+        '{"word": "OCEAN", "confidence": -0.1}',
+        '{"word": "OCEAN", "confidence": NaN}',  # json.loads and pydantic both read NaN
+        '{"word": "", "confidence": 0.5}',
+    ],
+)
+def test_a_proposed_or_ranked_word_outside_the_limits_fails_its_format(fmt, entry):
+    with pytest.raises(ValidationError):
+        fmt.model_validate_json(entry)
+
+
+@pytest.mark.parametrize("fmt", [ProposalFormat, RankingFormat])
+def test_the_limits_of_a_proposed_or_ranked_word_are_in_the_schema_sent(fmt):
+    properties = fmt.model_json_schema()["properties"]
+    assert properties["word"]["minLength"] == 1
+    assert (properties["confidence"]["minimum"], properties["confidence"]["maximum"]) == (0, 1)
+    assert fmt.model_validate_json('{"word": "OCEAN", "confidence": 1}').confidence == 1.0
 
 
 def test_clue_json_format_targets_default_empty():
@@ -727,7 +763,7 @@ def test_llm_guess_proposal_valid():
         confidence=[0.9, 0.8, 0.7],
         reasoning="This is the reasoning for the guess proposal.",
         stop_reason="max_tokens",
-        raw_payload={"proposal": "Test guess proposal."}
+        raw_payload={"proposal": "Test guess proposal."},
     )
 
     assert isinstance(proposal, GuessProposal)
@@ -748,7 +784,7 @@ def test_llm_guess_proposal_empty_proposals():
             confidence=[0.9, 0.8, 0.7],
             reasoning="This is the reasoning for the guess proposal.",
             stop_reason="max_tokens",
-            raw_payload={"proposal": "Test guess proposal."}
+            raw_payload={"proposal": "Test guess proposal."},
         )
 
     assert "proposals" in str(exc_info.value)
@@ -756,7 +792,7 @@ def test_llm_guess_proposal_empty_proposals():
 
 def test_llm_guess_proposal_invalid_proposal():
     """
-    Validates that a GuessProposal instance with an invalid proposal in the proposals list fails 
+    Validates that a GuessProposal instance with an invalid proposal in the proposals list fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -766,7 +802,7 @@ def test_llm_guess_proposal_invalid_proposal():
             confidence=[0.9, 0.8, 0.7],
             reasoning="This is the reasoning for the guess proposal.",
             stop_reason="max_tokens",
-            raw_payload={"proposal": "Test guess proposal."}
+            raw_payload={"proposal": "Test guess proposal."},
         )
 
     assert "Proposals cannot contain empty strings." in str(exc_info.value)
@@ -782,7 +818,7 @@ def test_llm_guess_proposal_empty_confidence():
             confidence=[],
             reasoning="This is the reasoning for the guess proposal.",
             stop_reason="max_tokens",
-            raw_payload={"proposal": "Test guess proposal."}
+            raw_payload={"proposal": "Test guess proposal."},
         )
 
     assert "confidence" in str(exc_info.value)
@@ -790,7 +826,7 @@ def test_llm_guess_proposal_empty_confidence():
 
 def test_llm_guess_proposal_proposals_confidence_length_mismatch():
     """
-    Validates that a GuessProposal instance where the length of the proposals list does not match 
+    Validates that a GuessProposal instance where the length of the proposals list does not match
     the length of the confidence list fails validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -799,16 +835,17 @@ def test_llm_guess_proposal_proposals_confidence_length_mismatch():
             confidence=[0.9, 0.8, 0.7],  # Length mismatch with proposals
             reasoning="This is the reasoning for the guess proposal.",
             stop_reason="max_tokens",
-            raw_payload={"proposal": "Test guess proposal."}
+            raw_payload={"proposal": "Test guess proposal."},
         )
 
     assert "The number of proposals must match the number of confidence scores." in str(
-        exc_info.value)
+        exc_info.value
+    )
 
 
 def test_llm_guess_proposal_confidence_out_of_bounds():
     """
-    Validates that a GuessProposal instance with confidence scores outside the range of 0 to 1 fails 
+    Validates that a GuessProposal instance with confidence scores outside the range of 0 to 1 fails
     validation.
     """
     with pytest.raises(ValidationError) as exc_info:
@@ -817,7 +854,7 @@ def test_llm_guess_proposal_confidence_out_of_bounds():
             confidence=[0.9, -0.1, 0.7],  # Invalid confidence score
             reasoning="This is the reasoning for the guess proposal.",
             stop_reason="max_tokens",
-            raw_payload={"proposal": "Test guess proposal."}
+            raw_payload={"proposal": "Test guess proposal."},
         )
 
     assert "Confidence scores must be between 0 and 1." in str(exc_info.value)
@@ -833,7 +870,7 @@ def test_llm_guess_proposal_invalid_reasoning():
             confidence=[0.9, 0.8, 0.7],
             reasoning=123,  # Invalid type for reasoning
             stop_reason="max_tokens",
-            raw_payload={"proposal": "Test guess proposal."}
+            raw_payload={"proposal": "Test guess proposal."},
         )
 
     assert "reasoning" in str(exc_info.value)
@@ -849,7 +886,7 @@ def test_llm_guess_proposal_invalid_stop_reason():
             confidence=[0.9, 0.8, 0.7],
             reasoning="This is the reasoning for the guess proposal.",
             stop_reason=123,  # Invalid type for stop_reason
-            raw_payload={"proposal": "Test guess proposal."}
+            raw_payload={"proposal": "Test guess proposal."},
         )
 
     assert "stop_reason" in str(exc_info.value)
@@ -866,7 +903,7 @@ def test_llm_guess_proposal_invalid_raw_payload():
             reasoning="This is the reasoning for the guess proposal.",
             stop_reason="max_tokens",
             # Invalid type for raw_payload
-            raw_payload="This should be a dictionary, not a string."
+            raw_payload="This should be a dictionary, not a string.",
         )
 
     assert "raw_payload" in str(exc_info.value)

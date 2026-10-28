@@ -191,19 +191,16 @@ def load_skill_data(
         seats_by_game[game_id][seat_index] = model_ref
 
     games = [
-        GameRecord(game_id=game_id, result=result,
-                   seat_models=dict(seats_by_game.get(game_id, {})))
+        GameRecord(game_id=game_id, result=result, seat_models=dict(seats_by_game.get(game_id, {})))
         for game_id, result in game_rows
     ]
 
     # PA: play-kind items that resolved into a reveal, on normal turns. The guesser is named by
     # guess_proposal.guesser_seat, and agent-ness by the engine's own result_role.
     played = [
-        PlayedCard(game_id=game_id, model_ref=model_ref,
-                   result_role=result_role)
+        PlayedCard(game_id=game_id, model_ref=model_ref, result_role=result_role)
         for game_id, model_ref, result_role in session.execute(
-            select(TurnModel.game_id, GameSeatModel.model_ref,
-                   RevealEventModel.result_role)
+            select(TurnModel.game_id, GameSeatModel.model_ref, RevealEventModel.result_role)
             .join(GuessProposalModel, GuessProposalModel.turn_id == TurnModel.id)
             .join(
                 GuessProposalItemModel,
@@ -229,7 +226,7 @@ def load_skill_data(
     # EP: one row per clue, carrying the agents revealed on that clue's turn. Joining from `clue`
     # rather than from `turn` is what keeps clue-less sudden-death turns out of the numerator.
     agents_by_turn: dict[int, int] = defaultdict(int)
-    for turn_id, count in session.execute(
+    for turn_id, _reveal_id in session.execute(
         select(RevealEventModel.turn_id, RevealEventModel.id)
         .join(TurnModel, TurnModel.id == RevealEventModel.turn_id)
         .where(
@@ -302,9 +299,7 @@ def _bootstrap_cell(
     if not game_ids or not records:
         return None
     estimator = _make_estimator(records, statistic, cell)
-    result = cluster_bootstrap(
-        list(game_ids), estimator, n_replicates=n_replicates, seed=seed
-    )
+    result = cluster_bootstrap(list(game_ids), estimator, n_replicates=n_replicates, seed=seed)
     return result.cells.get(cell)
 
 
@@ -322,8 +317,7 @@ def compute_skill_metrics(
     for game in games:
         result_counts[game.result or "<NULL>"] += 1
 
-    models = sorted(
-        {model for game in games for model in game.seat_models.values()})
+    models = sorted({model for game in games for model in game.seat_models.values()})
 
     # TV per pairing: each pairing's own games are its cluster universe.
     games_by_pairing: dict[str, list[GameRecord]] = defaultdict(list)
@@ -357,31 +351,40 @@ def compute_skill_metrics(
 
     for model_ref in models:
         # TV per model marginalises over partners: every game where the model held either seat.
-        model_games = [
-            game for game in games if model_ref in game.seat_models.values()]
+        model_games = [game for game in games if model_ref in game.seat_models.values()]
         model_game_ids = [game.game_id for game in model_games]
 
         tv_cell = _bootstrap_cell(
-            model_games, win_rate, model_game_ids,  # type: ignore[arg-type]
-            cell="tv", n_replicates=n_replicates, seed=seed,
+            model_games,
+            win_rate,
+            model_game_ids,  # type: ignore[arg-type]
+            cell="tv",
+            n_replicates=n_replicates,
+            seed=seed,
         )
         if tv_cell is not None:
             tv_by_model[model_ref] = tv_cell
 
         model_cards = played_by_model.get(model_ref, [])
         pa_cell = _bootstrap_cell(
-            model_cards, guess_accuracy,  # type: ignore[arg-type]
+            model_cards,
+            guess_accuracy,  # type: ignore[arg-type]
             sorted({card.game_id for card in model_cards}),
-            cell="pa", n_replicates=n_replicates, seed=seed,
+            cell="pa",
+            n_replicates=n_replicates,
+            seed=seed,
         )
         if pa_cell is not None:
             pa_by_model[model_ref] = pa_cell
 
         model_clues = clues_by_model.get(model_ref, [])
         ep_cell = _bootstrap_cell(
-            model_clues, clue_efficiency,  # type: ignore[arg-type]
+            model_clues,
+            clue_efficiency,  # type: ignore[arg-type]
             sorted({clue.game_id for clue in model_clues}),
-            cell="ep", n_replicates=n_replicates, seed=seed,
+            cell="ep",
+            n_replicates=n_replicates,
+            seed=seed,
         )
         if ep_cell is not None:
             ep_by_model[model_ref] = ep_cell
@@ -393,9 +396,7 @@ def compute_skill_metrics(
                 n_clues=len(model_clues),
                 n_played_cards=len(model_cards),
                 n_agent_cards=sum(1 for card in model_cards if card.is_agent),
-                n_agents_revealed_on_own_clues=sum(
-                    clue.agents_revealed for clue in model_clues
-                ),
+                n_agents_revealed_on_own_clues=sum(clue.agents_revealed for clue in model_clues),
             )
         )
 

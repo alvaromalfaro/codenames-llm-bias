@@ -2,7 +2,7 @@
     "name": "Codenames Bias Dev Container",
     "dockerComposeFile": ["../docker-compose.yml"],
     "service": "app",
-    "workspaceFolder": "/app",
+    "workspaceFolder": "/workspace",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -11,5 +11,5 @@
             ]
         }
     },
-    "remoteUser": "root"
+    "remoteUser": "appuser"
 }

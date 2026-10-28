@@ -40,11 +40,7 @@ def _unique_column_sets(table) -> set[frozenset[str]]:
 
 
 def _check_texts(table) -> list[str]:
-    return [
-        str(c.sqltext)
-        for c in table.constraints
-        if isinstance(c, sa.CheckConstraint)
-    ]
+    return [str(c.sqltext) for c in table.constraints if isinstance(c, sa.CheckConstraint)]
 
 
 def test_all_expected_tables_present():
@@ -77,7 +73,6 @@ def test_numeric_seed_columns_are_20_0():
         ("run", "master_seed"),
         ("board", "seed"),
         ("game", "derived_seed"),
-        ("game_seat", "requested_seed"),
         ("llm_call", "requested_seed"),
     ):
         col = tables[tname].c[cname]
@@ -126,12 +121,13 @@ def test_jsonb_columns():
         ("board", "dilemma"),
         ("board", "keycard_audit"),
         ("run", "model_registry_snapshot"),
+        ("run", "stimulus_manifest"),
+        ("run", "environment_snapshot"),
         ("llm_call", "raw_payload"),
         ("llm_call", "rendered_prompt"),
         ("clue", "targets_raw"),
     ):
-        assert isinstance(tables[tname].c[cname].type,
-                          postgresql.JSONB), (tname, cname)
+        assert isinstance(tables[tname].c[cname].type, postgresql.JSONB), (tname, cname)
 
 
 def test_prompt_capture_columns():
@@ -145,43 +141,71 @@ def test_prompt_capture_columns():
     assert template_version.nullable is True
 
 
+def test_clue_invalid_reason_column():
+    """0006: clue.invalid_reason is nullable text, NULL for a valid clue."""
+    invalid_reason = Base.metadata.tables["clue"].c.invalid_reason
+    assert isinstance(invalid_reason.type, sa.Text)
+    assert invalid_reason.nullable is True
+
+
+def test_0007_columns():
+    """0007: the board's content hash and the game's error, nullable text."""
+    tables = Base.metadata.tables
+    for tname, cname in (
+        ("board", "content_sha256"),
+        ("game", "error_code"),
+        ("game", "error_message"),
+    ):
+        col = tables[tname].c[cname]
+        assert isinstance(col.type, sa.Text) and col.nullable is True, (tname, cname)
+    for cname in ("stimulus_manifest", "environment_snapshot"):
+        assert tables["run"].c[cname].nullable is True
+
+
+def test_0008_columns():
+    """0008: the server's breakdown of a call's latency, nullable (NULL for an API call)."""
+    llm_call = Base.metadata.tables["llm_call"]
+    for cname in ("load_ms", "prompt_eval_ms", "eval_ms"):
+        col = llm_call.c[cname]
+        assert isinstance(col.type, sa.Integer) and col.nullable is True, cname
+
+
+def test_the_columns_nothing_wrote_are_gone():
+    """0007 dropped them: their defaults read as data (time_marker_placed was always false)."""
+    tables = Base.metadata.tables
+    for tname, cname in (
+        ("reveal_event", "time_marker_placed"),
+        ("llm_call", "execution_mode"),
+        ("run", "regime_label"),
+        ("game_seat", "precision"),
+        ("game_seat", "requested_seed"),
+    ):
+        assert cname not in tables[tname].c, (tname, cname)
+    assert "notes" in tables["run"].c  # written by each resume
+
+
 def test_unique_constraints():
     tables = Base.metadata.tables
-    assert frozenset({"board_id", "card_id"}) in _unique_column_sets(
-        tables["word_card"])
-    assert frozenset({"board_id", "text"}) in _unique_column_sets(
-        tables["word_card"])
-    assert frozenset({"frame_id", "text"}) in _unique_column_sets(
-        tables["embedding_mpnet"]
-    )
-    assert frozenset({"frame_id", "text"}) in _unique_column_sets(
-        tables["word_load"])
-    assert frozenset({"recipe_id", "text"}) in _unique_column_sets(
-        tables["embedding_llama"]
-    )
-    assert frozenset({"recipe_id", "text"}) in _unique_column_sets(
-        tables["embedding_mistral"]
-    )
-    assert frozenset({"game_id", "seat_index"}) in _unique_column_sets(
-        tables["game_seat"]
-    )
-    assert frozenset({"game_id", "turn_number"}
-                     ) in _unique_column_sets(tables["turn"])
-    assert frozenset({"turn_id", "position_in_turn"}) in _unique_column_sets(
-        tables["reveal_event"]
-    )
-    assert frozenset({"clue_id", "position"}) in _unique_column_sets(
-        tables["clue_target"]
-    )
+    assert frozenset({"board_id", "card_id"}) in _unique_column_sets(tables["word_card"])
+    assert frozenset({"board_id", "text"}) in _unique_column_sets(tables["word_card"])
+    assert frozenset({"frame_id", "text"}) in _unique_column_sets(tables["embedding_mpnet"])
+    assert frozenset({"frame_id", "text"}) in _unique_column_sets(tables["word_load"])
+    assert frozenset({"recipe_id", "text"}) in _unique_column_sets(tables["embedding_llama"])
+    assert frozenset({"recipe_id", "text"}) in _unique_column_sets(tables["embedding_mistral"])
+    assert frozenset({"game_id", "seat_index"}) in _unique_column_sets(tables["game_seat"])
+    assert frozenset({"game_id", "turn_number"}) in _unique_column_sets(tables["turn"])
+    assert frozenset({"turn_id", "position_in_turn"}) in _unique_column_sets(tables["reveal_event"])
+    assert frozenset({"clue_id", "position"}) in _unique_column_sets(tables["clue_target"])
     assert frozenset({"guess_proposal_id", "position"}) in _unique_column_sets(
         tables["guess_proposal_item"]
     )
     # The clue is 1:1 with its turn (single-column UNIQUE on turn_id). A turn can carry a 'play' and
-    # a 'measurement' guess_proposal per guesser seat (both seats guess in sudden death, on one turn),
-    # so uniqueness there is on (turn_id, kind, guesser_seat).
+    # a 'measurement' guess_proposal per guesser seat (both seats guess in sudden death, on one
+    # turn), so uniqueness there is on (turn_id, kind, guesser_seat).
     assert frozenset({"turn_id"}) in _unique_column_sets(tables["clue"])
     assert frozenset({"turn_id", "kind", "guesser_seat"}) in _unique_column_sets(
-        tables["guess_proposal"])
+        tables["guess_proposal"]
+    )
 
 
 def test_extra_indexes_present():
@@ -192,6 +216,10 @@ def test_extra_indexes_present():
     assert frozenset({"game_id"}) in index_cols(tables["llm_call"])
     assert frozenset({"turn_id"}) in index_cols(tables["llm_call"])
     assert frozenset({"turn_id"}) in index_cols(tables["reveal_event"])
+    assert frozenset({"role"}) in index_cols(tables["llm_call"])
+    assert frozenset({"run_id"}) in index_cols(tables["game"])
+    assert frozenset({"board_id"}) in index_cols(tables["game"])
+    assert frozenset({"reveal_event_id"}) in index_cols(tables["guess_proposal_item"])
 
 
 def test_check_constraint_vocabularies():
